@@ -2,6 +2,8 @@
 
 Erlang General Non-blocking TCP Server
 
+NOTICE: not production ready
+
 ## build
 
 ```
