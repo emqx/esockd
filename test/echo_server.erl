@@ -37,7 +37,7 @@ loop(Socket, State) ->
 	case gen_tcp:recv(Socket, 0) of
 		{ok, Data} -> 
 			{ok, Name} = inet:sockname(Socket),
-			io:format("~p: ~s~n", [Name, Data]),
+			%io:format("~p: ~s~n", [Name, Data]),
 			gen_tcp:send(Socket, Data),
 			loop(Socket, State);
 		{error, Reason} ->

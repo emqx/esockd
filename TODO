@@ -1,0 +1,21 @@
+1. how to handle??
+
+{accept_failed, e{n, m}file}
+
+sleep for a while?
+
+crash and wait restart??
+
+2. acceptor_sup: 
+
+重启策略？延迟重启?？
+
+3. how to manage max connections?
+
+THIS IS VERY IMPORTANT, emfile error could crash the whole vm
+
+4. how to get current connections?
+
+
+
+

@@ -28,5 +28,5 @@
 
 start() ->
     esockd:start(),
-    [esockd:listen(Port, ?TCP_OPTIONS, {echo_server, start_link, []}) || Port <- lists:seq(5000, 5002)].
+    [esockd:listen(Port, ?TCP_OPTIONS, {echo_server, start_link, []}) || Port <- lists:seq(5000, 5000)].
 

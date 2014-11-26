@@ -1,0 +1,3 @@
+-module(esockd_manager).
+
+%%TODO: general server2 to manage socket resource...
