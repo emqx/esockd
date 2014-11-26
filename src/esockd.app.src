@@ -1,0 +1,12 @@
+{application, esockd,
+ [
+  {description, "Erlang General Non-blocking TCP Server"},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, { esockd_app, []}},
+  {env, []}
+ ]}.
