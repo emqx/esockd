@@ -1,4 +1,4 @@
-# esockd
+# eSockd
 
 Erlang General Non-blocking TCP Server
 
