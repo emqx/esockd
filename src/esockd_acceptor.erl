@@ -66,10 +66,10 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	%%TODO: Copy socket options from LSock?
-	{ok, ClientPid} = supervisor2:start_child(ClientSup, [Sock]),
-	Mod:controlling_process(Sock, ClientPid), 
+	{ok, Client} = supervisor2:start_child(ClientSup, [Sock]),
+	Mod:controlling_process(Sock, Client), 
 	%%FIXME: should be wrapped
-	ClientPid ! {ready, self(), Sock},
+	esockd_client:ready(Client, self(), Sock),
 
     %% accept more
     accept(State);
@@ -79,6 +79,11 @@ handle_info({inet_async, LSock, Ref, {error, closed}},
     %% It would be wrong to attempt to restart the acceptor when we
     %% know this will fail.
     {stop, normal, State};
+
+%%TODO: 
+%% {error, timeout} ->
+%% {error, esslaccept} ->
+%% {error, e{n,m}file} -> sleep 100??
 
 handle_info({inet_async, LSock, Ref, {error, Reason}},
             State=#state{sock=LSock, ref=Ref}) ->

@@ -24,17 +24,24 @@
 %%FIXME: this module should be rewrite...
 
 -export([start_link/2,
-		 go/3,
+		 ready/3,
 		 accepted/1]).
 
 start_link(Callback, Sock) ->
-	{M, F, A} = Callback,
-	{ok, _Pid} = apply(M, F, [Sock|A]).
+	{ok, _Pid} = callback(Callback, Sock).
 
-go(Pid, Acceptor, Socket) ->
-	Pid ! {ready, Acceptor, Socket}.
+ready(Pid, Acceptor, Sock) ->
+	Pid ! {ready, Acceptor, Sock}.
 
 accepted(Socket) ->
 	receive {ready, _, Socket} -> ok end.
 
+callback({M, F}, Sock) ->
+    M:F(Sock);
+
+callback({M, F, A}, Sock) ->
+    erlang:apply(M, F, [Sock | A]);
+
+callback(Fun, Sock) when is_function(Fun) ->
+    Fun(Sock).
 
