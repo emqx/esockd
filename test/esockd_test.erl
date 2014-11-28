@@ -22,11 +22,11 @@
 
 -module(esockd_test).
 
--export([start/0]).
+-export([start/1]).
 
 -define(TCP_OPTIONS, [binary, {packet, raw}, {active, false}, {reuseaddr, true}]).
 
-start() ->
+start(Port) ->
     esockd:start(),
-    [esockd:open(Port, ?TCP_OPTIONS, {echo_server, start_link, []}) || Port <- lists:seq(5000, 5000)].
+    esockd:listen(Port, ?TCP_OPTIONS, {echo_server, start_link, []}).
 
