@@ -25,21 +25,21 @@
 		 init/1, 
 		 loop/2]).
 
-start_link(Socket) ->
-	Pid = spawn_link(?MODULE, init, [Socket]),
+start_link(Sock) ->
+	Pid = spawn_link(?MODULE, init, [Sock]),
 	{ok, Pid}.
 
-init(Socket) ->
-	esockd_client:accepted(Socket),
-	loop(Socket, state).
+init(Sock) ->
+	esockd_client:accepted(Sock),
+	loop(Sock, state).
 
-loop(Socket, State) ->
-	case gen_tcp:recv(Socket, 0) of
+loop(Sock, State) ->
+	case gen_tcp:recv(Sock, 0) of
 		{ok, Data} -> 
-			{ok, Name} = inet:sockname(Socket),
-			%io:format("~p: ~s~n", [Name, Data]),
-			gen_tcp:send(Socket, Data),
-			loop(Socket, State);
+			{ok, Name} = inet:sockname(Sock),
+			io:format("~p: ~s~n", [Name, Data]),
+			gen_tcp:send(Sock, Data),
+			loop(Sock, State);
 		{error, Reason} ->
 			{stop, Reason}
 	end. 
