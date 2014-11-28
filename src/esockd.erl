@@ -23,10 +23,15 @@
 -module(esockd).
 
 -export([start/0, 
-        listen/3]).
+        open/3,
+		close/1]).
 
 start() ->
     application:start(esockd).
 
-listen(Port, SocketOpts, Callback) when is_integer(Port) ->
+open(Port, SocketOpts, Callback) when is_integer(Port) ->
 	esockd_sup:start_listener(Port, SocketOpts, Callback).
+
+close(Port) ->
+	esockd_sup:stop_listener(Port).
+

@@ -25,7 +25,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, start_listener/3]).
+-export([start_link/0, start_listener/3, stop_listener/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -42,10 +42,13 @@ start_link() ->
 
 start_listener(Port, SocketOpts, Callback) ->
 	ChildSpec = 
-		{{listener_sup, Port}, 
+		{{listener_sup, port}, 
 			{esockd_listener_sup, start_link, [Port, SocketOpts, Callback]}, 
 				transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor2:start_child(?MODULE, ChildSpec).
+
+stop_listener(Port) ->
+	supervisor2:terminate_child(?MODULE, {listener_sup, Port}).
 
 %% ===================================================================
 %% Supervisor callbacks
