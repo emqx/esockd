@@ -22,12 +22,17 @@
 %%------------------------------------------------------------------------------
 -module(esockd_client_sup).
 
+-include("esockd.hrl").
+
 -behaviour(supervisor).
 
 -export([start_link/1]).
 
 -export([init/1]).
 
+%%TODO: supervisor2 options...
+
+-spec start_link(Callback :: callback()) -> {ok, pid()}.
 start_link(Callback) ->
     supervisor2:start_link(?MODULE, Callback).
 

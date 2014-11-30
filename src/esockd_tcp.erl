@@ -21,8 +21,14 @@
 %%------------------------------------------------------------------------------
 -module(esockd_tcp).
 
--export([send/2]).
+-export([listen/2, send/2, close/1]).
+
+listen(Port, SocketOpts) ->
+    gen_tcp:listen(Port, SocketOpts).
 
 send(Sock, Data) when is_port(Sock) ->
 	gen_tcp:send(Sock, Data).
 	
+close(Socket) ->
+    gen_tcp:close(Socket).
+

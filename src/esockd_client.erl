@@ -30,9 +30,15 @@
 start_link(Callback, Sock) ->
 	{ok, _Pid} = callback(Callback, Sock).
 
+%%
+%% @doc called by acceptor
+%%
 ready(Pid, Acceptor, Sock) ->
 	Pid ! {ready, Acceptor, Sock}.
 
+%%
+%% @doc called by client
+%%
 accepted(Socket) ->
 	receive {ready, _, Socket} -> ok end.
 
@@ -41,6 +47,9 @@ callback({M, F}, Sock) ->
 
 callback({M, F, A}, Sock) ->
     erlang:apply(M, F, [Sock | A]);
+
+callback(Mod, Sock) when is_atom(Mod) ->
+    Mod:start_link(Sock);
 
 callback(Fun, Sock) when is_function(Fun) ->
     Fun(Sock).

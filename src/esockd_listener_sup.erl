@@ -22,17 +22,23 @@
 
 -module(esockd_listener_sup).
 
+-include("esockd.hrl").
+
 -behaviour(supervisor).
 
--export([start_link/3,
-		 start_link/4]).
+-export([start_link/5]).
 
 -export([init/1]).
 
-start_link(Port, SocketOpts, Callback) ->
-    start_link(Port, SocketOpts, Callback, 1).
-
-start_link(Port, SocketOpts, Callback, AcceptorNum) ->
+%%
+%% @doc start listener supervisor
+%%
+-spec start_link(Protocol       :: atom(), 
+                 Port           :: inet:port_number(),
+                 SocketOpts     :: list(tuple()), 
+                 AcceptorNum    :: integer(),
+                 Callback       :: callback()) -> {ok, pid()}.
+start_link(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ClientSup} = supervisor:start_child(Sup, 
 		{client_sup, 
@@ -44,20 +50,11 @@ start_link(Port, SocketOpts, Callback, AcceptorNum) ->
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup, 
 		{listener, 
-			{esockd_listener, start_link, [Port, SocketOpts, AcceptorSup, AcceptorNum]},
+			{esockd_listener, start_link, [Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
 	{ok, Sup}.
 
 init([]) ->
     {ok, {{one_for_all, 10, 10}, []}}.
 
-%start_link(IPAddress, Port, SocketOpts, OnStartup, OnShutdown,
-%           AcceptCallback, ConcurrentAcceptorCount, Label) ->
-%    supervisor:start_link(
-%      ?MODULE, {IPAddress, Port, SocketOpts, OnStartup, OnShutdown,
-%                AcceptCallback, ConcurrentAcceptorCount, Label}).
-
-%init({IPAddress, Port, SocketOpts, OnStartup, OnShutdown,
-%      AcceptCallback, ConcurrentAcceptorCount, Label}) ->
-%    {ok, {{one_for_all, 10, 10}, []}.
 

@@ -37,8 +37,6 @@
 
 -record(state, {client_sup, sock, ref}).
 
-%%--------------------------------------------------------------------
-
 start_link(ClientSup, LSock) ->
     gen_server:start_link(?MODULE, {ClientSup, LSock}, []).
 

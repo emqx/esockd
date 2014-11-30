@@ -24,38 +24,36 @@
 
 -behaviour(gen_server).
 
--export([start_link/4]).
+-export([start_link/5]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {sock, protocol}).
 
-%%----------------------------------------------------------------------------
-
--ifdef(use_specs).
-
--type(mfargs() :: {atom(), atom(), [any()]}).
-
-
--endif.
-
-%%--------------------------------------------------------------------
-
-start_link(Port, SocketOpts, AcceptorSup, AcceptorNum) ->
-    gen_server:start_link(?MODULE, {Port, SocketOpts, AcceptorSup, AcceptorNum}, []).
+%%
+%% @doc start listener
+%%
+-spec start_link(Protocol       :: atom(),
+                 Port           :: inet:port_number(),
+                 SocketOpts     :: list(tuple()),
+                 AcceptorSup    :: pid(),
+                 AcceptorNum    :: integer()) -> {ok, pid()}.
+start_link(Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum) ->
+    gen_server:start_link(?MODULE, {Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum}, []).
 
 %%--------------------------------------------------------------------
-init({Port, SocketOpts, AcceptorSup, AcceptorNum}) ->
+init({Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum}) ->
     process_flag(trap_exit, true),
-    case gen_tcp:listen(Port, SocketOpts ++ [{active, false}]) of
+    %%don't active the socket...
+    case esockd_tcp:listen(Port, [{active, false} | proplists:delete(active, SocketOpts)]) of
         {ok, LSock} ->
 			lists:foreach(fun (_) ->
 				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock])
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
             error_logger:info_msg("listen on ~s:~p~n", [ntoab(LIPAddress), LPort]),
-            {ok, #state{sock = LSock}};
+            {ok, #state{sock = LSock, protocol = Protocol}};
         {error, Reason} ->
             error_logger:info_msg("failed to listen on ~p - ~p (~s)~n",
 				[Port, Reason, inet:format_error(Reason)]),
@@ -73,7 +71,7 @@ handle_info(_Info, State) ->
 
 terminate(_Reason, #state{sock=LSock, protocol=Protocol}) ->
     {ok, {IPAddress, Port}} = inet:sockname(LSock),
-    gen_tcp:close(LSock),
+    esockd_tcp:close(LSock),
     %%error report
     error_logger:info_msg("stopped ~s on ~s:~p~n",
            [Protocol, ntoab(IPAddress), Port]),

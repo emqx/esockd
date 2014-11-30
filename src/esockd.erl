@@ -22,22 +22,45 @@
 
 -module(esockd).
 
--export([start/0, 
-        listen/3, listen/4,
-		close/1, close/2]).
+-include("esockd.hrl").
 
+-export([start/0, 
+        listen/4, listen/5,
+		close/2]).
+
+%%
+%% @doc start esockd application.
+%%
+-spec start() -> ok.
 start() ->
     application:start(esockd).
 
-listen(Port, SocketOpts, Callback) when is_integer(Port) ->
-	esockd_sup:start_listener(Port, SocketOpts, Callback).
+%%
+%% @doc listen on port.
+%%
+-spec listen(Protocol       :: atom(), 
+             Port           :: inet:port_number(),
+             SocketOpts     :: list(tuple()), 
+             Callback       :: callback()) -> {ok, pid()}.
+listen(Protocol, Port, SocketOpts, Callback)  ->
+    listen(Protocol, Port, SocketOpts, 10, Callback).
 
-listen(Name, Port, SocketOpts, Callback) when is_atom(Name), is_integer(Port) ->
-	esockd_sup:start_listener(Name, Port, SocketOpts, Callback).
+%%
+%% @doc listen on port with acceptor pool.
+%%
+-spec listen(Protocol       :: atom(), 
+             Port           :: inet:port_number(),
+             SocketOpts     :: list(tuple()), 
+             AcceptorNum    :: integer(),
+             Callback       :: callback()) -> {ok, pid()}.
+listen(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
+	esockd_sup:start_listener(Protocol, Port, SocketOpts, AcceptorNum, Callback).
 
-close(Port) when is_integer(Port) ->
-	esockd_sup:stop_listener(Port).
-
-close(Name, Port) when is_atom(Name), is_integer(Port) ->
-	esockd_sup:stop_listener(Name, Port).
+%%
+%% @doc close the listener.
+%%
+-spec close(Protocol    :: atom(),
+            Port        :: inet:port_number()) -> ok.
+close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
+	esockd_sup:stop_listener(Protocol, Port).
 

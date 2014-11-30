@@ -29,6 +29,10 @@
 
 -export([init/1]).
 
+%%
+%% @doc start acceptor supervisor
+%%
+-spec start_link(ClientSup :: pid()) -> {ok, pid()}.
 start_link(ClientSup) ->
     supervisor:start_link(?MODULE, ClientSup).
 

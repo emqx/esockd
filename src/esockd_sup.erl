@@ -22,12 +22,14 @@
 
 -module(esockd_sup).
 
+-include("esockd.hrl").
+
 -behaviour(supervisor).
 
 %% API
 -export([start_link/0, 
-		start_listener/3, start_listener/4,
-		stop_listener/1, stop_listener/2]).
+		start_listener/5,
+		stop_listener/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -39,26 +41,39 @@
 %% API functions
 %% ===================================================================
 
+%%
+%% @doc start supervisor
+%%
+-spec start_link() -> {ok, pid()}.
 start_link() ->
     supervisor2:start_link({local, ?MODULE}, ?MODULE, []).
 
-start_listener(Port, SocketOpts, Callback) ->
-	ChildSpec = listener_child(listener_name(Port), Port, SocketOpts, Callback),
+%%
+%% @doc start listener
+%%
+-spec start_listener(Protocol       :: atom(), 
+                     Port           :: inet:port_number(),
+                     SocketOpts     :: list(tuple()), 
+                     AcceptorNum    :: integer(),
+                     Callback       :: callback()) -> {ok, pid()}.
+start_listener(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
+    ChildId = {listener_sup, Protocol, Port},
+    Args = [Protocol, Port, SocketOpts, AcceptorNum, Callback],
+	MFA = {esockd_listener_sup, start_link, Args}, 
+	ChildSpec = {ChildId, MFA, transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor2:start_child(?MODULE, ChildSpec).
 
-start_listener(Name, Port, SocketOpts, Callback) ->
-	ChildSpec = listener_child(listener_name(Name, Port), Port, SocketOpts, Callback),
-	supervisor2:start_child(?MODULE, ChildSpec).
-
-stop_listener(Port) ->
-	Name = listener_name(Port),
-	case supervisor2:terminate_child(?MODULE, Name) of
-	ok -> supervisor2:delete_child(?MODULE, Name);
-	{error, Reason} -> {error, Reason}
+%%
+%% @doc stop the listener
+%%
+-spec stop_listener(Protocol :: atom(),
+                    Port     :: inet:port_number()) -> ok | {error, any()}.
+stop_listener(Protocol, Port) ->
+    ChildId = {listener_sup, Protocol, Port},
+	case supervisor2:terminate_child(?MODULE, ChildId) of
+    ok -> supervisor2:delete_child(?MODULE, ChildId);
+    {error, Reason} -> {error, Reason}
 	end.
-
-stop_listener(Name, Port) ->
-	supervisor2:terminate_child(?MODULE, listener_name(Name, Port)).
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -69,13 +84,5 @@ init([]) ->
 
 %% ===================================================================
 %% Internal functions
-
 %% ===================================================================
-listener_child(Name, Port, SocketOpts, Callback) -> 
-	MFA = {esockd_listener_sup, start_link, [Port, SocketOpts, Callback]}, 
-	{Name, MFA, transient, infinity, supervisor, [esockd_listener_sup]}.
-
-listener_name(Port) -> {listener_sup, Port}.
-
-listener_name(Name, Port) -> {listener_sup, Name, Port}.
 
