@@ -19,7 +19,7 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%------------------------------------------------------------------------------
--module(esockd_tcp).
+-module(esockd_ssl).
 
 %%TODO:....
 
@@ -33,4 +33,3 @@ send(Sock, Data) when is_port(Sock) ->
 	
 close(Socket) ->
     gen_tcp:close(Socket).
-
