@@ -37,10 +37,11 @@ loop(Sock, State) ->
 	case gen_tcp:recv(Sock, 0) of
 		{ok, Data} -> 
 			{ok, Name} = inet:peername(Sock),
-			io:format("~p: ~s~n", [Name, Data]),
+			%io:format("~p: ~s~n", [Name, Data]),
 			gen_tcp:send(Sock, Data),
 			loop(Sock, State);
 		{error, Reason} ->
+			io:format("tcp ~s~n", [Reason]),
 			{stop, Reason}
 	end. 
 

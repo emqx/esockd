@@ -21,3 +21,6 @@ THIS IS VERY IMPORTANT, emfile error could crash the whole vm
 6. esockd_client_sup should be monitor child, and calculate max connections limit?
 
 ERL_MAX_PORTS 
+
+
+

@@ -24,11 +24,14 @@
 
 -export([start/1, stop/1]).
 
--define(TCP_OPTIONS, [binary, {packet, raw}, {reuseaddr, true}]).
+-define(TCP_OPTIONS, [binary, {packet, raw}, {reuseaddr, true}, {backlog, 1024}, {nodelay, false}]). %{backlog, }, 
 
-start(Port) ->
+start([Port]) when is_atom(Port) ->
+	start(list_to_integer(atom_to_list(Port)));
+
+start(Port) when is_integer(Port) ->
     esockd:start(),
-    esockd:listen(echo, Port, ?TCP_OPTIONS, 100, {echo_server, start_link, []}).
+    esockd:listen(echo, Port, ?TCP_OPTIONS, 1, {echo_server, start_link, []}).
 
 stop(Port) ->
     esockd:stop(echo, Port).

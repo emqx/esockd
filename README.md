@@ -44,3 +44,11 @@ ERTS_MAX_PORTS:
 The kernel polling option requires that you have support for it in your kernel. By default, Erlang currently supports kernel polling under FreeBSD, Mac OS X, and Solaris. If you use Linux, check this newspost. Additionaly, you need to enable this feature while compiling Erlang.
 
 ERL_MAX_ETS_TABLES
+
+
+## client error
+
+When client received '{error,econnreset}', it means client connects too much in short time.
+
+Server socket option '{backlog, XXX}' could increase max pending connections
+
