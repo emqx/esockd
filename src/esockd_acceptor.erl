@@ -64,7 +64,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	error_logger:info("accept from ~p~n", [Peername]),
+	error_logger:info_msg("accept from ~p~n", [Peername]),
 
 	%%TODO: Copy socket options from LSock?
 	{ok, Client} = supervisor2:start_child(ClientSup, [Sock]),
