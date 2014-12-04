@@ -43,6 +43,7 @@ start_link(ClientSup, LSock) ->
 %%--------------------------------------------------------------------
 
 init({ClientSup, LSock}) ->
+    random:seed(now()),
     gen_server:cast(self(), accept),
     {ok, #state{client_sup=ClientSup, sock=LSock}}.
 
@@ -67,6 +68,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
 	error_logger:info_msg("accept from ~p~n", [Peername]),
 
 	%%TODO: Copy socket options from LSock?
+    %% how to handle error?, should replace supervisor2...
 	{ok, Client} = supervisor2:start_child(ClientSup, [Sock]),
 	Mod:controlling_process(Sock, Client), 
 	%%FIXME: should be wrapped
@@ -87,10 +89,27 @@ handle_info({inet_async, LSock, Ref, {error, closed}},
 %% {error, esslaccept} ->
 %% {error, e{n,m}file} -> sleep 100??
 
+%% enfile: The system limit on the total number of open files has been reached. usually OS's limit.
+handle_info({inet_async, LSock, Ref, {error, enfile}},
+            State=#state{sock=LSock, ref=Ref}) ->
+    T = random:uniform(100), sleep(T),
+	error_logger:error_msg("acceptor will sleep ~p(ms) for enfile error...~n", [T]),
+    {noreply, State#state{ref = undefined}, hibernate};
+
+%% emfile: The per-process limit of open file descriptors has been reached. "ulimit -n XXX"
+handle_info({inet_async, LSock, Ref, {error, emfile}},
+            State=#state{sock=LSock, ref=Ref}) ->
+    T = random:uniform(100), sleep(T),
+	error_logger:error_msg("acceptor will sleep ~p(ms) for emfile error... pls check 'ulimit -n'~n", [T]),
+    {noreply, State#state{ref = undefined}, hibernate};
+
 handle_info({inet_async, LSock, Ref, {error, Reason}},
             State=#state{sock=LSock, ref=Ref}) ->
 	error_logger:error_msg("accept error: ~p~n", [Reason]),
     {stop, {accept_failed, Reason}, State};
+
+handle_info(wakeup, State) ->
+    accept(State);
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -102,13 +121,25 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%--------------------------------------------------------------------
-
 accept(State = #state{sock=LSock}) ->
     case prim_inet:async_accept(LSock, -1) of
         {ok, Ref} -> 
 			{noreply, State#state{ref=Ref}};
+        {error, emfile} ->
+            sleep(100), 
+			error_logger:error_msg("accept error: emfile.~n"),
+			{noreply, State#state{ref=undefined}};
+        {error, enfile} ->
+            sleep(100),
+			error_logger:error_msg("accept error: enfile.~n"),
+			{noreply, State#state{ref=undefined}};
         Error     -> 
 			error_logger:error_msg("accept error: ~p~n", [Error]),
 			{stop, {cannot_accept, Error}, State}
     end.
+
+sleep(T) -> 
+    erlang:send_after(T, self(), wakeup).
+
+%%TODO: SLEEP... SLEEP...
 

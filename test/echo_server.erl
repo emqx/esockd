@@ -36,7 +36,7 @@ init(Sock) ->
 loop(Sock, State) ->
 	case gen_tcp:recv(Sock, 0) of
 		{ok, Data} -> 
-			{ok, Name} = inet:sockname(Sock),
+			{ok, Name} = inet:peername(Sock),
 			io:format("~p: ~s~n", [Name, Data]),
 			gen_tcp:send(Sock, Data),
 			loop(Sock, State);

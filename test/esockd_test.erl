@@ -28,7 +28,7 @@
 
 start(Port) ->
     esockd:start(),
-    esockd:listen(echo, Port, ?TCP_OPTIONS, {echo_server, start_link, []}).
+    esockd:listen(echo, Port, ?TCP_OPTIONS, 100, {echo_server, start_link, []}).
 
 stop(Port) ->
     esockd:stop(echo, Port).
