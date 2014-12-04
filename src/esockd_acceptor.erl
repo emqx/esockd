@@ -78,8 +78,9 @@ handle_info({inet_async, LSock, Ref, {error, closed}},
     %% know this will fail.
     {stop, normal, State};
 
-%%TODO: 
+%%TODO: maybe not async accept errors??
 %% {error, timeout} ->
+%% {error, econnaborted} -> ??continue?
 %% {error, esslaccept} ->
 %% {error, e{n,m}file} -> sleep 100??
 
