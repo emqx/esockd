@@ -1,8 +1,14 @@
+
+0.1.1 (2014/12/07)
+================
+
+acceptor suspend 100ms when accept 'emfile' error.
+
+
 0.1 (2014/11/30)
 ================
 
 redesign listener api
 first release...
-
 
 

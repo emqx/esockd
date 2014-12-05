@@ -52,3 +52,14 @@ When client received '{error,econnreset}', it means client connects too much in 
 
 Server socket option '{backlog, XXX}' could increase max pending connections
 
+
+## client_sup
+
+esockd_client_sup respond for:
+
+1. start client, and let it run...
+
+2. control max connections
+
+3. count active socks...
+
