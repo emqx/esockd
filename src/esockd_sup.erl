@@ -44,7 +44,7 @@
 %%
 -spec start_link() -> {ok, pid()}.
 start_link() ->
-    supervisor2:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %%
 %% @doc start listener
@@ -58,7 +58,7 @@ start_listener(Protocol, Port, Options, Callback) ->
     Args = [Protocol, Port, Options, Callback],
 	MFA = {esockd_listener_sup, start_link, Args}, 
 	ChildSpec = {ChildId, MFA, transient, infinity, supervisor, [esockd_listener_sup]},
-	supervisor2:start_child(?MODULE, ChildSpec).
+	supervisor:start_child(?MODULE, ChildSpec).
 
 %%
 %% @doc stop the listener
@@ -67,8 +67,8 @@ start_listener(Protocol, Port, Options, Callback) ->
                     Port     :: inet:port_number()) -> ok | {error, any()}.
 stop_listener(Protocol, Port) ->
     ChildId = {listener_sup, Protocol, Port},
-	case supervisor2:terminate_child(?MODULE, ChildId) of
-    ok -> supervisor2:delete_child(?MODULE, ChildId);
+	case supervisor:terminate_child(?MODULE, ChildId) of
+    ok -> supervisor:delete_child(?MODULE, ChildId);
     {error, Reason} -> {error, Reason}
 	end.
 
