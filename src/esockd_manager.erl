@@ -1,5 +1,8 @@
+
 -module(esockd_manager).
+
 -behaviour(gen_server).
+
 -define(SERVER, ?MODULE).
 
 %% ------------------------------------------------------------------

@@ -77,6 +77,8 @@ handle_call({count, clients}, _From, State=#state{cur_conns=Cur}) ->
 	{reply, Cur, State};
 
 handle_call({start_client, Sock}, _From, State = #state{max_conns = Max, cur_conns = Cur}) when Cur >= Max ->
+	%%TODO: FIXME Later...
+	error_logger:error_msg("exceed max connections, socket closed!"),
 	gen_tcp:close(Sock),
     {reply, {error, too_many_clients}, State};
 
