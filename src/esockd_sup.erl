@@ -28,7 +28,7 @@
 
 %% API
 -export([start_link/0, 
-		start_listener/5,
+		start_listener/4,
 		stop_listener/2]).
 
 %% Supervisor callbacks
@@ -53,12 +53,11 @@ start_link() ->
 %%
 -spec start_listener(Protocol       :: atom(), 
                      Port           :: inet:port_number(),
-                     SocketOpts     :: list(tuple()), 
-                     AcceptorNum    :: integer(),
-                     Callback       :: callback()) -> {ok, pid()}.
-start_listener(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
+                     Options		:: list(esockd:option()), 
+                     Callback       :: esockd:callback()) -> {ok, pid()}.
+start_listener(Protocol, Port, Options, Callback) ->
     ChildId = {listener_sup, Protocol, Port},
-    Args = [Protocol, Port, SocketOpts, AcceptorNum, Callback],
+    Args = [Protocol, Port, Options, Callback],
 	MFA = {esockd_listener_sup, start_link, Args}, 
 	ChildSpec = {ChildId, MFA, transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor2:start_child(?MODULE, ChildSpec).
@@ -80,7 +79,6 @@ stop_listener(Protocol, Port) ->
 %% ===================================================================
 init([]) ->
     {ok, { {one_for_one, 5, 10}, [?CHILD(esockd_manager, worker)]} }.
-
 
 %% ===================================================================
 %% Internal functions

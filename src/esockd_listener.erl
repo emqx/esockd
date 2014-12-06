@@ -24,35 +24,38 @@
 
 -behaviour(gen_server).
 
--export([start_link/5]).
+-export([start_link/4]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {sock, protocol}).
 
+-define(DEFAULT_ACCEPTOR_NUM , 10).
+
 %%
 %% @doc start listener
 %%
 -spec start_link(Protocol       :: atom(),
                  Port           :: inet:port_number(),
-                 SocketOpts     :: list(tuple()),
-                 AcceptorSup    :: pid(),
-                 AcceptorNum    :: integer()) -> {ok, pid()}.
-start_link(Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum) ->
-    gen_server:start_link(?MODULE, {Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum}, []).
+                 Options		:: list(esockd:option()),
+                 AcceptorSup    :: pid()) -> {ok, pid()}.
+start_link(Protocol, Port, Options, AcceptorSup) ->
+    gen_server:start_link(?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
 
 %%--------------------------------------------------------------------
-init({Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum}) ->
+init({Protocol, Port, Options, AcceptorSup}) ->
     process_flag(trap_exit, true),
     %%don't active the socket...
+	SocketOpts = esockd_option:sockopts(Options),
     case esockd_tcp:listen(Port, [{active, false} | proplists:delete(active, SocketOpts)]) of
         {ok, LSock} ->
+			AcceptorNum = esockd_option:getopt(acceptor_pool, Options, ?DEFAULT_ACCEPTOR_NUM),
 			lists:foreach(fun (_) ->
 				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock])
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
-            error_logger:info_msg("listen on ~s:~p~n", [ntoab(LIPAddress), LPort]),
+            error_logger:info_msg("listen on ~s:~p with ~p acceptors.~n", [ntoab(LIPAddress), LPort, AcceptorNum]),
             {ok, #state{sock = LSock, protocol = Protocol}};
         {error, Reason} ->
             error_logger:info_msg("failed to listen on ~p - ~p (~s)~n",

@@ -23,34 +23,39 @@
 
 %%FIXME: this module should be rewrite...
 
--export([start_link/2,
-		 ready/3,
-		 accepted/1]).
+-export([start_link/2, run/2, ack/1]).
+
+-spec start_link(Callback, Sock) -> {ok, pid()} | {error, any()} when
+		Callback :: esockd:callback(), 
+		Sock :: inet:socket().
 
 start_link(Callback, Sock) ->
-	{ok, _Pid} = callback(Callback, Sock).
+	case call(Callback, Sock) of
+	{ok, Pid} -> link(Pid), {ok, Pid};
+	{error, Error} -> {error, Error}
+	end.
 
 %%
 %% @doc called by acceptor
 %%
-ready(Pid, Acceptor, Sock) ->
-	Pid ! {ready, Acceptor, Sock}.
+run(Client, Sock) ->
+	Client ! {run, Sock}.
 
 %%
 %% @doc called by client
 %%
-accepted(Socket) ->
-	receive {ready, _, Socket} -> ok end.
+ack(Sock) ->
+	receive {run, Sock} -> ok end.
 
-callback({M, F}, Sock) ->
+call({M, F}, Sock) ->
     M:F(Sock);
 
-callback({M, F, A}, Sock) ->
+call({M, F, A}, Sock) ->
     erlang:apply(M, F, [Sock | A]);
 
-callback(Mod, Sock) when is_atom(Mod) ->
+call(Mod, Sock) when is_atom(Mod) ->
     Mod:start_link(Sock);
 
-callback(Fun, Sock) when is_function(Fun) ->
+call(Fun, Sock) when is_function(Fun) ->
     Fun(Sock).
 

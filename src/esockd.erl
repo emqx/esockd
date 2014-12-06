@@ -22,11 +22,20 @@
 
 -module(esockd).
 
--include("esockd.hrl").
-
 -export([start/0, 
-        listen/4, listen/5,
+        listen/4,
 		close/2]).
+
+-type mfargs() :: {module(), atom(), [term()]}.
+
+-type callback() :: mfargs() | atom() | function().
+
+-type option() :: 
+		{acceptor_pool, non_neg_integer()} |
+		{max_conns, non_neg_integer()} | 
+		gen_tcp:listen_option().
+
+-export_type([callback/0, option/0]).
 
 %%
 %% @doc start esockd application.
@@ -40,21 +49,10 @@ start() ->
 %%
 -spec listen(Protocol       :: atom(), 
              Port           :: inet:port_number(),
-             SocketOpts     :: list(tuple()), 
+             Options		:: [option()], 
              Callback       :: callback()) -> {ok, pid()}.
-listen(Protocol, Port, SocketOpts, Callback)  ->
-    listen(Protocol, Port, SocketOpts, 10, Callback).
-
-%%
-%% @doc listen on port with acceptor pool.
-%%
--spec listen(Protocol       :: atom(), 
-             Port           :: inet:port_number(),
-             SocketOpts     :: list(tuple()), 
-             AcceptorNum    :: integer(),
-             Callback       :: callback()) -> {ok, pid()}.
-listen(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
-	esockd_sup:start_listener(Protocol, Port, SocketOpts, AcceptorNum, Callback).
+listen(Protocol, Port, Options, Callback)  ->
+	esockd_sup:start_listener(Protocol, Port, Options, Callback).
 
 %%
 %% @doc close the listener.

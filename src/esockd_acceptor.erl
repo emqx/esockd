@@ -67,11 +67,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
 	error_logger:info_msg("accept from ~p~n", [Peername]),
 
 	%%TODO: Copy socket options from LSock?
-    %% how to handle error?, should replace supervisor2...
-	{ok, Client} = supervisor2:start_child(ClientSup, [Sock]),
-	Mod:controlling_process(Sock, Client), 
-	%%FIXME: should be wrapped
-	esockd_client:ready(Client, self(), Sock),
+	esockd_client_sup:start_client(ClientSup, Mod, Sock), 
 
     %% accept more
     accept(State);

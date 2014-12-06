@@ -22,11 +22,9 @@
 
 -module(esockd_listener_sup).
 
--include("esockd.hrl").
-
 -behaviour(supervisor).
 
--export([start_link/5]).
+-export([start_link/4]).
 
 -export([init/1]).
 
@@ -35,14 +33,13 @@
 %%
 -spec start_link(Protocol       :: atom(), 
                  Port           :: inet:port_number(),
-                 SocketOpts     :: list(tuple()), 
-                 AcceptorNum    :: integer(),
-                 Callback       :: callback()) -> {ok, pid()}.
-start_link(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
+                 Options		:: list(esockd:option()),
+                 Callback       :: esockd:callback()) -> {ok, pid()}.
+start_link(Protocol, Port, Options, Callback) ->
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ClientSup} = supervisor:start_child(Sup, 
 		{client_sup, 
-			{esockd_client_sup, start_link, [Callback]}, 
+			{esockd_client_sup, start_link, [Options, Callback]}, 
 				transient, infinity, supervisor, [esockd_client_sup]}),
 	{ok, AcceptorSup} = supervisor:start_child(Sup, 
 		{acceptor_sup, 
@@ -50,7 +47,7 @@ start_link(Protocol, Port, SocketOpts, AcceptorNum, Callback) ->
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup, 
 		{listener, 
-			{esockd_listener, start_link, [Protocol, Port, SocketOpts, AcceptorSup, AcceptorNum]},
+			{esockd_listener, start_link, [Protocol, Port, Options, AcceptorSup]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
 	{ok, Sup}.
 
