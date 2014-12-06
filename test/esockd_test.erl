@@ -31,7 +31,7 @@ start([Port]) when is_atom(Port) ->
 
 start(Port) when is_integer(Port) ->
     esockd:start(),
-    esockd:listen(echo, Port, ?TCP_OPTIONS, 1, {echo_server, start_link, []}).
+    esockd:listen(echo, Port, [{acceptor_pool, 1}, {max_conns, 2048}|?TCP_OPTIONS], {echo_server, start_link, []}).
 
 stop(Port) ->
     esockd:stop(echo, Port).

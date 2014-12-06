@@ -26,11 +26,10 @@
 		 loop/2]).
 
 start_link(Sock) ->
-	Pid = spawn_link(?MODULE, init, [Sock]),
-	{ok, Pid}.
+	{ok, spawn_link(?MODULE, init, [Sock])}.
 
 init(Sock) ->
-	esockd_client:accepted(Sock),
+	esockd_client:ack(Sock),
 	loop(Sock, state).
 
 loop(Sock, State) ->

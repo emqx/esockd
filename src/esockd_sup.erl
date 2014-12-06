@@ -22,8 +22,6 @@
 
 -module(esockd_sup).
 
--include("esockd.hrl").
-
 -behaviour(supervisor).
 
 %% API
