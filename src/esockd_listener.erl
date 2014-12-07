@@ -55,7 +55,7 @@ init({Protocol, Port, Options, AcceptorSup}) ->
 				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock])
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
-            error_logger:info_msg("listen on ~s:~p with ~p acceptors.~n", [ntoab(LIPAddress), LPort, AcceptorNum]),
+            error_logger:info_msg("listen on ~s:~p with ~p acceptors.~n", [esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
             {ok, #state{sock = LSock, protocol = Protocol}};
         {error, Reason} ->
             error_logger:info_msg("failed to listen on ~p - ~p (~s)~n",
@@ -77,23 +77,9 @@ terminate(_Reason, #state{sock=LSock, protocol=Protocol}) ->
     esockd_tcp:close(LSock),
     %%error report
     error_logger:info_msg("stopped ~s on ~s:~p~n",
-           [Protocol, ntoab(IPAddress), Port]),
+           [Protocol, esockd_net:ntoab(IPAddress), Port]),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%% Format IPv4-mapped IPv6 addresses as IPv4, since they're what we see
-%% when IPv6 is enabled but not used (i.e. 99% of the time).
-ntoa({0,0,0,0,0,16#ffff,AB,CD}) ->
-    inet_parse:ntoa({AB bsr 8, AB rem 256, CD bsr 8, CD rem 256});
-ntoa(IP) ->
-    inet_parse:ntoa(IP).
-
-ntoab(IP) ->
-    Str = ntoa(IP),
-    case string:str(Str, ":") of
-        0 -> Str;
-        _ -> "[" ++ Str ++ "]"
-    end.
 

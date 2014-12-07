@@ -8,6 +8,7 @@ esockd_client_sup to control max connections
 
 esockd_client_sup: 'M:go(Client, Sock)' to tell gen_server the socket is ready
 
+esockd_acceptor: add 'tune_buffer_size'
 
 0.0.1 (2014/11/30)
 ================
