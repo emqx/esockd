@@ -22,7 +22,39 @@
 
 -module(esockd_net).
 
--export([ntoab/1]).
+-include_lib("kernel/include/inet.hrl").
+
+-export([getopts/2, setopts/2, sockname/1, peername/1, ntoab/1, tcp_host/1, hostname/0]).
+
+getopts(Sock, Options) when is_port(Sock) ->
+    inet:getopts(Sock, Options).
+
+setopts(Sock, Options) when is_port(Sock) ->
+    inet:setopts(Sock, Options).
+
+sockname(Sock)   when is_port(Sock) -> inet:sockname(Sock).
+
+peername(Sock)   when is_port(Sock) -> inet:peername(Sock).
+
+tcp_host({0,0,0,0}) ->
+    hostname();
+
+tcp_host({0,0,0,0,0,0,0,0}) ->
+    hostname();
+
+tcp_host(IPAddress) ->
+    case inet:gethostbyaddr(IPAddress) of
+        {ok, #hostent{h_name = Name}} -> Name;
+        {error, _Reason} -> ntoa(IPAddress)
+    end.
+
+hostname() ->
+    {ok, Hostname} = inet:gethostname(),
+    case inet:gethostbyname(Hostname) of
+        {ok,    #hostent{h_name = Name}} -> Name;
+        {error, _Reason}                 -> Hostname
+    end.
+
 
 %% Format IPv4-mapped IPv6 addresses as IPv4, since they're what we see
 %% when IPv6 is enabled but not used (i.e. 99% of the time).
