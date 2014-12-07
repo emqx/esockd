@@ -26,6 +26,10 @@
         listen/4,
 		close/2]).
 
+%% utility functions...
+
+-export([ulimit/0]).
+
 -type mfargs() :: {module(), atom(), [term()]}.
 
 -type callback() :: mfargs() | atom() | function().
@@ -61,4 +65,14 @@ listen(Protocol, Port, Options, Callback)  ->
             Port        :: inet:port_number()) -> ok.
 close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 	esockd_sup:stop_listener(Protocol, Port).
+
+%%
+%% @doc system `ulimit -n`
+%%
+-spec ulimit() -> non_neg_integer().
+
+ulimit() ->
+    proplists:get_value(max_fds, erlang:system_info(check_io)).
+
+
 
