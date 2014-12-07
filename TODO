@@ -23,3 +23,11 @@ THIS IS VERY IMPORTANT, emfile error could crash the whole vm
 ERL_MAX_PORTS 
 
 MAX Connections...
+
+
+0.2 version:
+
+esockd_manager... 
+
+
+

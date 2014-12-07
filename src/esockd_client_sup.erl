@@ -87,7 +87,7 @@ init([Options, Callback]) ->
     process_flag(trap_exit, true),
 	MaxConns = esockd_option:getopt(max_conns, Options, 1024),
 	%%TODO: should have name...
-	error_logger:info_msg("Max Connections: ~p~n", [MaxConns]),
+	%%error_logger:info_msg("Max Connections: ~p~n", [MaxConns]),
     {ok, #state{max_conns = MaxConns, callback = Callback}}.
 
 handle_call({count, clients}, _From, State=#state{cur_conns=Cur}) ->
