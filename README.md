@@ -63,3 +63,6 @@ esockd_client_sup respond for:
 
 3. count active socks...
 
+## Author
+
+feng@slimchat.io
