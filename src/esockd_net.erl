@@ -20,18 +20,53 @@
 %% SOFTWARE.
 %%------------------------------------------------------------------------------
 
--module(esockd_test).
+-module(esockd_net).
 
--export([start/1, stop/1]).
+-include_lib("kernel/include/inet.hrl").
 
--define(TCP_OPTIONS, [binary, {packet, raw}, {reuseaddr, true}, {backlog, 1024}, {nodelay, false}]). %{backlog, }, 
+-export([getopts/2, setopts/2, sockname/1, peername/1, ntoab/1, tcp_host/1, hostname/0]).
 
-start([Port]) when is_atom(Port) ->
-	start(list_to_integer(atom_to_list(Port)));
+getopts(Sock, Options) when is_port(Sock) ->
+    inet:getopts(Sock, Options).
 
-start(Port) when is_integer(Port) ->
-    esockd:start(),
-    esockd:listen(echo, Port, [{acceptor_pool, 1}, {max_conns, 2048}|?TCP_OPTIONS], {echo_server, start_link, []}).
+setopts(Sock, Options) when is_port(Sock) ->
+    inet:setopts(Sock, Options).
 
-stop(Port) ->
-    esockd:stop(echo, Port).
+sockname(Sock)   when is_port(Sock) -> inet:sockname(Sock).
+
+peername(Sock)   when is_port(Sock) -> inet:peername(Sock).
+
+tcp_host({0,0,0,0}) ->
+    hostname();
+
+tcp_host({0,0,0,0,0,0,0,0}) ->
+    hostname();
+
+tcp_host(IPAddress) ->
+    case inet:gethostbyaddr(IPAddress) of
+        {ok, #hostent{h_name = Name}} -> Name;
+        {error, _Reason} -> ntoa(IPAddress)
+    end.
+
+hostname() ->
+    {ok, Hostname} = inet:gethostname(),
+    case inet:gethostbyname(Hostname) of
+        {ok,    #hostent{h_name = Name}} -> Name;
+        {error, _Reason}                 -> Hostname
+    end.
+
+
+%% Format IPv4-mapped IPv6 addresses as IPv4, since they're what we see
+%% when IPv6 is enabled but not used (i.e. 99% of the time).
+ntoa({0,0,0,0,0,16#ffff,AB,CD}) ->
+    inet_parse:ntoa({AB bsr 8, AB rem 256, CD bsr 8, CD rem 256});
+ntoa(IP) ->
+    inet_parse:ntoa(IP).
+
+ntoab(IP) ->
+    Str = ntoa(IP),
+    case string:str(Str, ":") of
+        0 -> Str;
+        _ -> "[" ++ Str ++ "]"
+    end.
+

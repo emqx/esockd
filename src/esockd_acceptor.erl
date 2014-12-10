@@ -66,8 +66,19 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
 	{ok, Peername} = inet:peername(Sock),
 	error_logger:info_msg("accept from ~p~n", [Peername]),
 
-	%%TODO: Copy socket options from LSock?
-	esockd_client_sup:start_client(ClientSup, Mod, Sock), 
+    case tune_buffer_size(Sock) of
+        ok	-> 
+			esockd_client_sup:start_client(ClientSup, Mod, Sock); 
+        {error, enotconn} -> 
+			catch port_close(Sock);
+        {error, Err} -> 
+			{ok, {IPAddress, Port}} = inet:sockname(LSock),
+            error_logger:error_msg(
+				"failed to tune buffer size of "
+				"connection accepted on ~s:~p - ~s~n",
+				[esock_net:ntoab(IPAddress), Port, Err]),
+            catch port_close(Sock)
+    end,
 
     %% accept more
     accept(State);
@@ -138,3 +149,9 @@ suspend(Time, State) ->
     erlang:send_after(Time, self(), resume),
 	{noreply, State#state{ref=undefined}, hibernate}.
 
+tune_buffer_size(Sock) ->
+    case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of
+        {ok, BufSizes} -> BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
+                          inet:setopts(Sock, [{buffer, BufSz}]);
+        Error          -> Error
+	end.

@@ -23,7 +23,7 @@
 
 %%FIXME: this module should be rewrite...
 
--export([start_link/2, run/2, ack/1]).
+-export([start_link/2, go/2, ack/1]).
 
 -spec start_link(Callback, Sock) -> {ok, pid()} | {error, any()} when
 		Callback :: esockd:callback(), 
@@ -38,14 +38,14 @@ start_link(Callback, Sock) ->
 %%
 %% @doc called by acceptor
 %%
-run(Client, Sock) ->
-	Client ! {run, Sock}.
+go(Client, Sock) ->
+	Client ! {go, Sock}.
 
 %%
 %% @doc called by client
 %%
 ack(Sock) ->
-	receive {run, Sock} -> ok end.
+	receive {go, Sock} -> ok end.
 
 call({M, F}, Sock) ->
     M:F(Sock);

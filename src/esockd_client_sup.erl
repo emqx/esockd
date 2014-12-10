@@ -54,12 +54,29 @@ count(Sup, clients) ->
 %%called by acceptor
 start_client(Sup, Mod, Sock) ->
 	case gen_server:call(Sup, {start_client, Sock}) of
-	{ok, Client} -> 
+	{ok, Client, Callback} -> 
 		Mod:controlling_process(Sock, Client), 
-		esockd_client:run(Client, Sock),
+		case exported(Callback, go) of
+			{true, M} -> 
+				M:go(Client, Sock);
+			false -> 
+				esockd_client:go(Client, Sock)
+		end,
 		{ok, Client};
 	{error, Error} ->
 		{error, Error}
+	end.
+
+exported(Callback, _Fun) when is_function(Callback) ->
+	false;
+
+exported(Callback, F) when is_tuple(Callback) ->
+	M = element(1, Callback),
+	case erlang:function_exported(M, F, 2) of
+		true -> 
+			{true, M};
+		false -> 
+			false
 	end.
 
 %% ------------------------------------------------------------------
@@ -70,7 +87,7 @@ init([Options, Callback]) ->
     process_flag(trap_exit, true),
 	MaxConns = esockd_option:getopt(max_conns, Options, 1024),
 	%%TODO: should have name...
-	error_logger:info_msg("Max Connections: ~p~n", [MaxConns]),
+	%%error_logger:info_msg("Max Connections: ~p~n", [MaxConns]),
     {ok, #state{max_conns = MaxConns, callback = Callback}}.
 
 handle_call({count, clients}, _From, State=#state{cur_conns=Cur}) ->
@@ -87,7 +104,7 @@ handle_call({start_client, Sock}, _From, State = #state{callback=Callback}) ->
 	{ok, Pid} ->
 		%%TODO: process dictionary or map in state??
 		put(Pid, true),
-		{reply, {ok, Pid}, incr(State)};
+		{reply, {ok, Pid, Callback}, incr(State)};
 	{error, Error} ->
 		error_logger:error_msg("faile to start client: ~p~n", [Error]),
 		{reply, {error, Error}, State}

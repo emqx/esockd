@@ -19,29 +19,29 @@
 %% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 %% SOFTWARE.
 %%------------------------------------------------------------------------------
--module(echo_server).
 
-%%callback 
--export([start_link/1, 
-		 init/1, 
-		 loop/2]).
+-module(echo_test).
 
-start_link(Sock) ->
-	{ok, spawn_link(?MODULE, init, [Sock])}.
+-export([start/1, start/2,
+		stop/1]).
 
-init(Sock) ->
-	esockd_client:ack(Sock),
-	loop(Sock, state).
+-define(TCP_OPTIONS, [
+		binary, 
+		{packet, raw}, 
+		{reuseaddr, true}, 
+		{backlog, 512}, 
+		{nodelay, false}]). 
 
-loop(Sock, State) ->
-	case gen_tcp:recv(Sock, 0) of
-		{ok, Data} -> 
-			{ok, Name} = inet:peername(Sock),
-			%io:format("~p: ~s~n", [Name, Data]),
-			gen_tcp:send(Sock, Data),
-			loop(Sock, State);
-		{error, Reason} ->
-			io:format("tcp ~s~n", [Reason]),
-			{stop, Reason}
-	end. 
+start([Port]) when is_atom(Port) ->
+	start(Port, echo_server);
 
+start([Port, Server]) when is_atom(Port), is_atom(Server) ->
+	start(list_to_integer(atom_to_list(Port)), Server).
+
+start(Port, Server) when is_integer(Port), is_atom(Server) ->
+    esockd:start(),
+	MFArgs = {Server, start_link, []},
+    esockd:listen(echo, Port, [{acceptor_pool, 10}, {max_conns, 2048}|?TCP_OPTIONS], MFArgs).
+
+stop(Port) ->
+    esockd:stop(echo, Port).
