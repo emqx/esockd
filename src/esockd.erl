@@ -46,7 +46,8 @@
 %%
 -spec start() -> ok.
 start() ->
-    application:start(esockd).
+    [ ok = application:start(App) || App <- [compiler, syntax_tools, goldrush, lager, esockd] ],
+    ok.
 
 %%
 %% @doc listen on port.
@@ -61,8 +62,9 @@ listen(Protocol, Port, Options, Callback)  ->
 %%
 %% @doc close the listener.
 %%
--spec close(Protocol    :: atom(),
-            Port        :: inet:port_number()) -> ok.
+-spec close(Protocol, Port) -> ok when 
+    Protocol    :: atom(),
+    Port        :: inet:port_number().
 close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 	esockd_sup:stop_listener(Protocol, Port).
 
@@ -70,9 +72,7 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 %% @doc system `ulimit -n`
 %%
 -spec ulimit() -> non_neg_integer().
-
 ulimit() ->
     proplists:get_value(max_fds, erlang:system_info(check_io)).
-
 
 

@@ -66,7 +66,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	error_logger:info_msg("accept from ~p~n", [Peername]),
+	lager:info("accept from ~p~n", [Peername]),
 
     case tune_buffer_size(Sock) of
         ok	-> 
@@ -75,7 +75,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
 			catch port_close(Sock);
         {error, Err} -> 
 			{ok, {IPAddress, Port}} = inet:sockname(LSock),
-            error_logger:error_msg(
+            lager:error(
 				"failed to tune buffer size of "
 				"connection accepted on ~s:~p - ~s~n",
 				[esock_net:ntoab(IPAddress), Port, Err]),
@@ -130,18 +130,18 @@ accept(State = #state{sock=LSock}) ->
 sockerr(emfile, State = #state{emfile_count = Count}) ->
 	%%avoid too many error log.. stupid??
 	case Count rem 100 of 
-	0 -> error_logger:error_msg("!!!acceptor suspend 100(ms), emfile error: ~p!!!~n", [Count]);
+	0 -> lager:error("!!!acceptor suspend 100(ms), emfile error: ~p!!!~n", [Count]);
 	_ -> ignore
 	end,
 	suspend(100, State#state{emfile_count = Count+1});
 
 %% enfile: The system limit on the total number of open files has been reached. usually OS's limit.
 sockerr(enfile, State) ->
-	error_logger:error_msg("accept error: !!!enfile!!!~n"),
+	lager:error("accept error: !!!enfile!!!~n"),
 	suspend(100, State);
 
 sockerr(Error, State) ->
-	error_logger:error_msg("accept error: ~p~n, stopped!!!", [Error]),
+	lager:error("accept error: ~p~n, stopped!!!", [Error]),
 	{stop, {accept_error, Error}, State}.
 
 %%--------------------------------------------------------------------

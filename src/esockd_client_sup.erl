@@ -89,7 +89,7 @@ init([Options, Callback]) ->
     process_flag(trap_exit, true),
 	MaxConns = esockd_option:getopt(max_conns, Options, 1024),
 	%%TODO: should have name...
-	%%error_logger:info_msg("Max Connections: ~p~n", [MaxConns]),
+	%%lager:info("Max Connections: ~p~n", [MaxConns]),
     {ok, #state{max_conns = MaxConns, callback = Callback}}.
 
 handle_call({count, clients}, _From, State=#state{cur_conns=Cur}) ->
@@ -97,7 +97,7 @@ handle_call({count, clients}, _From, State=#state{cur_conns=Cur}) ->
 
 handle_call({start_client, Sock}, _From, State = #state{max_conns = Max, cur_conns = Cur}) when Cur >= Max ->
 	%%TODO: FIXME Later..., error message flood...
-	error_logger:error_msg("exceed max connections, socket closed!"),
+	lager:error("exceed max connections, socket closed!"),
 	gen_tcp:close(Sock),
     {reply, {error, too_many_clients}, State};
 
@@ -108,7 +108,7 @@ handle_call({start_client, Sock}, _From, State = #state{callback=Callback}) ->
 		put(Pid, true),
 		{reply, {ok, Pid, Callback}, incr(State)};
 	{error, Error} ->
-		error_logger:error_msg("faile to start client: ~p~n", [Error]),
+		lager:error("faile to start client: ~p~n", [Error]),
 		{reply, {error, Error}, State}
 	end;
 
@@ -123,12 +123,12 @@ handle_info({'EXIT', Pid, normal}, State) ->
 	true ->
 		{noreply, decr(State)};
 	undefined ->
-		error_logger:error_msg("~p is not supervisored by esockd_client:~p~n", [Pid, self()]),
+		lager:error("~p is not supervisored by esockd_client:~p~n", [Pid, self()]),
 		{noreply, State}
 	end;
 
 handle_info({'EXIT', Pid, Reason}, State) ->
-	error_logger:error_msg("client:~p exited for ~p~n", [Pid, Reason]),
+	lager:error("client:~p exited for ~p~n", [Pid, Reason]),
     {noreply, decr(State)};
 
 handle_info(_Info, State) ->
