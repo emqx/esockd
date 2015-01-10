@@ -66,7 +66,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	lager:info("accept from ~p~n", [Peername]),
+	lager:info("Accept from ~p~n", [Peername]),
 
     case tune_buffer_size(Sock) of
         ok	-> 
