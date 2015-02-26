@@ -50,7 +50,7 @@ init({Protocol, Port, Options, AcceptorSup}) ->
     process_flag(trap_exit, true),
     %%don't active the socket...
 	SocketOpts = esockd_option:sockopts(Options),
-    case esockd_tcp:listen(Port, [{active, false} | proplists:delete(active, SocketOpts)]) of
+    case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SocketOpts)]) of
         {ok, LSock} ->
 			AcceptorNum = esockd_option:getopt(acceptor_pool, Options, ?DEFAULT_ACCEPTOR_NUM),
 			lists:foreach(fun (_) ->
@@ -76,7 +76,7 @@ handle_info(_Info, State) ->
 
 terminate(_Reason, #state{sock=LSock, protocol=Protocol}) ->
     {ok, {IPAddress, Port}} = inet:sockname(LSock),
-    esockd_tcp:close(LSock),
+    esockd_transport:close(LSock),
     %%error report
     lager:info("stopped ~s on ~s:~p~n",
            [Protocol, esockd_net:ntoab(IPAddress), Port]),

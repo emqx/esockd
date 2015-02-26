@@ -87,7 +87,7 @@ exported(Callback, F) when is_tuple(Callback) ->
 
 init([Options, Callback]) ->
     process_flag(trap_exit, true),
-	MaxConns = esockd_option:getopt(max_conns, Options, 1024),
+	MaxConns = esockd_option:getopt(max_connections, Options, 1024),
 	%%TODO: should have name...
 	%%lager:info("Max Connections: ~p~n", [MaxConns]),
     {ok, #state{max_conns = MaxConns, callback = Callback}}.

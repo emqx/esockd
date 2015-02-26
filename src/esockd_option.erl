@@ -9,7 +9,7 @@ sockopts(Opts) ->
 
 sockopts([], Acc) ->
 	Acc;
-sockopts([{max_conns, _}|Opts], Acc) ->
+sockopts([{max_connections, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{acceptor_pool, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
