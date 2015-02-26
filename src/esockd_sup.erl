@@ -72,9 +72,12 @@ start_listener(Protocol, Port, Options, Callback) ->
                     transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor:start_child(?MODULE, ChildSpec).
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Stop the listener.
 %%
-%% @doc stop the listener
-%%
+%% @end
+%%------------------------------------------------------------------------------
 -spec stop_listener(Protocol :: atom(),
                     Port     :: inet:port_number()) -> ok | {error, any()}.
 stop_listener(Protocol, Port) ->

@@ -24,9 +24,9 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(esockd_client).
+-module(esockd_connection).
 
--author('feng@slimchat.io').
+-author('feng@emqtt.io').
 
 %%FIXME: this module should be rewrite...
 

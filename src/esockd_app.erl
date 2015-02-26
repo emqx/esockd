@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_app).
 
--author('feng@slimchat.io').
+-author('feng@emqtt.io').
 
 -behaviour(application).
 

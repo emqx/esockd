@@ -27,9 +27,9 @@
 
 %%TODO: experimental supervisor for sock connections.....
 
--module(esockd_client_sup).
+-module(esockd_connection_sup).
 
--author('feng@slimchat.io').
+-author('feng@emqtt.io').
 
 -behaviour(gen_server).
 
@@ -67,7 +67,7 @@ start_client(Sup, Mod, Sock) ->
 			{true, M} -> 
 				M:go(Client, Sock);
 			false -> 
-				esockd_client:go(Client, Sock)
+				esockd_connection:go(Client, Sock)
 		end,
 		{ok, Client};
 	{error, Error} ->
@@ -107,7 +107,7 @@ handle_call({start_client, Sock}, _From, State = #state{max_conns = Max, cur_con
     {reply, {error, too_many_clients}, State};
 
 handle_call({start_client, Sock}, _From, State = #state{callback=Callback}) ->
-	case esockd_client:start_link(Callback, Sock) of
+	case esockd_connection:start_link(Callback, Sock) of
 	{ok, Pid} ->
 		%%TODO: process dictionary or map in state??
 		put(Pid, true),

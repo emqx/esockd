@@ -35,7 +35,7 @@ start_link(Sock) ->
 	{ok, spawn_link(?MODULE, init, [Sock])}.
 
 init(Sock) ->
-	esockd_client:ack(Sock),
+	esockd_connection:ack(Sock),
 	loop(Sock, state).
 
 loop(Sock, State) ->

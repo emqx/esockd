@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_listener_sup).
 
--author('feng@slimchat.io').
+-author('feng@emqtt.io').
 
 -behaviour(supervisor).
 

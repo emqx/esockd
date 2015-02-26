@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_acceptor).
 
--author('feng@slimchat.io').
+-author('feng@emqtt.io').
 
 -behaviour(gen_server).
 
@@ -66,7 +66,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
 
     case tune_buffer_size(Sock) of
         ok	-> 
-			esockd_client_sup:start_client(ClientSup, Mod, Sock); 
+			esockd_connection_sup:start_client(ClientSup, Mod, Sock);
         {error, enotconn} -> 
 			catch port_close(Sock);
         {error, Err} -> 

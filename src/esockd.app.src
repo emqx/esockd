@@ -1,6 +1,6 @@
 {application, esockd,
  [
-  {description, "General Non-blocking TCP Server"},
+  {description, "General Non-blocking TCP/SSL Server"},
   {vsn, git},
   {registered, []},
   {applications, [
