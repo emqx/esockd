@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -37,7 +37,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/2, start_client/3, count/2]).
+-export([start_link/3, start_client/3, count/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -52,8 +52,8 @@
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
-start_link(Options, Callback) ->
-    gen_server:start_link(?MODULE, [Options, Callback], []).
+start_link(Name, Options, Callback) ->
+    gen_server:start_link({local, Name}, ?MODULE, [Options, Callback], []).
 
 count(Sup, clients) ->
 	gen_server:call(Sup, {count, clients}).

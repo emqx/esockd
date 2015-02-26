@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -47,7 +47,8 @@
                  Options		:: list(esockd:option()),
                  AcceptorSup    :: pid()) -> {ok, pid()}.
 start_link(Protocol, Port, Options, AcceptorSup) ->
-    gen_server:start_link(?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
+    gen_server:start_link({local, name({Protocol, Port})},
+        ?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
 
 %%--------------------------------------------------------------------
 init({Protocol, Port, Options, AcceptorSup}) ->
@@ -89,3 +90,8 @@ terminate(_Reason, #state{sock=LSock, protocol=Protocol}) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+%%%=============================================================================
+%% Internal functions
+%%%=============================================================================
+name({Protocol, Port}) ->
+    list_to_atom(lists:concat([listener, ':', Protocol, ':', Port])).

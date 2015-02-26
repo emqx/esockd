@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -28,16 +28,19 @@
 
 -behaviour(supervisor).
 
--export([start_link/1]).
+-export([start_link/2]).
 
 -export([init/1]).
 
 %%
 %% @doc start acceptor supervisor
 %%
--spec start_link(ClientSup :: pid()) -> {ok, pid()}.
-start_link(ClientSup) ->
-    supervisor:start_link(?MODULE, ClientSup).
+-spec start_link(Name, ClientSup) -> {ok, pid()} when
+    Name        :: atom(),
+    ClientSup   :: pid().
+start_link(Name, ClientSup) ->
+    supervisor:start_link({local, Name}, ?MODULE, ClientSup).
+
 
 init(ClientSup) ->
     {ok, {{simple_one_for_one, 10, 10},

@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -24,7 +24,6 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
-
 -module(esockd).
 
 -author("feng@emqtt.io").
@@ -65,7 +64,7 @@ start() ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Open a listener on Port.
+%% Listen on port.
 %%
 %% @end
 %%------------------------------------------------------------------------------

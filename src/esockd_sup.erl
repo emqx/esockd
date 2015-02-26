@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -27,14 +27,12 @@
 
 -module(esockd_sup).
 
--author('feng@slimchat.io').
+-author('feng@emqtt.io').
 
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, 
-		start_listener/4,
-		stop_listener/2]).
+-export([start_link/0, start_listener/4, stop_listener/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -42,29 +40,36 @@
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
-%% ===================================================================
-%% API functions
-%% ===================================================================
+%%%=============================================================================
+%%% API
+%%%=============================================================================
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start supervisor.
 %%
-%% @doc start supervisor
-%%
+%% @end
+%%------------------------------------------------------------------------------
+
 -spec start_link() -> {ok, pid()}.
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start a listener.
 %%
-%% @doc start listener
-%%
+%% @end
+%%------------------------------------------------------------------------------
 -spec start_listener(Protocol       :: atom(), 
                      Port           :: inet:port_number(),
                      Options		:: list(esockd:option()), 
                      Callback       :: esockd:callback()) -> {ok, pid()}.
 start_listener(Protocol, Port, Options, Callback) ->
-    ChildId = {listener_sup, {Protocol, Port}},
-    Args = [Protocol, Port, Options, Callback],
-	MFA = {esockd_listener_sup, start_link, Args}, 
-	ChildSpec = {ChildId, MFA, transient, infinity, supervisor, [esockd_listener_sup]},
+	MFA = {esockd_listener_sup, start_link,
+            [Protocol, Port, Options, Callback]},
+	ChildSpec = {childid({Protocol, Port}), MFA,
+                    transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor:start_child(?MODULE, ChildSpec).
 
 %%
@@ -73,19 +78,25 @@ start_listener(Protocol, Port, Options, Callback) ->
 -spec stop_listener(Protocol :: atom(),
                     Port     :: inet:port_number()) -> ok | {error, any()}.
 stop_listener(Protocol, Port) ->
-    ChildId = {listener_sup, {Protocol, Port}},
+    ChildId = childid({Protocol, Port}),
 	case supervisor:terminate_child(?MODULE, ChildId) of
-    ok -> supervisor:delete_child(?MODULE, ChildId);
-    {error, Reason} -> {error, Reason}
+    ok ->
+        supervisor:delete_child(?MODULE, ChildId);
+    {error, Reason} ->
+        {error, Reason}
 	end.
 
-%% ===================================================================
+%%%=============================================================================
 %% Supervisor callbacks
-%% ===================================================================
-init([]) ->
-    {ok, { {one_for_one, 5, 10}, [?CHILD(esockd_manager, worker)]} }.
+%%%=============================================================================
 
-%% ===================================================================
+init([]) ->
+    %%TODO: one_for_all??
+    {ok, {{one_for_one, 5, 10}, [?CHILD(esockd_manager, worker)]} }.
+
+%%%=============================================================================
 %% Internal functions
-%% ===================================================================
+%%%=============================================================================
+childid({Protocol, Port}) ->
+    {listener_sup, {Protocol, Port}}.
 

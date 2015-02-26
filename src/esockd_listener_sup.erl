@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -34,22 +34,30 @@
 
 -export([init/1]).
 
+
+%%%=============================================================================
+%%% API
+%%%=============================================================================
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start listener supervisor
 %%
-%% @doc start listener supervisor
-%%
+%% @end
+%%------------------------------------------------------------------------------
 -spec start_link(Protocol       :: atom(), 
                  Port           :: inet:port_number(),
                  Options		:: list(esockd:option()),
                  Callback       :: esockd:callback()) -> {ok, pid()}.
 start_link(Protocol, Port, Options, Callback) ->
-    {ok, Sup} = supervisor:start_link(?MODULE, []),
+    {ok, Sup} = supervisor:start_link({local, name(listener_sup, {Protocol, Port})}, ?MODULE, []),
 	{ok, ClientSup} = supervisor:start_child(Sup, 
 		{client_sup, 
-			{esockd_client_sup, start_link, [Options, Callback]}, 
+			{esockd_client_sup, start_link, [name(client_sup, {Protocol, Port}), Options, Callback]},
 				transient, infinity, supervisor, [esockd_client_sup]}),
 	{ok, AcceptorSup} = supervisor:start_child(Sup, 
 		{acceptor_sup, 
-			{esockd_acceptor_sup, start_link, [ClientSup]},
+			{esockd_acceptor_sup, start_link, [name(acceptor_sup, {Protocol, Port}), ClientSup]},
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup, 
 		{listener, 
@@ -57,7 +65,22 @@ start_link(Protocol, Port, Options, Callback) ->
 				transient, 16#ffffffff, worker, [esockd_listener]}),
 	{ok, Sup}.
 
+
+%%%=============================================================================
+%% Supervisor callbacks
+%%%=============================================================================
+
 init([]) ->
+    %%TODO: one_for_all??
     {ok, {{one_for_all, 10, 10}, []}}.
 
 
+%%%=============================================================================
+%% Internal functions
+%%%=============================================================================
+-spec name(Mod, {Protocol, Port}) -> atom() when
+    Mod      :: atom(),
+    Protocol :: atom(),
+    Port     :: inet:port_number().
+name(Mod, {Protocol, Port}) ->
+    list_to_atom(lists:concat([Mod, ':', Protocol, ':', Port])).
