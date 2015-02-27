@@ -60,11 +60,12 @@ count(Sup, clients) ->
 
 %%called by acceptor
 start_connection(Sup, Mod, Sock, SockFun) ->
-	case gen_server:call(Sup, {start_client, Sock}) of
+	case gen_server:call(Sup, {start_client, Sock, SockFun}) of
 	{ok, Client, Callback} -> 
 		Mod:controlling_process(Sock, Client), 
 		case exported(Callback, go) of
 			{true, M} -> 
+                %%TODO: this is really bad design...
 				M:go(Client, {esockd_transport, Sock, SockFun});
 			false -> 
 				esockd_connection:ready(Client, {esockd_transport, Sock, SockFun})
@@ -107,8 +108,8 @@ handle_call({start_client, Sock}, _From, State =
 	gen_tcp:close(Sock),
     {reply, {error, too_many_clients}, State};
 
-handle_call({start_client, Sock}, _From, State = #state{name = Name, callback=Callback}) ->
-	case esockd_connection:start_link(Callback, Sock) of
+handle_call({start_client, Sock, SockFun}, _From, State = #state{name = Name, callback=Callback}) ->
+	case esockd_connection:start_link(Callback, {esockd_transport, Sock, SockFun}) of
 	{ok, Pid} ->
 		%%TODO: process dictionary or map in state??
 		put(Pid, true),

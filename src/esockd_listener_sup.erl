@@ -72,7 +72,7 @@ start_link(Protocol, Port, Options, Callback) ->
 
 init([]) ->
     %%TODO: one_for_all??
-    {ok, {{one_for_all, 10, 10}, []}}.
+    {ok, {{one_for_all, 5, 10}, []}}.
 
 
 %%%=============================================================================

@@ -35,8 +35,8 @@
 -spec start_link(Callback, Sock) -> {ok, pid()} | {error, any()} when
 		Callback :: esockd:callback(), 
 		Sock :: inet:socket().
-start_link(Callback, Sock) ->
-	case call(Callback, Sock) of
+start_link(Callback, SockArgs = {_Transport, _Sock, _SockFun}) ->
+	case call(Callback, SockArgs) of
 	{ok, Pid} -> {ok, Pid};
 	{error, Error} -> {error, Error}
 	end.
@@ -59,15 +59,16 @@ accept(SockArgs = {_Transport, Sock, SockFun}) ->
             exit({shutdown, Error})
     end.
 
-call({M, F}, Sock) ->
-    M:F(Sock);
+call({M, F}, SockArgs) ->
+    M:F(SockArgs);
 
-call({M, F, A}, Sock) ->
-    erlang:apply(M, F, [Sock | A]);
+call({M, F, A}, SockArgs) ->
+    erlang:apply(M, F, [SockArgs | A]);
 
-call(Mod, Sock) when is_atom(Mod) ->
-    Mod:start_link(Sock);
+call(Mod, SockArgs) when is_atom(Mod) ->
+    Mod:start_link(SockArgs);
 
-call(Fun, Sock) when is_function(Fun) ->
-    Fun(Sock).
+call(Fun, SockArgs) when is_function(Fun) ->
+    Fun(SockArgs).
+
 
