@@ -94,7 +94,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
             error_logger:error_msg(
 				"failed to tune buffer size of "
 				"connection accepted on ~s:~p - ~s~n",
-				[esock_net:ntoab(IPAddress), Port, Err]),
+				[esockd_net:ntoab(IPAddress), Port, Err]),
             catch port_close(Sock)
     end,
 

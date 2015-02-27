@@ -67,7 +67,7 @@ start_connection(Sup, Mod, Sock, SockFun) ->
 			{true, M} -> 
 				M:go(Client, {esockd_transport, Sock, SockFun});
 			false -> 
-				esockd_connection:go(Client, {esockd_transport, Sock, SockFun})
+				esockd_connection:ready(Client, {esockd_transport, Sock, SockFun})
 		end,
 		{ok, Client};
 	{error, Error} ->
