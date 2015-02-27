@@ -34,7 +34,6 @@
 
 -export([init/1]).
 
-
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -45,16 +44,17 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Protocol       :: atom(), 
-                 Port           :: inet:port_number(),
-                 Options		:: list(esockd:option()),
-                 Callback       :: esockd:callback()) -> {ok, pid()}.
+-spec start_link(Protocol, Port, Options, Callback) -> {ok, pid()} when
+    Protocol  :: atom(),
+    Port      :: inet:port_number(),
+    Options	  :: list(esockd:option()),
+    Callback  :: esockd:callback().
 start_link(Protocol, Port, Options, Callback) ->
     {ok, Sup} = supervisor:start_link({local, name(listener_sup, {Protocol, Port})}, ?MODULE, []),
 	{ok, ClientSup} = supervisor:start_child(Sup, 
-		{client_sup, 
-			{esockd_client_sup, start_link, [name(client_sup, {Protocol, Port}), Options, Callback]},
-				transient, infinity, supervisor, [esockd_client_sup]}),
+		{connection_sup,
+			{esockd_connection_sup, start_link, [name(connection_sup, {Protocol, Port}), Options, Callback]},
+				transient, infinity, supervisor, [esockd_connection_sup]}),
 	{ok, AcceptorSup} = supervisor:start_child(Sup, 
 		{acceptor_sup, 
 			{esockd_acceptor_sup, start_link, [name(acceptor_sup, {Protocol, Port}), ClientSup]},

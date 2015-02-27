@@ -36,6 +36,11 @@
 
 -export([sockname/1, peername/1, shutdown/2]).
 
+%% tcp -> sslsocket
+-export([upgrade_fun/1]).
+
+-define(SSL_HANDSHAKE_TIMEOUT, 5000).
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -225,6 +230,31 @@ shutdown(Socket, How) when is_port(Socket) ->
     gen_tcp:shutdown(Socket, How);
 shutdown(#ssl_socket{ssl = SslSocket}, How) ->
     ssl:shutdown(SslSocket, How).
+
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Upgrade socket to sslsocket.
+%%%
+%%% @end
+%%%-----------------------------------------------------------------------------
+upgrade_fun(undefined) ->
+    fun(Sock) -> {ok, Sock} end;
+
+upgrade_fun(SslOpts) ->
+    Timeout = proplists:get_value(handshake_timeout, SslOpts, ?SSL_HANDSHAKE_TIMEOUT),
+    SslOpts1 = proplists:delete(handshake_timeout, SslOpts),
+    fun(Sock) ->
+        case catch ssl:ssl_accept(Sock, SslOpts1, Timeout) of
+            {ok, SslSock} -> 
+                {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+            {error, timeout} -> 
+                {error, ssl_timeout};
+            {error, Reason} -> 
+                {error, {ssl_error, Reason}};
+            {'EXIT', Reason} -> 
+                {error, {ssl_failure, Reason}}
+        end
+    end.
 
 %%%=============================================================================
 %%% Internal functions

@@ -26,33 +26,38 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_connection).
 
--author('feng@emqtt.io').
-
 %%FIXME: this module should be rewrite...
 
--export([start_link/2, go/2, ack/1]).
+-author('feng@emqtt.io').
+
+-export([start_link/2, ready/2, accept/1]).
 
 -spec start_link(Callback, Sock) -> {ok, pid()} | {error, any()} when
 		Callback :: esockd:callback(), 
 		Sock :: inet:socket().
-
 start_link(Callback, Sock) ->
 	case call(Callback, Sock) of
-	{ok, Pid} -> link(Pid), {ok, Pid};
+	{ok, Pid} -> {ok, Pid};
 	{error, Error} -> {error, Error}
 	end.
 
 %%
 %% @doc called by acceptor
 %%
-go(Client, Sock) ->
-	Client ! {go, Sock}.
+ready(Conn, SockArgs = {_Transport, _Sock, _SockFun}) ->
+	Conn ! {ready, SockArgs}.
 
 %%
-%% @doc called by client
+%% @doc called by connection proccess when finished.
 %%
-ack(Sock) ->
-	receive {go, Sock} -> ok end.
+accept(SockArgs = {_Transport, Sock, SockFun}) ->
+	receive {ready, SockArgs} -> ok end,
+    case SockFun(Sock) of
+        {ok, NewSock} ->
+            {ok, NewSock};
+        {error, Error} ->
+            exit({shutdown, Error})
+    end.
 
 call({M, F}, Sock) ->
     M:F(Sock);

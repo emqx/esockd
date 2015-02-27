@@ -1,5 +1,12 @@
 ## Erlang TCP Server??
 
+## Why?
+
+1. TCP/SSL Socket Server
+2. async accept and receive
+
+### Referrence
+
 1. http://20bits.com/article/erlang-a-generalized-tcp-server
 
 Network servers come in two parts: connection handling and business logic. As I described above the connection handling is basically the same for every network server. Ideally we'd be able to do something like
@@ -19,7 +26,10 @@ How to handle massive http connections?
 5. http://erlang.2086793.n4.nabble.com/Q-prim-inet-async-accept-and-gen-tcp-send-td2097350.html
 
 6. https://github.com/kevsmith/gen_nb_server
-杯酒人生  09:10:14
+
 https://github.com/oscarh/gen_tcpd
 
 7. how to handle em
+
+
+

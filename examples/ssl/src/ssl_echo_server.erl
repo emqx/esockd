@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -20,30 +20,33 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd option functions.
+%%% echo server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(esockd_option).
+-module(ssl_echo_server).
 
--export([sockopts/1, getopt/2, getopt/3]).
+%%callback 
+-export([start_link/1, 
+		 init/3, 
+		 loop/3]).
 
-sockopts(Opts) ->
-	sockopts(Opts, []).
+start_link({Transport, Sock, SockFun}) ->
+	{ok, spawn_link(?MODULE, init, [Transport, Sock, SockFun])}.
 
-sockopts([], Acc) ->
-	Acc;
-sockopts([{max_connections, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{acceptor_pool, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{ssl, _}|Opts], Acc) ->
-    sockopts(Opts, Acc);
-sockopts([H|Opts], Acc) ->
-	sockopts(Opts, [H|Acc]).
+init(Transport, Sock, SockFun) ->
+    {ok, NewSock} = esockd_connection:accept({Transport, Sock, SockFun}),
+	loop(Transport, NewSock, state).
 
-getopt(K, Opts) ->
-	proplists:get_value(K, Opts).
-getopt(K, Opts, Def) ->
-	proplists:get_value(K, Opts, Def).
+loop(Transport, Sock, State) ->
+	case Transport:recv(Sock, 0) of
+		{ok, Data} -> 
+			{ok, Name} = Transport:peername(Sock),
+			io:format("~p: ~p~n", [Name, Data]),
+			Transport:send(Sock, Data),
+			loop(Transport, Sock, State);
+		{error, Reason} ->
+			io:format("tcp ~s~n", [Reason]),
+			{stop, Reason}
+	end. 
 

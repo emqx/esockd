@@ -1,0 +1,10 @@
+{release, {"OTP SSL","R17"}, {erts, "6.2"},
+    [{kernel,"3.0.3"},
+    {stdlib,"2.2"},
+    {sasl,"2.4.1"},
+    {syntax_tools,"1.6.16"},
+    {asn1,"3.0.2"},
+    {crypto,"3.4.1"},
+    {public_key,"0.22.1"},
+    {ssl,"5.3.6"}
+    ]}.

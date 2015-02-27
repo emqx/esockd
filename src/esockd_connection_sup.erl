@@ -37,7 +37,7 @@
 %% API Function Exports
 %% ------------------------------------------------------------------
 
--export([start_link/3, start_client/3, count/2]).
+-export([start_link/3, start_connection/4, count/2]).
 
 %% ------------------------------------------------------------------
 %% gen_server Function Exports
@@ -46,28 +46,28 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {max_conns = 1024, cur_conns = 0, callback}).
+-record(state, {name, max_conns = 1024, cur_conns = 0, callback}).
 
 %% ------------------------------------------------------------------
 %% API Function Definitions
 %% ------------------------------------------------------------------
 
 start_link(Name, Options, Callback) ->
-    gen_server:start_link({local, Name}, ?MODULE, [Options, Callback], []).
+    gen_server:start_link({local, Name}, ?MODULE, [Name, Options, Callback], []).
 
 count(Sup, clients) ->
 	gen_server:call(Sup, {count, clients}).
 
 %%called by acceptor
-start_client(Sup, Mod, Sock) ->
+start_connection(Sup, Mod, Sock, SockFun) ->
 	case gen_server:call(Sup, {start_client, Sock}) of
 	{ok, Client, Callback} -> 
 		Mod:controlling_process(Sock, Client), 
 		case exported(Callback, go) of
 			{true, M} -> 
-				M:go(Client, Sock);
+				M:go(Client, {esockd_transport, Sock, SockFun});
 			false -> 
-				esockd_connection:go(Client, Sock)
+				esockd_connection:go(Client, {esockd_transport, Sock, SockFun})
 		end,
 		{ok, Client};
 	{error, Error} ->
@@ -79,41 +79,42 @@ exported(Callback, _Fun) when is_function(Callback) ->
 
 exported(Callback, F) when is_tuple(Callback) ->
 	M = element(1, Callback),
+    exported(M, F);
+
+exported(M, F) when is_atom(M) ->
 	case erlang:function_exported(M, F, 2) of
-		true -> 
-			{true, M};
-		false -> 
-			false
+		true -> {true, M};
+		false -> false
 	end.
 
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
 
-init([Options, Callback]) ->
+init([Name, Options, Callback]) ->
     process_flag(trap_exit, true),
 	MaxConns = esockd_option:getopt(max_connections, Options, 1024),
-	%%TODO: should have name...
-	%%lager:info("Max Connections: ~p~n", [MaxConns]),
-    {ok, #state{max_conns = MaxConns, callback = Callback}}.
+	error_logger:info_msg("[~s] max_connections: ~p", [Name, MaxConns]),
+    {ok, #state{name = Name, max_conns = MaxConns, callback = Callback}}.
 
 handle_call({count, clients}, _From, State=#state{cur_conns=Cur}) ->
 	{reply, Cur, State};
 
-handle_call({start_client, Sock}, _From, State = #state{max_conns = Max, cur_conns = Cur}) when Cur >= Max ->
+handle_call({start_client, Sock}, _From, State =
+            #state{name = Name, max_conns = Max, cur_conns = Cur}) when Cur >= Max ->
 	%%TODO: FIXME Later..., error message flood...
-	lager:error("exceed max connections, socket closed!"),
+	error_logger:error_msg("[~s] cannot start connection for exceed max limit!", [Name]),
 	gen_tcp:close(Sock),
     {reply, {error, too_many_clients}, State};
 
-handle_call({start_client, Sock}, _From, State = #state{callback=Callback}) ->
+handle_call({start_client, Sock}, _From, State = #state{name = Name, callback=Callback}) ->
 	case esockd_connection:start_link(Callback, Sock) of
 	{ok, Pid} ->
 		%%TODO: process dictionary or map in state??
 		put(Pid, true),
 		{reply, {ok, Pid, Callback}, incr(State)};
 	{error, Error} ->
-		lager:error("faile to start client: ~p~n", [Error]),
+		error_logger:error_msg("[~s] Failed to start connection: ~p~n", [Name, Error]),
 		{reply, {error, Error}, State}
 	end;
 
@@ -123,17 +124,18 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({'EXIT', Pid, normal}, State) ->
+handle_info({'EXIT', Pid, normal}, State = #state{name = Name}) ->
 	case erase(Pid) of
 	true ->
 		{noreply, decr(State)};
 	undefined ->
-		lager:error("~p is not supervisored by esockd_client:~p~n", [Pid, self()]),
+		error_logger:error_msg("[~s] unexpected exit: ~p", [Name, Pid]),
 		{noreply, State}
 	end;
 
+%%TODO: FIXME Later...
 handle_info({'EXIT', Pid, Reason}, State) ->
-	lager:error("client:~p exited for ~p~n", [Pid, Reason]),
+	error_logger:error_msg("client:~p exited for ~p~n", [Pid, Reason]),
     {noreply, decr(State)};
 
 handle_info(_Info, State) ->
