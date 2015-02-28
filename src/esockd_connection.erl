@@ -26,32 +26,60 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_connection).
 
-%%FIXME: this module should be rewrite...
-
 -author('feng@emqtt.io').
 
--export([start_link/2, ready/2, accept/1]).
+-include("esockd.hrl").
 
+-export([start_link/2, ready/2, accept/1, transform/1]).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start a connection.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 -spec start_link(Callback, Sock) -> {ok, pid()} | {error, any()} when
 		Callback :: esockd:callback(), 
-		Sock :: inet:socket().
-start_link(Callback, SockArgs = {_Transport, _Sock, _SockFun}) ->
+		Sock     :: inet:socket().
+start_link(Callback, SockArgs) ->
 	case call(Callback, SockArgs) of
 	{ok, Pid} -> {ok, Pid};
 	{error, Error} -> {error, Error}
 	end.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Tell the connection that socket is ready. Called by acceptor.
 %%
-%% @doc called by acceptor
-%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec ready(Conn, SockArgs) -> any() when
+        Conn     :: pid(),
+        SockArgs :: esockd:sock_args().
 ready(Conn, SockArgs = {_Transport, _Sock, _SockFun}) ->
-	Conn ! {ready, SockArgs}.
+	Conn ! {sock_ready, SockArgs}.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Connection accept the socket. Called by connection.
 %%
-%% @doc called by connection proccess when finished.
+%% @end
+%%------------------------------------------------------------------------------
+-spec accept(SockArgs) -> {ok, NewSock} when
+    SockArgs    :: esockd:sock_args(),
+    NewSock     :: inet:socket() | esockd:ssl_socket().
+accept(SockArgs) ->
+	receive
+        {sock_ready, SockArgs} -> transform(SockArgs)
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Transform Socket. Callbed by connection proccess.
 %%
-accept(SockArgs = {_Transport, Sock, SockFun}) ->
-	receive {ready, SockArgs} -> ok end,
+%% @end
+%%------------------------------------------------------------------------------
+transform({_Transport, Sock, SockFun}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
             {ok, NewSock};
@@ -63,7 +91,7 @@ call({M, F}, SockArgs) ->
     M:F(SockArgs);
 
 call({M, F, A}, SockArgs) ->
-    erlang:apply(M, F, [SockArgs | A]);
+    erlang:apply(M, F, A ++ [SockArgs]);
 
 call(Mod, SockArgs) when is_atom(Mod) ->
     Mod:start_link(SockArgs);

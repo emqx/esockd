@@ -28,6 +28,8 @@
 
 -author("feng@emqtt.io").
 
+-include("esockd.hrl").
+
 %% Start Application.
 -export([start/0]).
 
@@ -40,6 +42,10 @@
 %% utility functions...
 -export([ulimit/0]).
 
+-type ssl_socket() :: #ssl_socket{}.
+
+-type sock_args()  :: {atom(), inet:socket(), fun()}.
+
 -type mfargs() :: {module(), atom(), [term()]}.
 
 -type callback() :: mfargs() | atom() | function().
@@ -50,7 +56,7 @@
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 
--export_type([callback/0, option/0]).
+-export_type([ssl_socket/0, sock_args/0, callback/0, option/0]).
 
 %%------------------------------------------------------------------------------
 %% @doc

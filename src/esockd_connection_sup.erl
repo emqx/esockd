@@ -33,16 +33,10 @@
 
 -behaviour(gen_server).
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+%% API
+-export([start_link/3, start_connection/4]).
 
--export([start_link/3, start_connection/4, count/2]).
-
-%% ------------------------------------------------------------------
-%% gen_server Function Exports
-%% ------------------------------------------------------------------
-
+%% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -55,37 +49,16 @@
 start_link(Name, Options, Callback) ->
     gen_server:start_link({local, Name}, ?MODULE, [Name, Options, Callback], []).
 
-count(Sup, clients) ->
-	gen_server:call(Sup, {count, clients}).
-
 %%called by acceptor
 start_connection(Sup, Mod, Sock, SockFun) ->
 	case gen_server:call(Sup, {start_client, Sock, SockFun}) of
-	{ok, Client, Callback} -> 
-		Mod:controlling_process(Sock, Client), 
-		case exported(Callback, go) of
-			{true, M} -> 
-                %%TODO: this is really bad design...
-				M:go(Client, {esockd_transport, Sock, SockFun});
-			false -> 
-				esockd_connection:ready(Client, {esockd_transport, Sock, SockFun})
-		end,
-		{ok, Client};
+	{ok, ConnPid} ->
+		Mod:controlling_process(Sock, ConnPid),
+        SockArgs = {esockd_transport, Sock, SockFun},
+        esockd_connection:ready(ConnPid, SockArgs),
+		{ok, ConnPid};
 	{error, Error} ->
 		{error, Error}
-	end.
-
-exported(Callback, _Fun) when is_function(Callback) ->
-	false;
-
-exported(Callback, F) when is_tuple(Callback) ->
-	M = element(1, Callback),
-    exported(M, F);
-
-exported(M, F) when is_atom(M) ->
-	case erlang:function_exported(M, F, 2) of
-		true -> {true, M};
-		false -> false
 	end.
 
 %% ------------------------------------------------------------------
@@ -94,7 +67,7 @@ exported(M, F) when is_atom(M) ->
 
 init([Name, Options, Callback]) ->
     process_flag(trap_exit, true),
-	MaxConns = esockd_option:getopt(max_connections, Options, 1024),
+	MaxConns = proplists:get_value(max_connections, Options, 1024),
 	error_logger:info_msg("[~s] max_connections: ~p", [Name, MaxConns]),
     {ok, #state{name = Name, max_conns = MaxConns, callback = Callback}}.
 
@@ -113,7 +86,7 @@ handle_call({start_client, Sock, SockFun}, _From, State = #state{name = Name, ca
 	{ok, Pid} ->
 		%%TODO: process dictionary or map in state??
 		put(Pid, true),
-		{reply, {ok, Pid, Callback}, incr(State)};
+		{reply, {ok, Pid}, incr(State)};
 	{error, Error} ->
 		error_logger:error_msg("[~s] Failed to start connection: ~p~n", [Name, Error]),
 		{reply, {error, Error}, State}

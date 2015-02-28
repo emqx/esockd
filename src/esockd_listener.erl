@@ -63,7 +63,7 @@ init({Protocol, Port, Options, AcceptorSup}) ->
 	SockOpts = sockopts(Options),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
-            SockFun = esockd_transport:upgrade_fun(proplists:get_value(ssl, Options)),
+            SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
 			AcceptorNum = proplists:get_value(acceptor_pool, Options, ?ACCEPTOR_POOL),
 			lists:foreach(fun (_) ->
 				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock, SockFun])

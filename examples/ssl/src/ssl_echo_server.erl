@@ -28,14 +28,14 @@
 
 %%callback 
 -export([start_link/1, 
-		 init/3, 
+		 init/1,
 		 loop/3]).
 
-start_link({Transport, Sock, SockFun}) ->
-	{ok, spawn_link(?MODULE, init, [Transport, Sock, SockFun])}.
+start_link(SockArgs) ->
+	{ok, spawn_link(?MODULE, init, [SockArgs])}.
 
-init(Transport, Sock, SockFun) ->
-    {ok, NewSock} = esockd_connection:accept({Transport, Sock, SockFun}),
+init(SockArgs = {Transport, _Sock, _SockFun}) ->
+    {ok, NewSock} = esockd_connection:accept(SockArgs),
 	loop(Transport, NewSock, state).
 
 loop(Transport, Sock, State) ->

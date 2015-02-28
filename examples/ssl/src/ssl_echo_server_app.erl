@@ -19,7 +19,7 @@ start(_StartType, _StartArgs) ->
     {ok, Sup} = ssl_echo_server_sup:start_link(),
     SslOpts = [{certfile, "./crt/demo.crt"}, {keyfile,  "./crt/demo.key"}], %{cacertfile, "./crt/cacert.pem"}, 
     SockOpts = [binary, {reuseaddr, true}, {max_connections, 1000}, {ssl, SslOpts}],
-    {ok, _} = esockd:open(echo, 5000, SockOpts, ssl_echo_server),
+    {ok, _} = esockd:open('echo/ssl', 5000, SockOpts, ssl_echo_server),
     {ok, Sup}.
 
 stop(_State) ->
