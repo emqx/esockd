@@ -20,11 +20,11 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd manager.
+%%% eSockd server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(esockd_manager).
+-module(esockd_server).
 
 -author("feng@emqtt.io").
 
@@ -32,11 +32,11 @@
 
 -define(SERVER, ?MODULE).
 
-%% Start esockd manager
+%% Start esockd server
 -export([start_link/0]).
 
 %% API
--export([opened/0, getopts/1, getopts/2, setopts/2, getstats/1, getstats/2]).
+-export([listeners/0]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -54,68 +54,18 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link() -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}.
+-spec start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Get opened listeners.
+%% Get listeners.
 %%
 %% @end
 %%------------------------------------------------------------------------------
-opened() ->
-    gen_server:call(?SERVER, get_opened).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get all options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getopts({Protocol, Port}) ->
-    gen_server:call(?SERVER, {getopts, {Protocol, Port}}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get specific options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getopts({Protocol, Port}, Opts) ->
-    gen_server:call(?SERVER, {getopts, {Protocol, Port}, Opts}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Set options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-setopts({Protocol, Port}, Options) ->
-    gen_server:call(?SERVER, {setopts, {Protocol, Port}, Options}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get all stats of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getstats({Protol, Port}) ->
-    gen_server:call(?SERVER, {getstats, {Protol, Port}}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get specific stats of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getstats({Protol, Port}, Options) ->
-    gen_server:call(?SERVER, {getstats, {Protol, Port}, Options}).
-
-
-%%%=============================================================================
-%%% gen_server callbacks
-%%%=============================================================================
+listeners() ->
+    gen_server:call(?SERVER, listeners).
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -157,33 +107,8 @@ init([]) ->
     NewState    :: #state{},
     Reply       :: term(),
     Reason      :: term().
-
-
-handle_call(get_opened, _From, State) ->
-    %%TODO: get opened ports...
-    {reply, [], State};
-
-
-handle_call({getopts, {Protocol, Port}}, _From, State) ->
-    %%TODO: options
-    {reply, [], State};
-
-
-handle_call({getopts, {Protocol, Port}, Opts}, _From, State) ->
-    %%TODO:
-    {reply, [], State};
-
-
-handle_call({setopts, {Protocol, Port}, Options}, _From, State) ->
-    %%TODO:
-    {reply, ok, State};
-
-handle_call({getstats, {Protol, Port}}, _From, State) ->
-    %%TODO:
-    {reply, [], State};
-
-handle_call({getstats, {Protol, Port}, Options}, _From, State) ->
-    %%TODO:
+handle_call(listeners, _From, State) ->
+    %%TODO: get listeners...
     {reply, [], State};
 
 handle_call(_Request, _From, State) ->
@@ -260,3 +185,5 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+
