@@ -1,8 +1,9 @@
+
 # eSockd
 
-Erlang General Non-blocking TCP Server
+Erlang General Non-blocking TCP/SSL Server.
 
-NOTICE: not production ready
+NOTICE: no production ready
 
 ## build
 

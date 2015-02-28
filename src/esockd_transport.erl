@@ -36,6 +36,11 @@
 
 -export([sockname/1, peername/1, shutdown/2]).
 
+%% tcp -> sslsocket
+-export([ssl_upgrade_fun/1]).
+
+-define(SSL_HANDSHAKE_TIMEOUT, 5000).
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -46,10 +51,10 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec listen(Port, SockOpts) -> {ok, Socket} | {error, Reason :: any()} when
+-spec listen(Port, SockOpts) -> {ok, Sock} | {error, Reason :: any()} when
     Port        :: inet:port_number(),
     SockOpts    :: [gen_tcp:listen_option()],
-    Socket      :: inet:socket().
+    Sock      :: inet:socket().
 listen(Port, SockOpts) ->
     gen_tcp:listen(Port, SockOpts).
 
@@ -59,25 +64,25 @@ listen(Port, SockOpts) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec controlling_process(Socket, NewOwener) -> ok | {error, Reason :: any()} when
-    Socket      :: inet:socket() | ssl_socket(),
+-spec controlling_process(Sock, NewOwener) -> ok | {error, Reason :: any()} when
+    Sock        :: inet:socket() | esockd:ssl_socket(),
     NewOwener   :: pid().
-controlling_process(Socket, NewOwner) when is_port(Socket) ->
-    inet:tcp_controlling_process(Socket, NewOwner);
-controlling_process(#ssl_socket{ssl = SslSocket}, NewOwner) ->
-    ssl:controlling_process(SslSocket, NewOwner).
+controlling_process(Sock, NewOwner) when is_port(Sock) ->
+    inet:tcp_controlling_process(Sock, NewOwner);
+controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
+    ssl:controlling_process(SslSock, NewOwner).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Close Socket.
+%%% Close Sock.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec close(Socket :: inet:socket() | ssl_socket()) -> ok.
-close(Socket) when is_port(Socket) ->
-    gen_tcp:close(Socket);
-close(#ssl_socket{ssl = SslSocket}) ->
-    ssl:close(SslSocket).
+-spec close(Sock :: inet:socket() | esockd:ssl_socket()) -> ok.
+close(Sock) when is_port(Sock) ->
+    gen_tcp:close(Sock);
+close(#ssl_socket{ssl = SslSock}) ->
+    ssl:close(SslSock).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -85,13 +90,13 @@ close(#ssl_socket{ssl = SslSocket}) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec send(Socket, Data) -> ok when
-    Socket  :: inet:socket() | ssl_socket(),
+-spec send(Sock, Data) -> ok when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
     Data    :: iolist().
-send(Socket, Data) when is_port(Socket) ->
-    gen_tcp:send(Socket, Data);
-send(#ssl_socket{ssl = SslSocket}, Data) ->
-    ssl:send(SslSocket, Data).
+send(Sock, Data) when is_port(Sock) ->
+    gen_tcp:send(Sock, Data);
+send(#ssl_socket{ssl = SslSock}, Data) ->
+    ssl:send(SslSock, Data).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -101,9 +106,9 @@ send(#ssl_socket{ssl = SslSocket}, Data) ->
 %%%-----------------------------------------------------------------------------
 port_command(Sock, Data) when is_port(Sock) ->
     erlang:port_command(Sock, Data);
-port_command(Socket = #ssl_socket{ssl = SslSocket}, Data) ->
-    case ssl:send(SslSocket, Data) of
-        ok -> self() ! {inet_reply, Socket, ok}, true;
+port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
+    case ssl:send(SslSock, Data) of
+        ok -> self() ! {inet_reply, Sock, ok}, true;
         {error, Reason} -> erlang:error(Reason)
     end.
 
@@ -113,14 +118,14 @@ port_command(Socket = #ssl_socket{ssl = SslSocket}, Data) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec recv(Socket, Length) -> {ok, Data} | {error, Reason :: any()} when
-    Socket  :: inet:socket() | ssl_socket(),
+-spec recv(Sock, Length) -> {ok, Data} | {error, Reason :: any()} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
     Length  :: non_neg_integer(),
     Data    :: [char()] | binary().
-recv(Socket, Length) when is_port(Socket) ->
-    gen_tcp:recv(Socket, Length);
-recv(#ssl_socket{ssl = SslSocket}, Length)  ->
-    ssl:recv(SslSocket, Length).
+recv(Sock, Length) when is_port(Sock) ->
+    gen_tcp:recv(Sock, Length);
+recv(#ssl_socket{ssl = SslSock}, Length)  ->
+    ssl:recv(SslSock, Length).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -128,22 +133,22 @@ recv(#ssl_socket{ssl = SslSocket}, Length)  ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec async_recv(Socket, Length, Timeout) -> {ok, Ref} when
-    Socket  :: inet:socket() | ssl_socket(),
+-spec async_recv(Sock, Length, Timeout) -> {ok, Ref} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
     Length  :: non_neg_integer(),
     Timeout :: non_neg_integer() | infinity,
     Ref     :: reference().
-async_recv(Socket = #ssl_socket{ssl = SslSocket}, Length, Timeout) ->
+async_recv(Sock = #ssl_socket{ssl = SslSock}, Length, Timeout) ->
     Self = self(),
     Ref = make_ref(),
-    spawn(fun () -> Self ! {inet_async, Socket, Ref,
-        ssl:recv(SslSocket, Length, Timeout)}
+    spawn(fun () -> Self ! {inet_async, Sock, Ref,
+        ssl:recv(SslSock, Length, Timeout)}
     end),
     {ok, Ref};
-async_recv(Socket, Length, infinity) when is_port(Socket) ->
-    prim_inet:async_recv(Socket, Length, -1);
-async_recv(Socket, Length, Timeout) when is_port(Socket) ->
-    prim_inet:async_recv(Socket, Length, Timeout).
+async_recv(Sock, Length, infinity) when is_port(Sock) ->
+    prim_inet:async_recv(Sock, Length, -1);
+async_recv(Sock, Length, Timeout) when is_port(Sock) ->
+    prim_inet:async_recv(Sock, Length, Timeout).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -151,10 +156,10 @@ async_recv(Socket, Length, Timeout) when is_port(Socket) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
-getopts(Socket, OptionNames) when is_port(Socket) ->
-    inet:getopts(Socket, OptionNames);
-getopts(#ssl_socket{ssl = SslSocket}, OptionNames) ->
-    ssl:getopts(SslSocket, OptionNames).
+getopts(Sock, OptionNames) when is_port(Sock) ->
+    inet:getopts(Sock, OptionNames);
+getopts(#ssl_socket{ssl = SslSock}, OptionNames) ->
+    ssl:getopts(SslSock, OptionNames).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -162,10 +167,10 @@ getopts(#ssl_socket{ssl = SslSocket}, OptionNames) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
-setopts(Socket, Options) when is_port(Socket) ->
-    inet:setopts(Socket, Options);
-setopts(#ssl_socket{ssl = SslSocket}, Options) ->
-    ssl:setopts(SslSocket, Options).
+setopts(Sock, Options) when is_port(Sock) ->
+    inet:setopts(Sock, Options);
+setopts(#ssl_socket{ssl = SslSock}, Options) ->
+    ssl:setopts(SslSock, Options).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -173,44 +178,44 @@ setopts(#ssl_socket{ssl = SslSocket}, Options) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec getstat(Socket, Stats) -> {ok, Values} | {error, any()} when
-    Socket  :: inet:socket() | ssl_socket(),
+-spec getstat(Sock, Stats) -> {ok, Values} | {error, any()} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
     Stats   :: list(),
     Values  :: list().
-getstat(Socket, Stats) when is_port(Socket) ->
-    inet:getstat(Socket, Stats);
-getstat(#ssl_socket{tcp = Socket}, Stats) ->
-    inet:getstat(Socket, Stats).
+getstat(Sock, Stats) when is_port(Sock) ->
+    inet:getstat(Sock, Stats);
+getstat(#ssl_socket{tcp = Sock}, Stats) ->
+    inet:getstat(Sock, Stats).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Socket name.
+%%% Sock name.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec sockname(Socket) -> {ok, {Address, Port}} | {error, any()} when
-    Socket  :: inet:socket() | ssl_socket(),
+-spec sockname(Sock) -> {ok, {Address, Port}} | {error, any()} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
     Address :: inet:ip_address(),
     Port    :: inet:port_number().
-sockname(Socket) when is_port(Socket) ->
-    inet:sockname(Socket);
-sockname(#ssl_socket{ssl = SslSocket}) ->
-    ssl:sockname(SslSocket).
+sockname(Sock) when is_port(Sock) ->
+    inet:sockname(Sock);
+sockname(#ssl_socket{ssl = SslSock}) ->
+    ssl:sockname(SslSock).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Socket peer name.
+%%% Sock peer name.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec peername(Socket) -> {ok, {Address, Port}} | {error, any()} when
-    Socket  :: inet:socket() | ssl_socket(),
+-spec peername(Sock) -> {ok, {Address, Port}} | {error, any()} when
+    Sock  :: inet:socket() | esockd:ssl_socket(),
     Address :: inet:ip_address(),
     Port    :: inet:port_number().
-peername(Socket) when is_port(Socket) ->
-    inet:peername(Socket);
-peername(#ssl_socket{ssl = SslSocket}) ->
-    ssl:peername(SslSocket).
+peername(Sock) when is_port(Sock) ->
+    inet:peername(Sock);
+peername(#ssl_socket{ssl = SslSock}) ->
+    ssl:peername(SslSock).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
@@ -218,14 +223,41 @@ peername(#ssl_socket{ssl = SslSocket}) ->
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--spec shutdown(Socket, How) -> ok | {error, Reason :: any()} when
-    Socket  :: inet:socket() | ssl_socket,
+-spec shutdown(Sock, How) -> ok | {error, Reason :: any()} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
     How     :: read | write | read_write.
-shutdown(Socket, How) when is_port(Socket) ->
-    gen_tcp:shutdown(Socket, How);
-shutdown(#ssl_socket{ssl = SslSocket}, How) ->
-    ssl:shutdown(SslSocket, How).
+shutdown(Sock, How) when is_port(Sock) ->
+    gen_tcp:shutdown(Sock, How);
+shutdown(#ssl_socket{ssl = SslSock}, How) ->
+    ssl:shutdown(SslSock, How).
+
+%%%-----------------------------------------------------------------------------
+%%% @doc
+%%% Upgrade socket to sslsocket.
+%%%
+%%% @end
+%%%-----------------------------------------------------------------------------
+ssl_upgrade_fun(undefined) ->
+    fun(Sock) when is_port(Sock) -> {ok, Sock} end;
+
+ssl_upgrade_fun(SslOpts) ->
+    Timeout = proplists:get_value(handshake_timeout, SslOpts, ?SSL_HANDSHAKE_TIMEOUT),
+    SslOpts1 = proplists:delete(handshake_timeout, SslOpts),
+    fun(Sock) when is_port(Sock) ->
+        case catch ssl:ssl_accept(Sock, SslOpts1, Timeout) of
+            {ok, SslSock} ->
+                {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+            {error, Reason} ->
+                {error, {ssl_error, Reason}};
+            {'EXIT', Reason} -> 
+                {error, {ssl_failure, Reason}}
+        end
+    end.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+
+
+

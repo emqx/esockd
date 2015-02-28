@@ -28,41 +28,75 @@
 
 -author('feng@emqtt.io').
 
-%%FIXME: this module should be rewrite...
+-include("esockd.hrl").
 
--export([start_link/2, go/2, ack/1]).
+-export([start_link/2, ready/2, accept/1, transform/1]).
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start a connection.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 -spec start_link(Callback, Sock) -> {ok, pid()} | {error, any()} when
 		Callback :: esockd:callback(), 
-		Sock :: inet:socket().
-
-start_link(Callback, Sock) ->
-	case call(Callback, Sock) of
-	{ok, Pid} -> link(Pid), {ok, Pid};
+		Sock     :: inet:socket().
+start_link(Callback, SockArgs) ->
+	case call(Callback, SockArgs) of
+	{ok, Pid} -> {ok, Pid};
 	{error, Error} -> {error, Error}
 	end.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Tell the connection that socket is ready. Called by acceptor.
 %%
-%% @doc called by acceptor
+%% @end
+%%------------------------------------------------------------------------------
+-spec ready(Conn, SockArgs) -> any() when
+        Conn     :: pid(),
+        SockArgs :: esockd:sock_args().
+ready(Conn, SockArgs = {_Transport, _Sock, _SockFun}) ->
+	Conn ! {sock_ready, SockArgs}.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Connection accept the socket. Called by connection.
 %%
-go(Client, Sock) ->
-	Client ! {go, Sock}.
+%% @end
+%%------------------------------------------------------------------------------
+-spec accept(SockArgs) -> {ok, NewSock} when
+    SockArgs    :: esockd:sock_args(),
+    NewSock     :: inet:socket() | esockd:ssl_socket().
+accept(SockArgs) ->
+	receive
+        {sock_ready, SockArgs} -> transform(SockArgs)
+    end.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Transform Socket. Callbed by connection proccess.
 %%
-%% @doc called by client
-%%
-ack(Sock) ->
-	receive {go, Sock} -> ok end.
+%% @end
+%%------------------------------------------------------------------------------
+transform({_Transport, Sock, SockFun}) ->
+    case SockFun(Sock) of
+        {ok, NewSock} ->
+            {ok, NewSock};
+        {error, Error} ->
+            exit({shutdown, Error})
+    end.
 
-call({M, F}, Sock) ->
-    M:F(Sock);
+call({M, F}, SockArgs) ->
+    M:F(SockArgs);
 
-call({M, F, A}, Sock) ->
-    erlang:apply(M, F, [Sock | A]);
+call({M, F, A}, SockArgs) ->
+    erlang:apply(M, F, A ++ [SockArgs]);
 
-call(Mod, Sock) when is_atom(Mod) ->
-    Mod:start_link(Sock);
+call(Mod, SockArgs) when is_atom(Mod) ->
+    Mod:start_link(SockArgs);
 
-call(Fun, Sock) when is_function(Fun) ->
-    Fun(Sock).
+call(Fun, SockArgs) when is_function(Fun) ->
+    Fun(SockArgs).
+
 

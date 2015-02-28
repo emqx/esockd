@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -20,17 +20,23 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% esockd header.
+%%% eSockd header.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
 
 %%------------------------------------------------------------------------------
-%% SSL Socket Wrapper
+%% SSL Sock Wrapper.
 %%------------------------------------------------------------------------------
--record(ssl_socket, {tcp, ssl}).
+-record(ssl_socket, {tcp    :: inet:socket(),
+                     ssl    :: ssl:sslsocket()}).
 
--type ssl_socket() :: #ssl_socket{}.
+-define(IS_SSL(Sock), is_record(Sock, ssl_socket)).
 
--define(IS_SSL(Socket), is_record(Socket, ssl_socket)).
+%%------------------------------------------------------------------------------
+%% Sock Args
+%%------------------------------------------------------------------------------
+-record(sock_args, {transport = esockd_transport,
+                    sock    :: inet:socket(),
+                    sockfun :: fun((inet:socket()) -> {ok, inet:socket() | #ssl_socket{}} | {error, any()})}).
 

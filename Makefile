@@ -1,10 +1,21 @@
-all: compile
+.PHONY: test
 
-compile: get-deps
-	./rebar compile
+REBAR=./rebar
 
-get-deps:
-	./rebar get-deps
+all: compile xref
+
+compile:
+	@$(REBAR) compile
+
+xref:
+	@$(REBAR) xref skip_deps=true
 
 clean:
-	./rebar clean
+	@$(REBAR) clean
+
+test:
+	@$(REBAR) skip_deps=true eunit
+
+edoc:
+	@$(REBAR) doc
+

@@ -28,6 +28,8 @@
 
 -author('feng@emqtt.io').
 
+-include("esockd.hrl").
+
 -behaviour(gen_server).
 
 -export([start_link/4]).
@@ -35,37 +37,42 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {sock, protocol}).
+-record(state, {protocol  :: atom(),
+                lsock     :: inet:socket()}).
 
--define(DEFAULT_ACCEPTOR_NUM , 10).
+-define(ACCEPTOR_POOL, 10).
 
+%%------------------------------------------------------------------------------
+%% @doc 
+%% Start Listener
 %%
-%% @doc start listener
-%%
--spec start_link(Protocol       :: atom(),
-                 Port           :: inet:port_number(),
-                 Options		:: list(esockd:option()),
-                 AcceptorSup    :: pid()) -> {ok, pid()}.
+%% @end
+%%------------------------------------------------------------------------------
+-spec start_link(Protocol, Port, Options, AcceptorSup) -> {ok, pid()} | {error, any()} | ignore when 
+    Protocol    :: atom(),
+    Port        :: inet:port_number(),
+    Options	    :: [esockd:option()],
+    AcceptorSup :: pid().
 start_link(Protocol, Port, Options, AcceptorSup) ->
     gen_server:start_link({local, name({Protocol, Port})},
         ?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
 
-%%--------------------------------------------------------------------
 init({Protocol, Port, Options, AcceptorSup}) ->
     process_flag(trap_exit, true),
     %%don't active the socket...
-	SocketOpts = esockd_option:sockopts(Options),
-    case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SocketOpts)]) of
+	SockOpts = sockopts(Options),
+    case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
-			AcceptorNum = esockd_option:getopt(acceptor_pool, Options, ?DEFAULT_ACCEPTOR_NUM),
+            SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
+			AcceptorNum = proplists:get_value(acceptor_pool, Options, ?ACCEPTOR_POOL),
 			lists:foreach(fun (_) ->
-				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock])
+				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock, SockFun])
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
-            lager:info("listen on ~s:~p with ~p acceptors.~n", [esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
-            {ok, #state{sock = LSock, protocol = Protocol}};
+            error_logger:info_msg("listen on ~s:~p with ~p acceptors.", [esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
+            {ok, #state{protocol = Protocol, lsock = LSock}};
         {error, Reason} ->
-            lager:info("failed to listen on ~p - ~p (~s)~n",
+            error_logger:info_msg("failed to listen on ~p - ~p (~s)~n",
 				[Port, Reason, inet:format_error(Reason)]),
             {stop, {cannot_listen, Port, Reason}}
     end.
@@ -79,11 +86,11 @@ handle_cast(_Msg, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{sock=LSock, protocol=Protocol}) ->
-    {ok, {IPAddress, Port}} = inet:sockname(LSock),
+terminate(_Reason, #state{lsock=LSock, protocol=Protocol}) ->
+    {ok, {IPAddress, Port}} = esockd_transport:sockname(LSock),
     esockd_transport:close(LSock),
     %%error report
-    lager:info("stopped ~s on ~s:~p~n",
+    error_logger:info_msg("stopped ~s on ~s:~p~n",
            [Protocol, esockd_net:ntoab(IPAddress), Port]),
 	ok.
 
@@ -91,7 +98,22 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%%=============================================================================
-%% Internal functions
+%%% Internal functions
 %%%=============================================================================
 name({Protocol, Port}) ->
     list_to_atom(lists:concat([listener, ':', Protocol, ':', Port])).
+
+sockopts(Opts) ->
+	sockopts(Opts, []).
+sockopts([], Acc) ->
+	Acc;
+sockopts([{max_connections, _}|Opts], Acc) ->
+	sockopts(Opts, Acc);
+sockopts([{acceptor_pool, _}|Opts], Acc) ->
+	sockopts(Opts, Acc);
+sockopts([{ssl, _}|Opts], Acc) ->
+    sockopts(Opts, Acc);
+sockopts([H|Opts], Acc) ->
+	sockopts(Opts, [H|Acc]).
+
+

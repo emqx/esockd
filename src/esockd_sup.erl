@@ -24,7 +24,6 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
-
 -module(esockd_sup).
 
 -author('feng@emqtt.io').
@@ -61,10 +60,11 @@ start_link() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_listener(Protocol       :: atom(), 
-                     Port           :: inet:port_number(),
-                     Options		:: list(esockd:option()), 
-                     Callback       :: esockd:callback()) -> {ok, pid()}.
+-spec start_listener(Protocol, Port, Options, Callback) -> {ok, pid()} when
+    Protocol   :: atom(),
+    Port       :: inet:port_number(),
+    Options    :: list(esockd:option()),
+    Callback   :: esockd:callback().
 start_listener(Protocol, Port, Options, Callback) ->
 	MFA = {esockd_listener_sup, start_link,
             [Protocol, Port, Options, Callback]},
@@ -78,8 +78,9 @@ start_listener(Protocol, Port, Options, Callback) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec stop_listener(Protocol :: atom(),
-                    Port     :: inet:port_number()) -> ok | {error, any()}.
+-spec stop_listener(Protocol, Port) -> ok | {error, any()} when
+    Protocol :: atom(),
+    Port     :: inet:port_number().
 stop_listener(Protocol, Port) ->
     ChildId = childid({Protocol, Port}),
 	case supervisor:terminate_child(?MODULE, ChildId) of
@@ -98,7 +99,7 @@ init([]) ->
     {ok, {{one_for_one, 5, 10}, [?CHILD(esockd_manager, worker)]} }.
 
 %%%=============================================================================
-%% Internal functions
+%%% Internal functions
 %%%=============================================================================
 childid({Protocol, Port}) ->
     {listener_sup, {Protocol, Port}}.

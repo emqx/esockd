@@ -41,9 +41,8 @@
 start_link(Name, ClientSup) ->
     supervisor:start_link({local, Name}, ?MODULE, ClientSup).
 
-
 init(ClientSup) ->
-    {ok, {{simple_one_for_one, 10, 10},
+    {ok, {{simple_one_for_one, 1000, 3600},
           [{acceptor, {esockd_acceptor, start_link, [ClientSup]},
             transient, brutal_kill, worker, [esockd_acceptor]}]}}.
 

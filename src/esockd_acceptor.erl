@@ -28,21 +28,41 @@
 
 -author('feng@emqtt.io').
 
+-include("esockd.hrl").
+
 -behaviour(gen_server).
 
--export([start_link/2]).
+-export([start_link/3]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {client_sup, sock, ref, emfile_count = 0}).
+-type socket() :: inet:socket() | esockd:ssl_socket().
 
-start_link(ClientSup, LSock) ->
-    gen_server:start_link(?MODULE, {ClientSup, LSock}, []).
+-type sockfun() :: fun((inet:socket()) -> {ok, socket()} | {error, any()}).
 
-init({ClientSup, LSock}) ->
+-record(state, {conn_sup    :: pid(),
+                lsock       :: inet:socket(),
+                sockfun     :: sockfun(),
+                ref         :: reference(), 
+                emfile_count = 0}).
+
+%%------------------------------------------------------------------------------
+%% @doc 
+%% Start Acceptor.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec start_link(ConnSup, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+      ConnSup   :: pid(),
+      LSock     :: inet:socket(),
+      SockFun   :: socket().
+start_link(ConnSup, LSock, SockFun) ->
+    gen_server:start_link(?MODULE, {ConnSup, LSock, SockFun}, []).
+
+init({ConnSup, LSock, SockFun}) ->
     gen_server:cast(self(), accept),
-    {ok, #state{client_sup=ClientSup, sock=LSock}}.
+    {ok, #state{conn_sup=ConnSup, lsock=LSock, sockfun = SockFun}}.
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -54,7 +74,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({inet_async, LSock, Ref, {ok, Sock}},
-            State = #state{client_sup=ClientSup, sock=LSock, ref=Ref}) ->
+            State = #state{conn_sup=ConnSup, lsock=LSock, sockfun = SockFun, ref=Ref}) ->
 
     %% patch up the socket so it looks like one we got from
     %% gen_tcp:accept/1
@@ -62,19 +82,19 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	lager:info("Accept from ~p~n", [Peername]),
+	error_logger:info_msg("Accept from ~p~n", [Peername]),
 
     case tune_buffer_size(Sock) of
-        ok	-> 
-			esockd_connection_sup:start_client(ClientSup, Mod, Sock);
+        ok -> 
+			esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun);
         {error, enotconn} -> 
 			catch port_close(Sock);
         {error, Err} -> 
 			{ok, {IPAddress, Port}} = inet:sockname(LSock),
-            lager:error(
+            error_logger:error_msg(
 				"failed to tune buffer size of "
 				"connection accepted on ~s:~p - ~s~n",
-				[esock_net:ntoab(IPAddress), Port, Err]),
+				[esockd_net:ntoab(IPAddress), Port, Err]),
             catch port_close(Sock)
     end,
 
@@ -82,7 +102,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     accept(State);
 
 handle_info({inet_async, LSock, Ref, {error, closed}},
-            State=#state{sock=LSock, ref=Ref}) ->
+            State=#state{lsock=LSock, ref=Ref}) ->
     %% It would be wrong to attempt to restart the acceptor when we
     %% know this will fail.
     {stop, normal, State};
@@ -93,7 +113,7 @@ handle_info({inet_async, LSock, Ref, {error, closed}},
 %% {error, esslaccept} ->
 %% {error, e{n,m}file} -> suspend 100??
 handle_info({inet_async, LSock, Ref, {error, Error}}, 
-	State=#state{sock=LSock, ref=Ref}) ->
+            State=#state{lsock=LSock, ref=Ref}) ->
 	sockerr(Error, State);
 
 handle_info(resume, State) ->
@@ -111,7 +131,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% accept...
 %%--------------------------------------------------------------------
-accept(State = #state{sock=LSock}) ->
+accept(State = #state{lsock=LSock}) ->
     case prim_inet:async_accept(LSock, -1) of
         {ok, Ref} -> 
 			{noreply, State#state{ref=Ref}};
@@ -126,18 +146,18 @@ accept(State = #state{sock=LSock}) ->
 sockerr(emfile, State = #state{emfile_count = Count}) ->
 	%%avoid too many error log.. stupid??
 	case Count rem 100 of 
-	0 -> lager:error("!!!acceptor suspend 100(ms), emfile error: ~p!!!~n", [Count]);
+	0 -> error_logger:error_msg("!!!acceptor suspend 100(ms), emfile error: ~p!!!~n", [Count]);
 	_ -> ignore
 	end,
 	suspend(100, State#state{emfile_count = Count+1});
 
 %% enfile: The system limit on the total number of open files has been reached. usually OS's limit.
 sockerr(enfile, State) ->
-	lager:error("accept error: !!!enfile!!!~n"),
+	error_logger:error_msg("accept error: !!!enfile!!!~n"),
 	suspend(100, State);
 
 sockerr(Error, State) ->
-	lager:error("accept error: ~p~n, stopped!!!", [Error]),
+	error_logger:error_msg("accept error: ~p~n, stopped!!!", [Error]),
 	{stop, {accept_error, Error}, State}.
 
 %%--------------------------------------------------------------------
@@ -153,3 +173,4 @@ tune_buffer_size(Sock) ->
                           inet:setopts(Sock, [{buffer, BufSz}]);
         Error          -> Error
 	end.
+
