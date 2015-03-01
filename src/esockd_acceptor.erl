@@ -41,9 +41,10 @@
 
 -type sockfun() :: fun((inet:socket()) -> {ok, socket()} | {error, any()}).
 
--record(state, {conn_sup    :: pid(),
+-record(state, {manager     :: pid(),
                 lsock       :: inet:socket(),
                 sockfun     :: sockfun(),
+                sockname    :: iolist(),
                 ref         :: reference(), 
                 emfile_count = 0}).
 
@@ -53,16 +54,18 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(ConnSup, LSock, SockFun) -> {ok, pid()} | {error, any()} when
-      ConnSup   :: pid(),
+-spec start_link(Manager, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+      Manager   :: pid(),
       LSock     :: inet:socket(),
       SockFun   :: socket().
-start_link(ConnSup, LSock, SockFun) ->
-    gen_server:start_link(?MODULE, {ConnSup, LSock, SockFun}, []).
+start_link(Manager, LSock, SockFun) ->
+    gen_server:start_link(?MODULE, {Manager, LSock, SockFun}, []).
 
-init({ConnSup, LSock, SockFun}) ->
+init({Manager, LSock, SockFun}) ->
+    {ok, {IPAddress, Port}} = inet:sockname(LSock),
+    SockName = lists:flatten(io_lib:format("~s:~p", [esockd_net:ntoab(IPAddress), Port])),
     gen_server:cast(self(), accept),
-    {ok, #state{conn_sup=ConnSup, lsock=LSock, sockfun = SockFun}}.
+    {ok, #state{manager = Manager, lsock = LSock, sockfun = SockFun, sockname = SockName}}.
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -74,7 +77,7 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({inet_async, LSock, Ref, {ok, Sock}},
-            State = #state{conn_sup=ConnSup, lsock=LSock, sockfun = SockFun, ref=Ref}) ->
+            State = #state{manager = Manager, lsock=LSock, sockfun = SockFun, sockname = SockName, ref=Ref}) ->
 
     %% patch up the socket so it looks like one we got from
     %% gen_tcp:accept/1
@@ -83,23 +86,25 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
 
 	{ok, Peername} = inet:peername(Sock),
 	error_logger:info_msg("Accept from ~p~n", [Peername]),
-
     case tune_buffer_size(Sock) of
         ok -> 
-			esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun);
+            case esockd_manager:new_connection(Manager, Mod, Sock, SockFun) of
+                {ok, _Pid} ->
+                    ok;
+                {error, Reason} ->
+                    error_logger:error_msg("failed to start connection on ~s - ~p", [SockName, Reason]),
+                    catch port_close(Sock)
+            end;
         {error, enotconn} -> 
 			catch port_close(Sock);
         {error, Err} -> 
-			{ok, {IPAddress, Port}} = inet:sockname(LSock),
-            error_logger:error_msg(
-				"failed to tune buffer size of "
-				"connection accepted on ~s:~p - ~s~n",
-				[esockd_net:ntoab(IPAddress), Port, Err]),
+            error_logger:error_msg("failed to tune buffer size of connection accepted on ~s - ~s", [SockName, Err]),
             catch port_close(Sock)
     end,
 
     %% accept more
     accept(State);
+
 
 handle_info({inet_async, LSock, Ref, {error, closed}},
             State=#state{lsock=LSock, ref=Ref}) ->
@@ -143,21 +148,21 @@ accept(State = #state{lsock=LSock}) ->
 %% error happened...
 %%--------------------------------------------------------------------
 %% emfile: The per-process limit of open file descriptors has been reached.
-sockerr(emfile, State = #state{emfile_count = Count}) ->
+sockerr(emfile, State = #state{sockname = SockName, emfile_count = Count}) ->
 	%%avoid too many error log.. stupid??
 	case Count rem 100 of 
-	0 -> error_logger:error_msg("!!!acceptor suspend 100(ms), emfile error: ~p!!!~n", [Count]);
-	_ -> ignore
+        0 -> error_logger:error_msg("acceptor on ~s suspend 100(ms) for ~p emfile errors!!!", [SockName, Count]);
+        _ -> ignore
 	end,
 	suspend(100, State#state{emfile_count = Count+1});
 
 %% enfile: The system limit on the total number of open files has been reached. usually OS's limit.
-sockerr(enfile, State) ->
-	error_logger:error_msg("accept error: !!!enfile!!!~n"),
+sockerr(enfile, State = #state{sockname = SockName}) ->
+	error_logger:error_msg("accept error on ~s - !!!enfile!!!", [SockName]),
 	suspend(100, State);
 
-sockerr(Error, State) ->
-	error_logger:error_msg("accept error: ~p~n, stopped!!!", [Error]),
+sockerr(Error, State = #state{sockname = SockName}) ->
+	error_logger:error_msg("accept error on ~s - ~s", [SockName, Error]),
 	{stop, {accept_error, Error}, State}.
 
 %%--------------------------------------------------------------------
@@ -173,4 +178,3 @@ tune_buffer_size(Sock) ->
                           inet:setopts(Sock, [{buffer, BufSz}]);
         Error          -> Error
 	end.
-

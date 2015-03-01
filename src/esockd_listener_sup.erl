@@ -50,14 +50,18 @@
     Options	  :: list(esockd:option()),
     Callback  :: esockd:callback().
 start_link(Protocol, Port, Options, Callback) ->
-    {ok, Sup} = supervisor:start_link({local, name(listener_sup, {Protocol, Port})}, ?MODULE, []),
-	{ok, ClientSup} = supervisor:start_child(Sup, 
+    {ok, Sup} = supervisor:start_link(?MODULE, []),
+	{ok, ConnSup} = supervisor:start_child(Sup, 
 		{connection_sup,
-			{esockd_connection_sup, start_link, [name(connection_sup, {Protocol, Port}), Options, Callback]},
+			{esockd_connection_sup, start_link, [Callback]},
 				transient, infinity, supervisor, [esockd_connection_sup]}),
+    {ok, Manager} = supervisor:start_child(Sup, 
+        {manager, 
+            {esockd_manager, start_link, [Options, ConnSup]},
+                transient, 16#ffffffff, worker, [esockd_manager]}),
 	{ok, AcceptorSup} = supervisor:start_child(Sup, 
 		{acceptor_sup, 
-			{esockd_acceptor_sup, start_link, [name(acceptor_sup, {Protocol, Port}), ClientSup]},
+			{esockd_acceptor_sup, start_link, [Manager]},
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup, 
 		{listener, 
@@ -71,16 +75,9 @@ start_link(Protocol, Port, Options, Callback) ->
 %%%=============================================================================
 
 init([]) ->
-    %%TODO: one_for_all??
-    {ok, {{one_for_all, 5, 10}, []}}.
+    {ok, {{one_for_all, 10, 100}, []}}.
 
 
 %%%=============================================================================
 %% Internal functions
 %%%=============================================================================
--spec name(Mod, {Protocol, Port}) -> atom() when
-    Mod      :: atom(),
-    Protocol :: atom(),
-    Port     :: inet:port_number().
-name(Mod, {Protocol, Port}) ->
-    list_to_atom(lists:concat([Mod, ':', Protocol, ':', Port])).

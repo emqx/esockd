@@ -72,18 +72,8 @@ listeners() ->
 %% @doc
 %% Initializes the server
 %%
-%% @spec init(Args) -> {ok, State} |
-%%                     {ok, State, Timeout} |
-%%                     ignore |
-%%                     {stop, Reason}
 %% @end
 %%------------------------------------------------------------------------------
--spec init(Args) ->
-    {ok, State} | {ok, State, timeout() | hibernate} |
-    {stop, Reason} | ignore when
-    Args    :: term(),
-    State   :: #state{},
-    Reason  :: any().
 init([]) ->
     {ok, #state{}}.
 
@@ -94,19 +84,6 @@ init([]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_call(Request, From, State) ->
-    {reply, Reply, NewState} |
-    {reply, Reply, NewState, timeout() | hibernate} |
-    {noreply, NewState} |
-    {noreply, NewState, timeout() | hibernate} |
-    {stop, Reason, Reply, NewState} |
-    {stop, Reason, NewState} when
-    Request     :: term(),
-    From        :: {pid, Tag :: term()},
-    State       :: #state{},
-    NewState    :: #state{},
-    Reply       :: term(),
-    Reason      :: term().
 handle_call(listeners, _From, State) ->
     %%TODO: get listeners...
     {reply, [], State};
@@ -121,14 +98,6 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_cast(Request, State) ->
-    {noreply, NewState} |
-    {noreply, NewState, timeout() | hibernate} |
-    {stop, Reason, NewState} when
-    Request   :: term(),
-    State     :: #state{},
-    NewState  :: #state{},
-    Reason    :: term().
 handle_cast(_Request, State) ->
     {noreply, State}.
 
@@ -139,14 +108,6 @@ handle_cast(_Request, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_info(Info, State) ->
-    {noreply, NewState} |
-    {noreply, NewState, timeout() | hibernate} |
-    {stop, Reason, NewState} when
-    Info     :: timeout() | term(),
-    State    :: #state{},
-    NewState :: #state{},
-    Reason   :: term().
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -160,9 +121,6 @@ handle_info(_Info, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec terminate(Reason, State) -> any() when
-    Reason  :: normal | shutdown | {shutdown, term()} | term(),
-    State :: #state{}.
 terminate(_Reason, _State) ->
     ok.
 
@@ -173,17 +131,10 @@ terminate(_Reason, _State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec code_change(OldVsn, State, Extra) -> {ok, NewState} | {error, Reason} when
-    OldVsn   :: term() | {down, term()},
-    State    :: #state{},
-    Extra    :: term(),
-    NewState :: #state{},
-    Reason   :: term().
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
 

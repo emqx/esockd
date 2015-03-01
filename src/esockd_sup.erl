@@ -95,8 +95,7 @@ stop_listener(Protocol, Port) ->
 %%%=============================================================================
 
 init([]) ->
-    %%TODO: one_for_all??
-    {ok, {{one_for_one, 5, 10}, [?CHILD(esockd_manager, worker)]} }.
+    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_manager, worker)]} }.
 
 %%%=============================================================================
 %%% Internal functions

@@ -28,22 +28,20 @@
 
 -behaviour(supervisor).
 
--export([start_link/2]).
+-export([start_link/1]).
 
 -export([init/1]).
 
 %%
 %% @doc start acceptor supervisor
 %%
--spec start_link(Name, ClientSup) -> {ok, pid()} when
-    Name        :: atom(),
-    ClientSup   :: pid().
-start_link(Name, ClientSup) ->
-    supervisor:start_link({local, Name}, ?MODULE, ClientSup).
+-spec start_link(Manager) -> {ok, pid()} when
+    Manager :: pid().
+start_link(Manager) ->
+    supervisor:start_link(?MODULE, [Manager]).
 
-init(ClientSup) ->
+init([Manager]) ->
     {ok, {{simple_one_for_one, 1000, 3600},
-          [{acceptor, {esockd_acceptor, start_link, [ClientSup]},
-            transient, brutal_kill, worker, [esockd_acceptor]}]}}.
-
+          [{acceptor, {esockd_acceptor, start_link, [Manager]},
+            transient, 5000, worker, [esockd_acceptor]}]}}.
 
