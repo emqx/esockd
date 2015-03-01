@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd TCP/SSL Acceptor Supervisor.
+%%% Echo Test Client.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -56,8 +56,8 @@ connect(Parent, Port, N) ->
 
 send(N, Sock) ->
 	random:seed(now()),
-	Data = iolist_to_binary(lists:duplicate(128, "00000000")),
-	gen_tcp:send(Sock, Data),
+	%Data = iolist_to_binary(lists:duplicate(128, "00000000")),
+	gen_tcp:send(Sock, [integer_to_list(N), ":", <<"Hello, eSockd!">>]),
 	loop(N, Sock).
 
 loop(N, Sock) ->
@@ -71,7 +71,7 @@ loop(N, Sock) ->
 		{tcp_error, Sock, Reason} -> 
 			io:format("~p socket error: ~p~n", [N, Reason]);
 		Other -> 
-			io:format("what's the fuck: ~p", [Other])
+			io:format("unexpected: ~p", [Other])
 	after
 		Timeout -> send(N, Sock)
 	end.

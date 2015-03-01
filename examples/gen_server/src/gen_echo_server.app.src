@@ -1,9 +1,9 @@
-{application, proc_lib_echo,
+{application, gen_echo_server,
  [
-  {description, "An Erlang proc_lib_echo library"},
+  {description, "gen_server echo example"},
   {vsn, "1"},
   {modules, [
-             proc_lib_echo
+             gen_echo_server
             ]},
   {registered, []},
   {applications, [

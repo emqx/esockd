@@ -1,6 +1,6 @@
-{application, ssl_echo_server,
+{application, echo_server,
  [
-  {description, ""},
+  {description, "Simple Echo Server"},
   {vsn, "1"},
   {registered, []},
   {applications, [

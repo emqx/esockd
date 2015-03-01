@@ -1,0 +1,14 @@
+{application, async_recv_echo_server,
+ [
+  {description, "An Erlang async_recv_echo library"},
+  {vsn, "1"},
+  {modules, [
+             async_recv_echo
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
