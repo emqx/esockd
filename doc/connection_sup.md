@@ -5,3 +5,13 @@ connection sup?
 ./ssl-5.3.6/src/tls_connection_sup.erl
 
 rabbit_connection_sup?
+
+
+
+simple_one_for_one
+temporary
+
+API:
+
+start_connection(Sup, SockArgs)
+
