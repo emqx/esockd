@@ -1,9 +1,9 @@
-{application, proc_lib_echo,
+{application, async_recv_echo_server,
  [
-  {description, "An Erlang proc_lib_echo library"},
+  {description, "An Erlang async_recv_echo library"},
   {vsn, "1"},
   {modules, [
-             proc_lib_echo
+             async_recv_echo
             ]},
   {registered, []},
   {applications, [

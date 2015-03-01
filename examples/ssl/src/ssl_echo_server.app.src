@@ -7,6 +7,5 @@
                   kernel,
                   stdlib
                  ]},
-  {mod, { ssl_echo_server_app, []}},
   {env, []}
  ]}.

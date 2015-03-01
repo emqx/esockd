@@ -1,9 +1,9 @@
-{application, gen_echo_server,
+{application, echo_client,
  [
-  {description, "gen_server echo example"},
+  {description, "An Erlang echo_client library"},
   {vsn, "1"},
   {modules, [
-             gen_echo_server
+             echo_client
             ]},
   {registered, []},
   {applications, [

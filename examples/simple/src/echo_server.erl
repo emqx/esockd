@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd TCP/SSL Acceptor Supervisor.
+%%% Simple Echo Server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -35,22 +35,33 @@
 		binary,
 		{packet, raw},
 		{reuseaddr, true},
-		{backlog, 512},
+		{backlog, 128},
 		{nodelay, false}]).
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start echo server.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 start() ->
     start(5000).
-
+%% shell
 start([Port]) when is_atom(Port) ->
     start(a2i(Port));
-
 start(Port) when is_integer(Port) ->
     ok = esockd:start(),
     SockOpts = [{acceptor_pool, 10}, 
-                {max_connections, 1024} | ?TCP_OPTIONS],
+                {max_clients, 1024} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% eSockd callback.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 start_link(SockArgs) ->
 	{ok, spawn_link(?MODULE, init, [SockArgs])}.
 

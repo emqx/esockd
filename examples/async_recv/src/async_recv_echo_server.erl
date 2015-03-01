@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -20,52 +20,51 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd TCP/SSL Acceptor Supervisor.
+%%% Async Recv Echo Server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(echo_server1).
+-module(async_recv_echo_server).
 
 -behaviour(gen_server).
 
--define(SERVER, ?MODULE).
+%% start
+-export([start/0, start/1]).
 
-%% ------------------------------------------------------------------
-%% API Function Exports
-%% ------------------------------------------------------------------
+-export([start_link/1]).
 
--export([start_link/1, go/2]).
-
-%% ------------------------------------------------------------------
 %% gen_server Function Exports
-%% ------------------------------------------------------------------
-
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {sock}).
+-record(state, {transport, sock}).
 
-%% ------------------------------------------------------------------
-%% API Function Definitions
-%% ------------------------------------------------------------------
+-define(TCP_OPTIONS, [
+		binary,
+		{packet, raw},
+		{reuseaddr, true},
+		{backlog, 512},
+		{nodelay, false}]).
+%% API
+start() ->
+    start(5000).
+start([Port]) when is_atom(Port) ->
+    start(a2i(Port));
+start(Port) when is_integer(Port) ->
+    ok = esockd:start(),
+    SockOpts = [{acceptor_pool, 10}, 
+                {max_clients, 1024} | ?TCP_OPTIONS],
+    MFArgs = {?MODULE, start_link, []},
+    esockd:open(echo, Port, SockOpts, MFArgs).
 
-start_link(Sock) ->
-    gen_server:start_link(?MODULE, [Sock], []).
+%% eSockd Callbacks
+start_link(SockArgs) ->
+	{ok, proc_lib:spawn_link(?MODULE, init, [SockArgs])}.
 
-%%NOTICE: callbed by acceptor to tell socked is ready...
-go(Pid, Sock) ->
-	gen_server:call(Pid, {go, Sock}).
-
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
-
-init([Sock]) ->
-    {ok, #state{sock = Sock}}.
-
-handle_call({go, Sock}, _From, State) ->
-	inet:setopts(Sock, [{active, once}]),
-    {reply, ok, State};
+init(SockArgs = {Transport, _Sock, _SockFun}) ->
+    {ok, NewSock} = esockd_connection:accept(SockArgs),
+    Transport:async_recv(NewSock, 0, infinity),
+    gen_server:enter_loop(?MODULE, [], #state{transport = Transport, sock = NewSock}).
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -73,14 +72,15 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, State=#state{sock=Sock}) ->
-	echo(Sock, Data),
-	inet:setopts(Sock, [{active, once}]),
+handle_info({inet_async, Sock, _Ref, {ok, Data}}, State = #state{transport = Transport, sock = Sock}) ->
+	{ok, Name} = Transport:peername(Sock),
+	io:format("~p: ~s~n", [Name, Data]),
+	Transport:send(Sock, Data),
+    Transport:async_recv(Sock, 0, infinity),
     {noreply, State};
 
-handle_info({tcp_closed, Sock}, State=#state{sock=Sock}) ->
-	io:format("~p tcp_closed~n", [Sock]),
-	{stop, normal, State};
+handle_info({inet_async, _Sock, _Ref, {error, Reason}}, State) ->
+    {stop, {shutdown, {inet_async_error, Reason}}, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -91,11 +91,5 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%% ------------------------------------------------------------------
-%% Internal Function Definitions
-%% ------------------------------------------------------------------
-echo(Sock, Data) ->
-	{ok, Name} = inet:peername(Sock),
-	io:format("~p: ~s~n", [Name, Data]),
-	gen_tcp:send(Sock, Data).
+a2i(A) -> list_to_integer(atom_to_list(A)).
 

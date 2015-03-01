@@ -26,10 +26,26 @@
 %%%-----------------------------------------------------------------------------
 -module(ssl_echo_server).
 
-%%callback 
--export([start_link/1, 
-		 init/1,
-		 loop/3]).
+% start
+-export([start/0, start/1]).
+
+%% callback 
+-export([start_link/1, init/1, loop/3]).
+
+start() ->
+    start(5000).
+
+start(Port) ->
+    ok = esockd:start(),
+    %{cacertfile, "./crt/cacert.pem"}, 
+    SslOpts = [{certfile, "./crt/demo.crt"},
+               {keyfile,  "./crt/demo.key"}],
+    SockOpts = [binary, 
+                {reuseaddr, true},
+                {acceptor_pool, 4},
+                {max_clients, 1000}, 
+                {ssl, SslOpts}],
+    {ok, _} = esockd:open('echo/ssl', Port, SockOpts, ssl_echo_server).
 
 start_link(SockArgs) ->
 	{ok, spawn_link(?MODULE, init, [SockArgs])}.
