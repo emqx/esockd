@@ -1,0 +1,14 @@
+{application, proc_lib_echo,
+ [
+  {description, "An Erlang proc_lib_echo library"},
+  {vsn, "1"},
+  {modules, [
+             proc_lib_echo
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
