@@ -103,7 +103,7 @@ child_id({Protocol, Port}) ->
 %% Supervisor callbacks
 %%%=============================================================================
 init([]) ->
-    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_manager, worker)]} }.
+    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]} }.
 
 %%%=============================================================================
 %%% Internal functions
