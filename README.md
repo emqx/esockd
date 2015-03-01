@@ -3,7 +3,6 @@
 
 Erlang General Non-blocking TCP/SSL Server.
 
-NOTICE: no production ready
 
 ## build
 
@@ -45,7 +44,6 @@ ERTS_MAX_PORTS:
 The kernel polling option requires that you have support for it in your kernel. By default, Erlang currently supports kernel polling under FreeBSD, Mac OS X, and Solaris. If you use Linux, check this newspost. Additionaly, you need to enable this feature while compiling Erlang.
 
 ERL_MAX_ETS_TABLES
-
 
 ## client error
 

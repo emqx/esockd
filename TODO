@@ -8,8 +8,6 @@ crash and wait restart??
 
 2. acceptor_sup: 
 
-重启策略？延迟重启?？
-
 3. how to manage max connections?
 
 THIS IS VERY IMPORTANT, emfile error could crash the whole vm
@@ -24,17 +22,3 @@ ERL_MAX_PORTS
 
 MAX Connections...
 
-<<<<<<< HEAD
-0.2 version:
-
-esockd_manager... 
-
-spawn_link
-
-SSL Socket Support
-
-0.2 version:
-
-esockd_manager... 
-
-esockd_connection_sup...
