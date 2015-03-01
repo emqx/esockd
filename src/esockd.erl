@@ -52,7 +52,7 @@
 
 -type option() :: 
 		{acceptor_pool, pos_integer()} |
-		{max_connections, pos_integer()} | 
+		{max_clients, pos_integer()} | 
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 

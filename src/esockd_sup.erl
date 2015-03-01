@@ -31,7 +31,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, start_listener/4, stop_listener/2]).
+-export([start_link/0, start_listener/4, stop_listener/2, child_id/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -68,7 +68,7 @@ start_link() ->
 start_listener(Protocol, Port, Options, Callback) ->
 	MFA = {esockd_listener_sup, start_link,
             [Protocol, Port, Options, Callback]},
-	ChildSpec = {childid({Protocol, Port}), MFA,
+	ChildSpec = {child_id({Protocol, Port}), MFA,
                     transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor:start_child(?MODULE, ChildSpec).
 
@@ -82,7 +82,7 @@ start_listener(Protocol, Port, Options, Callback) ->
     Protocol :: atom(),
     Port     :: inet:port_number().
 stop_listener(Protocol, Port) ->
-    ChildId = childid({Protocol, Port}),
+    ChildId = child_id({Protocol, Port}),
 	case supervisor:terminate_child(?MODULE, ChildId) of
     ok ->
         supervisor:delete_child(?MODULE, ChildId);
@@ -90,16 +90,24 @@ stop_listener(Protocol, Port) ->
         {error, Reason}
 	end.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Child Id.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+child_id({Protocol, Port}) ->
+    {listener_sup, {Protocol, Port}}.
+
 %%%=============================================================================
 %% Supervisor callbacks
 %%%=============================================================================
-
 init([]) ->
     {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_manager, worker)]} }.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-childid({Protocol, Port}) ->
-    {listener_sup, {Protocol, Port}}.
+
+
 

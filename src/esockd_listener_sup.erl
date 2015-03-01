@@ -67,6 +67,7 @@ start_link(Protocol, Port, Options, Callback) ->
 		{listener, 
 			{esockd_listener, start_link, [Protocol, Port, Options, AcceptorSup]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
+    %%TODO: register to esockd_server...
 	{ok, Sup}.
 
 
