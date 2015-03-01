@@ -94,5 +94,5 @@ call({M, F}, SockArgs) ->
     M:F(SockArgs);
 
 call({M, F, Args}, SockArgs) ->
-    erlang:apply(M, F, Args ++ [SockArgs]).
+    erlang:apply(M, F, [SockArgs|Args]).
 
