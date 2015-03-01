@@ -37,7 +37,7 @@
 -export([open/4, close/2]).
 
 %% Management API
--export([listeners/0]).
+-export([listeners/0, listener/1]).
 
 %% utility functions...
 -export([sockopts/1, ulimit/0]).
@@ -101,7 +101,10 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 %% @end
 %%------------------------------------------------------------------------------
 listeners() ->
-    esockd_server:listeners().
+    esockd_sup:listeners().
+
+listener({Protocol, Port}) ->
+    esockd_sup:listener({Protocol, Port}).
 
 %%------------------------------------------------------------------------------
 %% @doc

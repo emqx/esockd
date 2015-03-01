@@ -31,7 +31,11 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0, start_listener/4, stop_listener/2, child_id/1]).
+-export([start_link/0]).
+
+-export([start_listener/4, stop_listener/2, listeners/0, listener/1]).
+
+-export([child_id/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -92,7 +96,30 @@ stop_listener(Protocol, Port) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Child Id.
+%% Get Listeners.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec listeners() -> [{term(), pid()}].
+listeners() ->
+    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE)].
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Get listener pid.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec listener(Id :: term()) -> undefined | pid().
+listener(Id) ->
+    case [Pid || {ChildId, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE), ChildId =:= {listener_sup, Id}] of
+        [] -> undefined;
+        L  -> hd(L)
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Listener Child Id.
 %%
 %% @end
 %%------------------------------------------------------------------------------
@@ -108,6 +135,5 @@ init([]) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
 
 
