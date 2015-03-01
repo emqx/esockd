@@ -1,67 +1,140 @@
 
 # eSockd
 
-Erlang General Non-blocking TCP/SSL Server.
+Erlang General Non-blocking TCP/SSL Socket Server.
 
+## Features 
 
-## build
+General Non-blocking TCP/SSL Socket Server.
 
-```
-	make
-```
+Acceptor Pool and Asynchronous TCP Accept.
 
-## usage
+Max connections management.
 
-test/esockd_test.erl:
+## Usage
+
+A Simple Echo Server:
 
 ```erlang
-    esockd:start(),
-    esockd:listen(5000, ?TCP_OPTIONS, {echo_server, start_link, []}).
+-module(echo_server).
+
+-export([start_link/1]).
+
+start_link(SockArgs) ->
+   {ok, spawn_link(?MODULE, init, [SockArgs])}.
+      
+init(SockArgs = {Transport, _Sock, _SockFun}) ->
+    {ok, NewSock} = esockd_connection:accept(SockArgs),
+    loop(Transport, NewSock, state).
+
+loop(Transport, Sock, State) ->
+    case Transport:recv(Sock, 0) of
+        {ok, Data} ->
+            {ok, Name} = Transport:peername(Sock),
+            io:format("~p: ~s~n", [Name, Data]),
+            Transport:send(Sock, Data),
+            loop(Transport, Sock, State);
+        {error, Reason} ->
+            io:format("tcp ~s~n", [Reason]),
+            {stop, Reason}
+    end.
 ```
 
-## how to handle e{n,m}file errors when accept?
+Startup Echo Server:
 
-### error description
+```
+%% start eSockd application
+ok = esockd:start().
 
-enfile: The system limit on the total number of open files has been reached.
+SockOpts = [binary, 
+            {reuseaddr, true}, 
+            {nodelay, false},
+            {acceptor_pool, 10},
+            {max_clients, 1024}].
 
-emfile: The per-process limit of open file descriptors has been reached. "ulimit -n XXX"
+MFArgs = {echo_server, start_link, []},
 
-### solution
+esockd:open(echo, 5000, SockOpts, MFArgs).
+```
 
-acceptor sleep for a while.
+## Examples
 
-## tune
+```
+examples/
+    async_recv/
+    gen_server/
+    simple/
+    ssl/
+```
 
-ERL_MAX_PORTS: Erlang Ports Limit
+Example   | Description
+----------|------
+async_recv| prim_net async recv
+gen_server| gen_server behaviour
+simple    | simple echo server
+ssl       | ssl echo server
 
-ERTS_MAX_PORTS: 
+## API
 
-+P: Maximum Number of Erlang Processes
+### Start
 
-+K true: Kernel Polling
+```
+esockd:start().
+%% or
+application:start(esockd).
+```
 
-The kernel polling option requires that you have support for it in your kernel. By default, Erlang currently supports kernel polling under FreeBSD, Mac OS X, and Solaris. If you use Linux, check this newspost. Additionaly, you need to enable this feature while compiling Erlang.
+### Open
 
-ERL_MAX_ETS_TABLES
+```
+esockd:open(echo, 5000, [binary, {reuseaddr, true}], {echo_server, start_link, []}).
+```
 
-## client error
+Spec:
 
-When client received '{error,econnreset}', it means client connects too much in short time.
+```
+-spec open(Protocol, Port, Options, Callback) -> {ok, pid()} | {error, any()} when
+    Protocol     :: atom(),
+    Port         :: inet:port_number(),
+    Options		 :: [option()], 
+    Callback     :: callback().
+```
 
-Server socket option '{backlog, XXX}' could increase max pending connections
+Options:
 
+```
+-type option() :: 
+		{acceptor_pool, pos_integer()} |
+		{max_clients, pos_integer()} | 
+        {ssl, [ssl:ssloption()]} |
+        gen_tcp:listen_option().
+```
 
-## client_sup
+Callback:
 
-esockd_client_sup respond for:
+```
+-type mfargs() :: {module(), atom(), [term()]}.
 
-1. start client, and let it run...
+-type callback() :: mfargs() | {atom(), atom()} | atom().
+```
 
-2. control max connections
+### Close
 
-3. count active socks...
+```
+esockd:close(echo, 5000).
+```
+
+```
+-spec close(Protocol, Port) -> ok when 
+    Protocol    :: atom(),
+    Port        :: inet:port_number().
+```
+
+## Design
+
+TODO...
 
 ## Author
 
-feng@slimchat.io
+feng@emqtt.io
+
