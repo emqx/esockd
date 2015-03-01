@@ -54,13 +54,12 @@
     Options	    :: [esockd:option()],
     AcceptorSup :: pid().
 start_link(Protocol, Port, Options, AcceptorSup) ->
-    gen_server:start_link({local, name({Protocol, Port})},
-        ?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
+    gen_server:start_link(?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
 
 init({Protocol, Port, Options, AcceptorSup}) ->
     process_flag(trap_exit, true),
     %%don't active the socket...
-	SockOpts = sockopts(Options),
+	SockOpts = esockd:sockopts(Options),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
@@ -100,20 +99,5 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-name({Protocol, Port}) ->
-    list_to_atom(lists:concat([listener, ':', Protocol, ':', Port])).
-
-sockopts(Opts) ->
-	sockopts(Opts, []).
-sockopts([], Acc) ->
-	Acc;
-sockopts([{max_connections, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{acceptor_pool, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{ssl, _}|Opts], Acc) ->
-    sockopts(Opts, Acc);
-sockopts([H|Opts], Acc) ->
-	sockopts(Opts, [H|Acc]).
 
 

@@ -32,4 +32,8 @@ https://github.com/oscarh/gen_tcpd
 7. how to handle em
 
 
+8. connection sup??
+
+simple_one_for_one + max connections limit + statistics
+
 

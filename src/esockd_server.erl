@@ -20,28 +20,29 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd top supervisor.
+%%% eSockd server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(esockd_sup).
+-module(esockd_server).
 
--author('feng@emqtt.io').
+-author("feng@emqtt.io").
 
--behaviour(supervisor).
+-behaviour(gen_server).
 
-%% API
+-define(SERVER, ?MODULE).
+
+%% Start esockd server
 -export([start_link/0]).
 
--export([start_listener/4, stop_listener/2, listeners/0, listener/1]).
+%% API
+-export([listeners/0]).
 
--export([child_id/1]).
+%% gen_server callbacks
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2,
+         terminate/2, code_change/3]).
 
-%% Supervisor callbacks
--export([init/1]).
-
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
+-record(state, {}).
 
 %%%=============================================================================
 %%% API
@@ -49,91 +50,91 @@
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Start supervisor.
+%% Start esockd manager.
 %%
 %% @end
 %%------------------------------------------------------------------------------
-
--spec start_link() -> {ok, pid()}.
+-spec start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}.
 start_link() ->
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Start a listener.
+%% Get listeners.
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_listener(Protocol, Port, Options, Callback) -> {ok, pid()} when
-    Protocol   :: atom(),
-    Port       :: inet:port_number(),
-    Options    :: list(esockd:option()),
-    Callback   :: esockd:callback().
-start_listener(Protocol, Port, Options, Callback) ->
-	MFA = {esockd_listener_sup, start_link,
-            [Protocol, Port, Options, Callback]},
-	ChildSpec = {child_id({Protocol, Port}), MFA,
-                    transient, infinity, supervisor, [esockd_listener_sup]},
-	supervisor:start_child(?MODULE, ChildSpec).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Stop the listener.
-%%
-%% @end
-%%------------------------------------------------------------------------------
--spec stop_listener(Protocol, Port) -> ok | {error, any()} when
-    Protocol :: atom(),
-    Port     :: inet:port_number().
-stop_listener(Protocol, Port) ->
-    ChildId = child_id({Protocol, Port}),
-	case supervisor:terminate_child(?MODULE, ChildId) of
-    ok ->
-        supervisor:delete_child(?MODULE, ChildId);
-    {error, Reason} ->
-        {error, Reason}
-	end.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get Listeners.
-%%
-%% @end
-%%------------------------------------------------------------------------------
--spec listeners() -> [{term(), pid()}].
 listeners() ->
-    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE)].
+    gen_server:call(?SERVER, listeners).
 
 %%------------------------------------------------------------------------------
+%% @private
 %% @doc
-%% Get listener pid.
+%% Initializes the server
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec listener(Id :: term()) -> undefined | pid().
-listener(Id) ->
-    case [Pid || {ChildId, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE), ChildId =:= {listener_sup, Id}] of
-        [] -> undefined;
-        L  -> hd(L)
-    end.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Listener Child Id.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-child_id({Protocol, Port}) ->
-    {listener_sup, {Protocol, Port}}.
-
-%%%=============================================================================
-%% Supervisor callbacks
-%%%=============================================================================
 init([]) ->
-    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]} }.
+    {ok, #state{}}.
+
+%%------------------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling call messages
+%%
+%% @end
+%%------------------------------------------------------------------------------
+handle_call(listeners, _From, State) ->
+    %%TODO: get listeners...
+    {reply, [], State};
+
+handle_call(_Request, _From, State) ->
+    {reply, ok, State}.
+
+%%------------------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling cast messages
+%%
+%% @end
+%%------------------------------------------------------------------------------
+handle_cast(_Request, State) ->
+    {noreply, State}.
+
+%%------------------------------------------------------------------------------
+%% @private
+%% @doc
+%% Handling all non call/cast messages
+%%
+%% @end
+%%------------------------------------------------------------------------------
+handle_info(_Info, State) ->
+    {noreply, State}.
+
+%%------------------------------------------------------------------------------
+%% @private
+%% @doc
+%% This function is called by a gen_server when it is about to
+%% terminate. It should be the opposite of Module:init/1 and do any
+%% necessary cleaning up. When it returns, the gen_server terminates
+%% with Reason. The return value is ignored.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+terminate(_Reason, _State) ->
+    ok.
+
+%%------------------------------------------------------------------------------
+%% @private
+%% @doc
+%% Convert process state when code is changed
+%%
+%% @end
+%%------------------------------------------------------------------------------
+code_change(_OldVsn, State, _Extra) ->
+    {ok, State}.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-
 

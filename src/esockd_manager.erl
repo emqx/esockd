@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd manager.
+%%% eSockd manager to controll max clients.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -30,19 +30,16 @@
 
 -behaviour(gen_server).
 
--define(SERVER, ?MODULE).
-
-%% Start esockd manager
--export([start_link/0]).
-
 %% API
--export([opened/0, getopts/1, getopts/2, setopts/2, getstats/1, getstats/2]).
+-export([start_link/2, new_connection/4]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {}).
+-define(MAX_CLIENTS, 1024).
+
+-record(state, {conn_sup, max_clients = 1024}).
 
 %%%=============================================================================
 %%% API
@@ -54,64 +51,33 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link() -> {ok, Pid :: pid()} | ignore | {error, Reason :: term()}.
-start_link() ->
-    gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+-spec start_link(Options, ConnSup) -> {ok, Pid :: pid()} | ignore | {error, any()} when
+    Options :: [esockd:option()],
+    ConnSup :: pid().
+start_link(Options, ConnSup) ->
+    gen_server:start_link(?MODULE, [Options, ConnSup], []).
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Get opened listeners.
+%% New connection.
 %%
 %% @end
 %%------------------------------------------------------------------------------
-opened() ->
-    gen_server:call(?SERVER, get_opened).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get all options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getopts({Protocol, Port}) ->
-    gen_server:call(?SERVER, {getopts, {Protocol, Port}}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get specific options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getopts({Protocol, Port}, Opts) ->
-    gen_server:call(?SERVER, {getopts, {Protocol, Port}, Opts}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Set options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-setopts({Protocol, Port}, Options) ->
-    gen_server:call(?SERVER, {setopts, {Protocol, Port}, Options}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get all stats of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getstats({Protol, Port}) ->
-    gen_server:call(?SERVER, {getstats, {Protol, Port}}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get specific stats of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getstats({Protol, Port}, Options) ->
-    gen_server:call(?SERVER, {getstats, {Protol, Port}, Options}).
-
+new_connection(Manager, Mod, Sock, SockFun) ->
+    case gen_server:call(Manager, new_connection) of
+        {ok, ConnSup} ->
+            SockArgs = {esockd_transport, Sock, SockFun},
+            case esockd_connection_sup:start_connection(ConnSup, SockArgs) of
+            {ok, ConnPid} ->
+                Mod:controlling_process(Sock, ConnPid),
+                esockd_connection:ready(ConnPid, SockArgs),
+                {ok, ConnPid};
+            {error, Error} ->
+                {error, Error}
+            end;
+        {reject, Reason} ->
+            {error, {reject, Reason}}
+    end.
 
 %%%=============================================================================
 %%% gen_server callbacks
@@ -122,20 +88,11 @@ getstats({Protol, Port}, Options) ->
 %% @doc
 %% Initializes the server
 %%
-%% @spec init(Args) -> {ok, State} |
-%%                     {ok, State, Timeout} |
-%%                     ignore |
-%%                     {stop, Reason}
 %% @end
 %%------------------------------------------------------------------------------
--spec init(Args) ->
-    {ok, State} | {ok, State, timeout() | hibernate} |
-    {stop, Reason} | ignore when
-    Args    :: term(),
-    State   :: #state{},
-    Reason  :: any().
-init([]) ->
-    {ok, #state{}}.
+init([Options, ConnSup]) ->
+    MaxClients = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
+    {ok, #state{conn_sup = ConnSup, max_clients = MaxClients}}.
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -144,49 +101,16 @@ init([]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_call(Request, From, State) ->
-    {reply, Reply, NewState} |
-    {reply, Reply, NewState, timeout() | hibernate} |
-    {noreply, NewState} |
-    {noreply, NewState, timeout() | hibernate} |
-    {stop, Reason, Reply, NewState} |
-    {stop, Reason, NewState} when
-    Request     :: term(),
-    From        :: {pid, Tag :: term()},
-    State       :: #state{},
-    NewState    :: #state{},
-    Reply       :: term(),
-    Reason      :: term().
+handle_call(new_connection, _From, State = #state{conn_sup = ConnSup, max_clients = MaxClients}) ->
+    Count = esockd_connection_sup:count_connection(ConnSup),
+    Reply =
+    if
+        Count >= MaxClients -> {reject, limit};
+        true -> {ok, ConnSup}
+    end,
+    {reply, Reply, State};
 
-
-handle_call(get_opened, _From, State) ->
-    %%TODO: get opened ports...
-    {reply, [], State};
-
-
-handle_call({getopts, {Protocol, Port}}, _From, State) ->
-    %%TODO: options
-    {reply, [], State};
-
-
-handle_call({getopts, {Protocol, Port}, Opts}, _From, State) ->
-    %%TODO:
-    {reply, [], State};
-
-
-handle_call({setopts, {Protocol, Port}, Options}, _From, State) ->
-    %%TODO:
-    {reply, ok, State};
-
-handle_call({getstats, {Protol, Port}}, _From, State) ->
-    %%TODO:
-    {reply, [], State};
-
-handle_call({getstats, {Protol, Port}, Options}, _From, State) ->
-    %%TODO:
-    {reply, [], State};
-
-handle_call(_Request, _From, State) ->
+handle_call(_Req, _From, State) ->
     {reply, ok, State}.
 
 %%------------------------------------------------------------------------------
@@ -196,14 +120,6 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_cast(Request, State) ->
-    {noreply, NewState} |
-    {noreply, NewState, timeout() | hibernate} |
-    {stop, Reason, NewState} when
-    Request   :: term(),
-    State     :: #state{},
-    NewState  :: #state{},
-    Reason    :: term().
 handle_cast(_Request, State) ->
     {noreply, State}.
 
@@ -212,19 +128,8 @@ handle_cast(_Request, State) ->
 %% @doc
 %% Handling all non call/cast messages
 %%
-%% @spec handle_info(Info, State) -> {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, State}
 %% @end
 %%------------------------------------------------------------------------------
--spec handle_info(Info, State) ->
-    {noreply, NewState} |
-    {noreply, NewState, timeout() | hibernate} |
-    {stop, Reason, NewState} when
-    Info     :: timeout() | term(),
-    State    :: #state{},
-    NewState :: #state{},
-    Reason   :: term().
 handle_info(_Info, State) ->
     {noreply, State}.
 
@@ -236,7 +141,6 @@ handle_info(_Info, State) ->
 %% necessary cleaning up. When it returns, the gen_server terminates
 %% with Reason. The return value is ignored.
 %%
-%% @spec terminate(Reason, State) -> void()
 %% @end
 %%------------------------------------------------------------------------------
 -spec terminate(Reason, State) -> any() when
@@ -250,18 +154,12 @@ terminate(_Reason, _State) ->
 %% @doc
 %% Convert process state when code is changed
 %%
-%% @spec code_change(OldVsn, State, Extra) -> {ok, NewState}
 %% @end
 %%------------------------------------------------------------------------------
--spec code_change(OldVsn, State, Extra) -> {ok, NewState} | {error, Reason} when
-    OldVsn   :: term() | {down, term()},
-    State    :: #state{},
-    Extra    :: term(),
-    NewState :: #state{},
-    Reason   :: term().
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+

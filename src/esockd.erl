@@ -37,10 +37,10 @@
 -export([open/4, close/2]).
 
 %% Management API
--export([opened/0, getopts/1, getopts/2, setopts/2, getstats/1, getstats/2]).
+-export([listeners/0, listener/1]).
 
 %% utility functions...
--export([ulimit/0]).
+-export([sockopts/1, ulimit/0]).
 
 -type ssl_socket() :: #ssl_socket{}.
 
@@ -52,7 +52,7 @@
 
 -type option() :: 
 		{acceptor_pool, pos_integer()} |
-		{max_connections, pos_integer()} | 
+		{max_clients, pos_integer()} | 
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 
@@ -96,57 +96,34 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Get opened listeners.
+%% Get listeners.
 %%
 %% @end
 %%------------------------------------------------------------------------------
-opened() ->
-    esockd_manager:opened().
+listeners() ->
+    esockd_sup:listeners().
+
+listener({Protocol, Port}) ->
+    esockd_sup:listener({Protocol, Port}).
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Get all options of opened port.
+%% Filter socket options.
 %%
 %% @end
 %%------------------------------------------------------------------------------
-getopts({Protocol, Port}) ->
-    esockd_manager:getopts({Protocol, Port}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get specific options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getopts({Protocol, Port}, Options) ->
-    esockd_manager:getopts({Protocol, Port}, Options).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Set options of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-setopts({Protocol, Port}, Options) ->
-    esockd_manager:setopts({Protocol, Port}, Options).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get all stats of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getstats({Protol, Port}) ->
-    esockd_manager:getstats({Protol, Port}).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get specific stats of opened port.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-getstats({Protol, Port}, Options) ->
-    esockd_manager:getstats({Protol, Port}, Options).
+sockopts(Opts) ->
+	sockopts(Opts, []).
+sockopts([], Acc) ->
+	Acc;
+sockopts([{max_clients, _}|Opts], Acc) ->
+	sockopts(Opts, Acc);
+sockopts([{acceptor_pool, _}|Opts], Acc) ->
+	sockopts(Opts, Acc);
+sockopts([{ssl, _}|Opts], Acc) ->
+    sockopts(Opts, Acc);
+sockopts([H|Opts], Acc) ->
+	sockopts(Opts, [H|Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -156,5 +133,4 @@ getstats({Protol, Port}, Options) ->
 -spec ulimit() -> pos_integer().
 ulimit() ->
     proplists:get_value(max_fds, erlang:system_info(check_io)).
-
 
