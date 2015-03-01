@@ -134,6 +134,10 @@ esockd:close(echo, 5000).
 
 TODO...
 
+## License
+
+The MIT License (MIT)
+
 ## Author
 
 feng@emqtt.io
