@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -24,29 +24,51 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(echo_test).
+-module(echo_server).
 
--export([start/1, start/2,
-		stop/1]).
+-export([start/0, start/1]).
+
+%%callback 
+-export([start_link/1, init/1, loop/3]).
 
 -define(TCP_OPTIONS, [
-		binary, 
-		{packet, raw}, 
-		{reuseaddr, true}, 
-		{backlog, 512}, 
-		{nodelay, false}]). 
+		binary,
+		{packet, raw},
+		{reuseaddr, true},
+		{backlog, 512},
+		{nodelay, false}]).
+
+start() ->
+    start(5000).
 
 start([Port]) when is_atom(Port) ->
-	start(Port, echo_server);
+    start(a2i(Port));
 
-start([Port, Server]) when is_atom(Port), is_atom(Server) ->
-	start(list_to_integer(atom_to_list(Port)), Server).
-
-start(Port, Server) when is_integer(Port), is_atom(Server) ->
-    [application:start(App) || App <- [syntax, compiler, crypto, public_key, lager]],
+start(Port) when is_integer(Port) ->
     ok = esockd:start(),
-	MFArgs = {Server, start_link, []},
-    esockd:open(echo, Port, [{acceptor_pool, 10}, {max_connections, 2048}|?TCP_OPTIONS], MFArgs).
+    SockOpts = [{acceptor_pool, 10}, 
+                {max_connections, 1024} | ?TCP_OPTIONS],
+    MFArgs = {?MODULE, start_link, []},
+    esockd:open(echo, Port, SockOpts, MFArgs).
 
-stop(Port) ->
-    esockd:close(echo, Port).
+start_link(SockArgs) ->
+	{ok, spawn_link(?MODULE, init, [SockArgs])}.
+
+init(SockArgs = {Transport, _Sock, _SockFun}) ->
+    {ok, NewSock} = esockd_connection:accept(SockArgs),
+	loop(Transport, NewSock, state).
+
+loop(Transport, Sock, State) ->
+	case Transport:recv(Sock, 0) of
+		{ok, Data} ->
+			{ok, Name} = Transport:peername(Sock),
+			io:format("~p: ~s~n", [Name, Data]),
+			Transport:send(Sock, Data),
+			loop(Transport, Sock, State);
+		{error, Reason} ->
+			io:format("tcp ~s~n", [Reason]),
+			{stop, Reason}
+	end.
+
+a2i(A) -> list_to_integer(atom_to_list(A)).
+

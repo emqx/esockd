@@ -1,0 +1,11 @@
+{application, echo_server,
+ [
+  {description, "Simple Echo Server"},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.

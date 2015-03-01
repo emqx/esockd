@@ -13,7 +13,6 @@ start() ->
 %% ===================================================================
 %% Application callbacks
 %% ===================================================================
-
 start(_StartType, _StartArgs) ->
     ok = esockd:start(),
     {ok, Sup} = ssl_echo_server_sup:start_link(),

@@ -1,0 +1,14 @@
+{application, gen_echo_server,
+ [
+  {description, "An Erlang gen_echo_server library"},
+  {vsn, "1"},
+  {modules, [
+             gen_echo_server
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
