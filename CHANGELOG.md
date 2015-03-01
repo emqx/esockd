@@ -2,6 +2,13 @@
 ChangeLog
 ==================
 
+0.2.0-beta (2015/03/06)
+------------------------
+
+API upgrade...
+
+esockd_connection.erl: 'erlang:apply(M, F, [SockArgs|Args])'
+
 0.1.1-beta (2015/03/01)
 ------------------------
 
