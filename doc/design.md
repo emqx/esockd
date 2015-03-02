@@ -5,6 +5,36 @@
 1. TCP/SSL Socket Server
 2. async accept and receive
 
+## Issues?
+
+1. how to handle??
+
+{accept_failed, e{n, m}file}
+
+sleep for a while?
+
+crash and wait restart??
+
+2. acceptor_sup: 
+
+3. how to manage max connections?
+
+THIS IS VERY IMPORTANT, emfile error could crash the whole vm
+
+4. how to get current connections?
+
+5. {error,already_present}
+
+6. esockd_client_sup should be monitor child, and calculate max connections limit?
+
+ERL_MAX_PORTS 
+
+MAX Connections...
+
+listener->acceptor_sup->manager->connection_sup
+
+
+
 ### Referrence
 
 1. http://20bits.com/article/erlang-a-generalized-tcp-server
