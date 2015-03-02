@@ -109,6 +109,6 @@ init([]) ->
 %% Internal functions
 %%%=============================================================================
 logger(Options) ->
-    gen_logger:new(proplists:get_value(logger, Options, 
-                                       application:get_env(esockd, logger))).
+    {ok, Default} = application:get_env(esockd, logger),
+    gen_logger:new(proplists:get_value(logger, Options, Default)).
 

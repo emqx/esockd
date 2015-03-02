@@ -50,7 +50,7 @@ start() ->
 start([Port]) when is_atom(Port) ->
     start(a2i(Port));
 start(Port) when is_integer(Port) ->
-    ok = esockd:start(),
+    esockd:start(),
     SockOpts = [{acceptor_pool, 10}, 
                 {max_clients, 1024} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
