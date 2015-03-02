@@ -68,7 +68,6 @@ start_link(Protocol, Port, Options, Callback) ->
 		{listener, 
 			{esockd_listener, start_link, [Protocol, Port, Options, AcceptorSup, Logger]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
-    %%TODO: register to esockd_server...
 	{ok, Sup}.
 
 %%------------------------------------------------------------------------------
@@ -103,7 +102,7 @@ child_pid(Sup, ChildId) ->
 %% Supervisor callbacks
 %%%=============================================================================
 init([]) ->
-    {ok, {{one_for_all, 10, 100}, []}}.
+    {ok, {{rest_for_one, 10, 100}, []}}.
 
 %%%=============================================================================
 %% Internal functions
