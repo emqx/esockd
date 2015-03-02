@@ -2,7 +2,10 @@
 
 REBAR=./rebar
 
-all: compile xref
+all: get-deps compile xref
+
+get-deps:
+	@$(REBAR) get-deps
 
 compile:
 	@$(REBAR) compile

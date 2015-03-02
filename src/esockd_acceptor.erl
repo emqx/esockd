@@ -32,7 +32,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/3]).
+-export([start_link/4]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -45,6 +45,7 @@
                 lsock       :: inet:socket(),
                 sockfun     :: sockfun(),
                 sockname    :: iolist(),
+                logger      :: gen_logger:logmod(),
                 ref         :: reference(), 
                 emfile_count = 0}).
 
@@ -54,18 +55,23 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Manager, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+-spec start_link(Manager, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
       Manager   :: pid(),
+      Logger    :: gen_logger:logmod(),
       LSock     :: inet:socket(),
       SockFun   :: socket().
-start_link(Manager, LSock, SockFun) ->
-    gen_server:start_link(?MODULE, {Manager, LSock, SockFun}, []).
+start_link(Manager, Logger, LSock, SockFun) ->
+    gen_server:start_link(?MODULE, {Manager, Logger, LSock, SockFun}, []).
 
-init({Manager, LSock, SockFun}) ->
+init({Manager, Logger, LSock, SockFun}) ->
     {ok, {IPAddress, Port}} = inet:sockname(LSock),
     SockName = lists:flatten(io_lib:format("~s:~p", [esockd_net:ntoab(IPAddress), Port])),
     gen_server:cast(self(), accept),
-    {ok, #state{manager = Manager, lsock = LSock, sockfun = SockFun, sockname = SockName}}.
+    {ok, #state{manager = Manager,
+                lsock = LSock,
+                sockfun = SockFun,
+                sockname = SockName,
+                logger = Logger}}.
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -76,8 +82,12 @@ handle_cast(accept, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({inet_async, LSock, Ref, {ok, Sock}},
-            State = #state{manager = Manager, lsock=LSock, sockfun = SockFun, sockname = SockName, ref=Ref}) ->
+handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manager,
+                                                                 lsock=LSock,
+                                                                 sockfun = SockFun,
+                                                                 sockname = SockName,
+                                                                 logger = Logger,
+                                                                 ref=Ref}) ->
 
     %% patch up the socket so it looks like one we got from
     %% gen_tcp:accept/1
@@ -85,20 +95,20 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	error_logger:info_msg("~s: Accept from ~p~n", [SockName, Peername]),
+	Logger:info("~s: Accept from ~p~n", [SockName, Peername]),
     case tune_buffer_size(Sock) of
         ok -> 
             case esockd_manager:new_connection(Manager, Mod, Sock, SockFun) of
                 {ok, _Pid} ->
                     ok;
                 {error, Reason} ->
-                    error_logger:error_msg("failed to start connection on ~s - ~p", [SockName, Reason]),
+                    Logger:error("failed to start connection on ~s - ~p", [SockName, Reason]),
                     catch port_close(Sock)
             end;
         {error, enotconn} -> 
 			catch port_close(Sock);
         {error, Err} -> 
-            error_logger:error_msg("failed to tune buffer size of connection accepted on ~s - ~s", [SockName, Err]),
+            Logger:error("failed to tune buffer size of connection accepted on ~s - ~s", [SockName, Err]),
             catch port_close(Sock)
     end,
 
@@ -148,21 +158,21 @@ accept(State = #state{lsock=LSock}) ->
 %% error happened...
 %%--------------------------------------------------------------------
 %% emfile: The per-process limit of open file descriptors has been reached.
-sockerr(emfile, State = #state{sockname = SockName, emfile_count = Count}) ->
+sockerr(emfile, State = #state{sockname = SockName, emfile_count = Count, logger = Logger}) ->
 	%%avoid too many error log.. stupid??
 	case Count rem 100 of 
-        0 -> error_logger:error_msg("acceptor on ~s suspend 100(ms) for ~p emfile errors!!!", [SockName, Count]);
+        0 -> Logger:error("acceptor on ~s suspend 100(ms) for ~p emfile errors!!!", [SockName, Count]);
         _ -> ignore
 	end,
 	suspend(100, State#state{emfile_count = Count+1});
 
 %% enfile: The system limit on the total number of open files has been reached. usually OS's limit.
-sockerr(enfile, State = #state{sockname = SockName}) ->
-	error_logger:error_msg("accept error on ~s - !!!enfile!!!", [SockName]),
+sockerr(enfile, State = #state{sockname = SockName, logger = Logger}) ->
+	Logger:error("accept error on ~s - !!!enfile!!!", [SockName]),
 	suspend(100, State);
 
-sockerr(Error, State = #state{sockname = SockName}) ->
-	error_logger:error_msg("accept error on ~s - ~s", [SockName, Error]),
+sockerr(Error, State = #state{sockname = SockName, logger = Logger}) ->
+	Logger:error("accept error on ~s - ~s", [SockName, Error]),
 	{stop, {accept_error, Error}, State}.
 
 %%--------------------------------------------------------------------

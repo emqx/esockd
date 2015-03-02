@@ -53,9 +53,10 @@
 
 -type callback() :: mfargs() | atom() | function().
 
--type option() :: 
+-type option() ::
 		{acceptor_pool, pos_integer()} |
 		{max_clients, pos_integer()} | 
+        {logger, gen_logger:logmod()} |
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 

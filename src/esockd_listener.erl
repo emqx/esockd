@@ -32,13 +32,14 @@
 
 -behaviour(gen_server).
 
--export([start_link/4]).
+-export([start_link/5]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {protocol  :: atom(),
-                lsock     :: inet:socket()}).
+                lsock     :: inet:socket(),
+                logger    :: gen_logger:logmod()}).
 
 -define(ACCEPTOR_POOL, 10).
 
@@ -48,15 +49,16 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Protocol, Port, Options, AcceptorSup) -> {ok, pid()} | {error, any()} | ignore when 
+-spec start_link(Protocol, Port, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
     Protocol    :: atom(),
     Port        :: inet:port_number(),
     Options	    :: [esockd:option()],
-    AcceptorSup :: pid().
-start_link(Protocol, Port, Options, AcceptorSup) ->
-    gen_server:start_link(?MODULE, {Protocol, Port, Options, AcceptorSup}, []).
+    AcceptorSup :: pid(),
+    Logger      :: gen_logger:logmod().
+start_link(Protocol, Port, Options, AcceptorSup, Logger) ->
+    gen_server:start_link(?MODULE, {Protocol, Port, Options, AcceptorSup, Logger}, []).
 
-init({Protocol, Port, Options, AcceptorSup}) ->
+init({Protocol, Port, Options, AcceptorSup, Logger}) ->
     process_flag(trap_exit, true),
     %%don't active the socket...
 	SockOpts = esockd:sockopts(Options),
@@ -65,15 +67,15 @@ init({Protocol, Port, Options, AcceptorSup}) ->
             SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
 			AcceptorNum = proplists:get_value(acceptor_pool, Options, ?ACCEPTOR_POOL),
 			lists:foreach(fun (_) ->
-				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock, SockFun])
+				{ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock, SockFun)
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
-            error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.", 
-                                  [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
-            {ok, #state{protocol = Protocol, lsock = LSock}};
+            Logger:info("~s listen on ~s:~p with ~p acceptors.", 
+                        [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
+            {ok, #state{protocol = Protocol, lsock = LSock, logger = Logger}};
         {error, Reason} ->
-            error_logger:info_msg("~s failed to listen on ~p - ~p (~s)~n",
-				[Protocol, Port, Reason, inet:format_error(Reason)]),
+            Logger:info("~s failed to listen on ~p - ~p (~s)~n",
+                        [Protocol, Port, Reason, inet:format_error(Reason)]),
             {stop, {cannot_listen, Port, Reason}}
     end.
 
@@ -86,12 +88,12 @@ handle_cast(_Msg, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{lsock=LSock, protocol=Protocol}) ->
+terminate(_Reason, #state{lsock=LSock, protocol=Protocol, logger = Logger}) ->
     {ok, {IPAddress, Port}} = esockd_transport:sockname(LSock),
     esockd_transport:close(LSock),
     %%error report
-    error_logger:info_msg("stopped ~s on ~s:~p~n",
-           [Protocol, esockd_net:ntoab(IPAddress), Port]),
+    Logger:info("stopped ~s on ~s:~p~n",
+                [Protocol, esockd_net:ntoab(IPAddress), Port]),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->

@@ -11,6 +11,8 @@ esockd_connection.erl: 'erlang:apply(M, F, [SockArgs|Args])'
 
 esockd_acceptor.erl: log protocol name
 
+gen_logger to replace error_logger, and add 'logger' option
+
 0.1.1-beta (2015/03/01)
 ------------------------
 

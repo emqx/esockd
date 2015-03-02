@@ -50,6 +50,7 @@
     Options	  :: list(esockd:option()),
     Callback  :: esockd:callback().
 start_link(Protocol, Port, Options, Callback) ->
+    Logger = logger(Options),
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ConnSup} = supervisor:start_child(Sup, 
 		{connection_sup,
@@ -61,11 +62,11 @@ start_link(Protocol, Port, Options, Callback) ->
                 transient, 16#ffffffff, worker, [esockd_manager]}),
 	{ok, AcceptorSup} = supervisor:start_child(Sup, 
 		{acceptor_sup, 
-			{esockd_acceptor_sup, start_link, [Manager]},
+			{esockd_acceptor_sup, start_link, [Manager, Logger]},
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup, 
 		{listener, 
-			{esockd_listener, start_link, [Protocol, Port, Options, AcceptorSup]},
+			{esockd_listener, start_link, [Protocol, Port, Options, AcceptorSup, Logger]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
     %%TODO: register to esockd_server...
 	{ok, Sup}.
@@ -107,4 +108,7 @@ init([]) ->
 %%%=============================================================================
 %% Internal functions
 %%%=============================================================================
+logger(Options) ->
+    gen_logger:new(proplists:get_value(logger, Options, 
+                                       application:get_env(esockd, logger))).
 
