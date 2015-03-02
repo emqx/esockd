@@ -2,12 +2,14 @@
 ChangeLog
 ==================
 
-0.2.0-beta (2015/03/06)
+0.2.0-beta (2015/03/03)
 ------------------------
 
-API upgrade...
+esockd.erl: add get_max_clients/1, set_max_clients/2, get_current_clients/1
 
 esockd_connection.erl: 'erlang:apply(M, F, [SockArgs|Args])'
+
+esockd_acceptor.erl: log protocol name
 
 0.1.1-beta (2015/03/01)
 ------------------------

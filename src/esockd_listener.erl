@@ -68,11 +68,12 @@ init({Protocol, Port, Options, AcceptorSup}) ->
 				{ok, _APid} = supervisor:start_child(AcceptorSup, [LSock, SockFun])
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
-            error_logger:info_msg("listen on ~s:~p with ~p acceptors.", [esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
+            error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.", 
+                                  [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
             {ok, #state{protocol = Protocol, lsock = LSock}};
         {error, Reason} ->
-            error_logger:info_msg("failed to listen on ~p - ~p (~s)~n",
-				[Port, Reason, inet:format_error(Reason)]),
+            error_logger:info_msg("~s failed to listen on ~p - ~p (~s)~n",
+				[Protocol, Port, Reason, inet:format_error(Reason)]),
             {stop, {cannot_listen, Port, Reason}}
     end.
 

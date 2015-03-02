@@ -33,6 +33,9 @@
 %% API
 -export([start_link/2, new_connection/4]).
 
+%% Manage
+-export([get_max_clients/1, set_max_clients/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -79,6 +82,12 @@ new_connection(Manager, Mod, Sock, SockFun) ->
             {error, {reject, Reason}}
     end.
 
+get_max_clients(Manager) when is_pid(Manager) ->
+    gen_server:call(Manager, get_max_clients).
+
+set_max_clients(Manager, MaxClients) when is_pid(Manager) ->
+    gen_server:call(Manager, {set_max_clients, MaxClients}).
+
 %%%=============================================================================
 %%% gen_server callbacks
 %%%=============================================================================
@@ -109,6 +118,12 @@ handle_call(new_connection, _From, State = #state{conn_sup = ConnSup, max_client
         true -> {ok, ConnSup}
     end,
     {reply, Reply, State};
+
+handle_call(get_max_clients, _From, State = #state{max_clients = MaxClients}) ->
+    {reply, MaxClients, State};
+
+handle_call({set_max_clients, MaxClients}, _From, State) ->
+    {reply, ok, State#state{max_clients = MaxClients}};
 
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.

@@ -37,7 +37,10 @@
 -export([open/4, close/2]).
 
 %% Management API
--export([listeners/0, listener/1]).
+-export([listeners/0, listener/1, 
+         get_max_clients/1, 
+         set_max_clients/2, 
+         get_current_clients/1]).
 
 %% utility functions...
 -export([sockopts/1, ulimit/0]).
@@ -103,8 +106,59 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 listeners() ->
     esockd_sup:listeners().
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Get one listener.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 listener({Protocol, Port}) ->
     esockd_sup:listener({Protocol, Port}).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Get max clients.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+get_max_clients({Protocol, Port}) ->
+    LSup = listener({Protocol, Port}),
+    get_max_clients(LSup);
+get_max_clients(undefined) ->
+    undefined;
+get_max_clients(LSup) when is_pid(LSup) ->
+    Manager = esockd_listener_sup:manager(LSup),
+    esockd_manager:get_max_clients(Manager).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Set max clients.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+set_max_clients({Protocol, Port}, MaxClients) ->
+    LSup = listener({Protocol, Port}),
+    set_max_clients(LSup, MaxClients);
+set_max_clients(undefined, _MaxClients) ->
+    undefined;
+set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
+    Manager = esockd_listener_sup:manager(LSup),
+    esockd_manager:set_max_clients(Manager, MaxClients).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Get current clients.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+get_current_clients({Protocol, Port}) ->
+    LSup = listener({Protocol, Port}),
+    get_current_clients(LSup);
+get_current_clients(undefined) ->
+    undefined;
+get_current_clients(LSup) when is_pid(LSup) ->
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:count_connection(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc

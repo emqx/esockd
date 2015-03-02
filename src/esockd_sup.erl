@@ -110,7 +110,7 @@ listeners() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec listener(Id :: term()) -> undefined | pid().
+-spec listener(Id :: {atom(), inet:port_number()}) -> undefined | pid().
 listener(Id) ->
     case [Pid || {ChildId, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE), ChildId =:= {listener_sup, Id}] of
         [] -> undefined;

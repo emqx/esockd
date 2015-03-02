@@ -85,7 +85,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}},
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	error_logger:info_msg("Accept from ~p~n", [Peername]),
+	error_logger:info_msg("~s: Accept from ~p~n", [SockName, Peername]),
     case tune_buffer_size(Sock) of
         ok -> 
             case esockd_manager:new_connection(Manager, Mod, Sock, SockFun) of
