@@ -2,6 +2,19 @@
 ChangeLog
 ==================
 
+v0.3.0-beta (2015/03/06)
+------------------------
+
+esockd add close/1, get_acceptor_pool/1
+
+esockd_acceptor_sup add count_acceptors/1
+
+esockd_net add format/2
+
+'restart strategy' of esockd_listener_sup: one_for_all -> rest_for_one
+
+...
+
 v0.2.0-beta (2015/03/02)
 ------------------------
 

@@ -34,10 +34,11 @@
 -export([start/0]).
 
 %% Core API
--export([open/4, close/2]).
+-export([open/4, close/2, close/1]).
 
 %% Management API
 -export([listeners/0, listener/1,
+         get_acceptor_pool/1,
          get_max_clients/1,
          set_max_clients/2,
          get_current_clients/1]).
@@ -92,6 +93,12 @@ open(Protocol, Port, Options, Callback)  ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec close({Protocol, Port}) -> ok when
+    Protocol    :: atom(),
+    Port        :: inet:port_number().
+close({Protocol, Port}) when is_atom(Protocol) and is_integer(Port) ->
+    close(Protocol, Port).
+
 -spec close(Protocol, Port) -> ok when 
     Protocol    :: atom(),
     Port        :: inet:port_number().
@@ -115,6 +122,21 @@ listeners() ->
 %%------------------------------------------------------------------------------
 listener({Protocol, Port}) ->
     esockd_sup:listener({Protocol, Port}).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Get acceptor_pool size.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+get_acceptor_pool({Protocol, Port}) ->
+    LSup = listener({Protocol, Port}),
+    get_acceptor_pool(LSup); 
+get_acceptor_pool(undefined) ->
+    undefined;
+get_acceptor_pool(LSup) when is_pid(LSup) ->
+    AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
+    esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
 %%------------------------------------------------------------------------------
 %% @doc

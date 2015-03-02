@@ -64,13 +64,12 @@ start_link(Manager, Logger, LSock, SockFun) ->
     gen_server:start_link(?MODULE, {Manager, Logger, LSock, SockFun}, []).
 
 init({Manager, Logger, LSock, SockFun}) ->
-    {ok, {IPAddress, Port}} = inet:sockname(LSock),
-    SockName = lists:flatten(io_lib:format("~s:~p", [esockd_net:ntoab(IPAddress), Port])),
+    {ok, SockName} = inet:sockname(LSock),
     gen_server:cast(self(), accept),
     {ok, #state{manager = Manager,
                 lsock = LSock,
                 sockfun = SockFun,
-                sockname = SockName,
+                sockname = esockd_net:format(sockname, SockName),
                 logger = Logger}}.
 
 handle_call(_Request, _From, State) ->
@@ -95,7 +94,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manag
     inet_db:register_socket(Sock, Mod),
 
 	{ok, Peername} = inet:peername(Sock),
-	Logger:info("~s: Accept from ~p~n", [SockName, Peername]),
+    Logger:info("~s: Accept from ~s~n", [SockName, esockd_net:format(peername, Peername)]),
     case tune_buffer_size(Sock) of
         ok -> 
             case esockd_manager:new_connection(Manager, Mod, Sock, SockFun) of

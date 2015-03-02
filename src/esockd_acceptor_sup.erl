@@ -28,13 +28,16 @@
 
 -behaviour(supervisor).
 
--export([start_link/2, start_acceptor/3]).
+-export([start_link/2, start_acceptor/3, count_acceptors/1]).
 
 -export([init/1]).
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start Acceptor Supervisor.
 %%
-%% @doc start acceptor supervisor
-%%
+%% @end
+%%------------------------------------------------------------------------------
 -spec start_link(Manager, Logger) -> {ok, pid()} when
     Manager :: pid(),
     Logger  :: gen_logger:logmod().
@@ -50,6 +53,15 @@ start_link(Manager, Logger) ->
 start_acceptor(AcceptorSup, LSock, SockFun) ->
     supervisor:start_child(AcceptorSup, [LSock, SockFun]).
 
+%%------------------------------------------------------------------------------
+%% @doc 
+%% Count Acceptors.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+count_acceptors(AcceptorSup) ->
+    length(supervisor:which_children(AcceptorSup)).
+
 %%%=============================================================================
 %% Supervisor callbacks
 %%%=============================================================================
@@ -57,5 +69,4 @@ init([Manager, Logger]) ->
     {ok, {{simple_one_for_one, 1000, 3600},
           [{acceptor, {esockd_acceptor, start_link, [Manager, Logger]},
             transient, 5000, worker, [esockd_acceptor]}]}}.
-
 

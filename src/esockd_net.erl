@@ -30,7 +30,7 @@
 
 -include_lib("kernel/include/inet.hrl").
 
--export([ntoab/1, tcp_host/1, hostname/0]).
+-export([ntoab/1, tcp_host/1, hostname/0, format/2]).
 
 tcp_host({0,0,0,0}) ->
     hostname();
@@ -51,6 +51,16 @@ hostname() ->
         {error, _Reason}                 -> Hostname
     end.
 
+format(sockname, SockName) ->
+    format(SockName);
+format(peername, PeerName) ->
+    format(PeerName).
+format({Addr, Port}) ->
+    lists:flatten(io_lib:format("~s:~p", [maybe_ntoab(Addr), Port])).
+
+maybe_ntoab(Addr) when is_tuple(Addr) -> ntoab(Addr);
+maybe_ntoab(Host)                     -> Host.
+    
 %% Format IPv4-mapped IPv6 addresses as IPv4, since they're what we see
 %% when IPv6 is enabled but not used (i.e. 99% of the time).
 ntoa({0,0,0,0,0,16#ffff,AB,CD}) ->
@@ -64,4 +74,5 @@ ntoab(IP) ->
         0 -> Str;
         _ -> "[" ++ Str ++ "]"
     end.
+
 

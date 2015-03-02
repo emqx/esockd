@@ -72,8 +72,8 @@ init(SockArgs = {Transport, _Sock, _SockFun}) ->
 loop(Transport, Sock, State) ->
 	case Transport:recv(Sock, 0) of
 		{ok, Data} ->
-			{ok, Name} = Transport:peername(Sock),
-			io:format("~p: ~s~n", [Name, Data]),
+			{ok, PeerName} = Transport:peername(Sock),
+			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
 			Transport:send(Sock, Data),
 			loop(Transport, Sock, State);
 		{error, Reason} ->

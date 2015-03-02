@@ -73,8 +73,8 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({tcp, Sock, Data}, State=#state{transport = Transport, sock = Sock}) ->
-	{ok, Name} = Transport:peername(Sock),
-	io:format("~p: ~s~n", [Name, Data]),
+	{ok, PeerName} = Transport:peername(Sock),
+	io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
 	Transport:send(Sock, Data),
 	Transport:setopts(Sock, [{active, once}]),
     {noreply, State};

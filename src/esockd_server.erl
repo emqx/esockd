@@ -33,10 +33,7 @@
 -define(SERVER, ?MODULE).
 
 %% Start esockd server
--export([start_link/0]).
-
-%% API
--export([listeners/0]).
+-export([start_link/0, init_stats/2, destory_stats/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -58,14 +55,11 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get listeners.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-listeners() ->
-    gen_server:call(?SERVER, listeners).
+init_stats({Protocol, Port}, Name) ->
+    gen_server:call(?SERVER, {init_stats, {Protocol, Port}, Name}).
+    
+destory_stats({Protocol, Port}) ->
+    gen_server:cast(?SERVER, {destory_stats, {Protocol, Port}}).
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -75,6 +69,7 @@ listeners() ->
 %% @end
 %%------------------------------------------------------------------------------
 init([]) ->
+    ets:new(esockd_stats, [set, protected, named_table]),
     {ok, #state{}}.
 
 %%------------------------------------------------------------------------------
@@ -84,9 +79,10 @@ init([]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-handle_call(listeners, _From, State) ->
-    %%TODO: get listeners...
-    {reply, [], State};
+handle_call({init_stats, {Protocol, Port}, Name}, _From, State) ->
+    Key = {{Protocol, Port}, Name},
+    ets:insert(esockd_stats, {Key, 0}),
+    {reply, ok, State};
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -98,6 +94,9 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+handle_cast({destory_stats, {Protocol, Port}}, State) ->
+    %TODO:.....
+    {noreply, State};
 handle_cast(_Request, State) ->
     {noreply, State}.
 
