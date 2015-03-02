@@ -106,6 +106,7 @@ Options:
 -type option() :: 
 		{acceptor_pool, pos_integer()} |
 		{max_clients, pos_integer()} | 
+        {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 ```
@@ -130,9 +131,23 @@ esockd:close(echo, 5000).
     Port        :: inet:port_number().
 ```
 
-## Design
+## Logger
 
-TODO...
+eSockd depends [gen_logger](https://github.com/emqtt/gen_logger).
+
+Logger environment:
+
+```
+ {esockd, [
+    {logger, {lager, info}}
+ ]},
+```
+
+Logger option:
+
+```
+esockd:open(echo, 5000, [{logger, {otp, info}}], {echo_server, start_link, []}).
+```
 
 ## License
 

@@ -37,9 +37,9 @@
 -export([open/4, close/2]).
 
 %% Management API
--export([listeners/0, listener/1, 
-         get_max_clients/1, 
-         set_max_clients/2, 
+-export([listeners/0, listener/1,
+         get_max_clients/1,
+         set_max_clients/2,
          get_current_clients/1]).
 
 %% utility functions...
@@ -56,7 +56,7 @@
 -type option() ::
 		{acceptor_pool, pos_integer()} |
 		{max_clients, pos_integer()} | 
-        {logger, gen_logger:logmod()} |
+        {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 

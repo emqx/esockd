@@ -8,5 +8,5 @@
                   stdlib
                  ]},
   {mod, { esockd_app, []}},
-  {env, [{logger, {otp, info}}]}
+  {env, [{logger, {error_logger, info}}]}
  ]}.
