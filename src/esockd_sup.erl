@@ -35,8 +35,6 @@
 
 -export([start_listener/4, stop_listener/2, listeners/0, listener/1]).
 
--export([child_id/1]).
-
 %% Supervisor callbacks
 -export([init/1]).
 
@@ -67,7 +65,7 @@ start_link() ->
 -spec start_listener(Protocol, Port, Options, Callback) -> {ok, pid()} when
     Protocol   :: atom(),
     Port       :: inet:port_number(),
-    Options    :: list(esockd:option()),
+    Options    :: [esockd:option()],
     Callback   :: esockd:callback().
 start_listener(Protocol, Port, Options, Callback) ->
 	MFA = {esockd_listener_sup, start_link,
@@ -102,7 +100,7 @@ stop_listener(Protocol, Port) ->
 %%------------------------------------------------------------------------------
 -spec listeners() -> [{term(), pid()}].
 listeners() ->
-    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE)].
+    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _} <- supervisor:which_children(?MODULE)].
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -110,21 +108,14 @@ listeners() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec listener(Id :: {atom(), inet:port_number()}) -> undefined | pid().
-listener(Id) ->
-    case [Pid || {ChildId, Pid, supervisor, _Modules} <- supervisor:which_children(?MODULE), ChildId =:= {listener_sup, Id}] of
+-spec listener({atom(), inet:port_number()}) -> undefined | pid().
+listener({Protocol, Port}) ->
+    ChildId = child_id({Protocol, Port}),
+    case [Pid || {Id, Pid, supervisor, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
     end.
 
-%%------------------------------------------------------------------------------
-%% @doc
-%% Listener Child Id.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-child_id({Protocol, Port}) ->
-    {listener_sup, {Protocol, Port}}.
 
 %%%=============================================================================
 %% Supervisor callbacks
@@ -135,5 +126,15 @@ init([]) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @private
+%% Listener Child Id.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+child_id({Protocol, Port}) ->
+    {listener_sup, {Protocol, Port}}.
 
 
