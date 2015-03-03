@@ -1,13 +1,6 @@
-1. merge two options
+Guide doc
 
-merge(Options1, Options2).
+Design doc
 
-2. accept stats?
-
-enc_stats(accepted, 1)
-dec_stats(accected, 1).
-
-3. Guide doc
-
-4. design doc
+Test Cases...
 
