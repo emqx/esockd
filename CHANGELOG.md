@@ -2,18 +2,23 @@
 ChangeLog
 ==================
 
-v0.3.0-beta (2015/03/06)
+v0.3.0-beta (2015/03/03)
 ------------------------
 
-esockd add close/1, get_acceptor_pool/1
+esockd add close/1, get_acceptor_pool/1, get_stats/1 apis
 
-esockd_acceptor_sup add count_acceptors/1
+esockd_acceptor_sup add count_acceptors/1 api
 
-esockd_net add format/2
+esockd_acceptor add 'statsfun' to state
 
-'restart strategy' of esockd_listener_sup: one_for_all -> rest_for_one
+esockd_net add format/2 api
 
-...
+esockd_listener_sup: change 'restart strategy' from one_for_all to rest_for_one
+
+esockd.hrl: remove 'sock_args' record 
+
+esockd_server add stats_fun/2, inc_stats/3, dec_stats/3, get_stats/1, del_stats/1
+
 
 v0.2.0-beta (2015/03/02)
 ------------------------
