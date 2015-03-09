@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd server.
+%%% eSockd Server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -36,7 +36,10 @@
 -export([start_link/0]).
 
 %% stats API
--export([stats_fun/2, inc_stats/3, dec_stats/3, get_stats/1, del_stats/1]).
+-export([stats_fun/2,
+         get_stats/1,
+         inc_stats/3, dec_stats/3,
+         init_stats/2, del_stats/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -66,28 +69,12 @@ start_link() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec stats_fun({atom(), inet:port_number()}, atom()) -> fun().
 stats_fun({Protocol, Port}, Metric) ->
+    init_stats({Protocol, Port}, Metric),
     fun({inc, Num}) -> esockd_server:inc_stats({Protocol, Port}, Metric, Num);
        ({dec, Num}) -> esockd_server:dec_stats({Protocol, Port}, Metric, Num)
     end.
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Inc Stats.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
-    gen_server:cast(?SERVER, {inc, {{Protocol, Port}, Metric, Num}}).
-    
-%%------------------------------------------------------------------------------
-%% @doc
-%% Dec Stats.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
-    gen_server:cast(?SERVER, {dec, {{Protocol, Port}, Metric, Num}}).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -95,9 +82,50 @@ dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
 get_stats({Protocol, Port}) ->
     [{Metric, Val} || [Metric, Val]
                       <- ets:match(?STATS_TAB, {{{Protocol, Port}, '$1'}, '$2'})].
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Inc Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec inc_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
+inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
+    update_counter({{Protocol, Port}, Metric}, Num).
+    
+%%------------------------------------------------------------------------------
+%% @doc
+%% Dec Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec dec_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
+dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
+    update_counter({{Protocol, Port}, Metric}, -Num).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% @private
+%% update stats counter.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+update_counter(Key, Num) ->
+    ets:update_counter(?STATS_TAB, Key, {2, Num}).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Init Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec init_stats({atom(), inet:port_number()}, atom()) -> ok.
+init_stats({Protocol, Port}, Metric) ->
+    gen_server:call(?SERVER, {init, {Protocol, Port}, Metric}).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -105,6 +133,7 @@ get_stats({Protocol, Port}) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec del_stats({atom(), inet:port_number()}) -> ok.
 del_stats({Protocol, Port}) ->
     gen_server:cast(?SERVER, {del, {Protocol, Port}}).
 
@@ -116,7 +145,7 @@ del_stats({Protocol, Port}) ->
 %% @end
 %%------------------------------------------------------------------------------
 init([]) ->
-    ets:new(esockd_stats, [set, protected, named_table, {write_concurrency, true}]),
+    ets:new(?STATS_TAB, [set, public, named_table, {write_concurrency, true}]),
     {ok, #state{}}.
 
 %%------------------------------------------------------------------------------
@@ -126,6 +155,11 @@ init([]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+handle_call({init, {Protocol, Port}, Metric}, _From, State) ->
+    Key = {{Protocol, Port}, Metric},
+    ets:insert(?STATS_TAB, {Key, 0}),
+    {reply, ok, State};
+
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -136,16 +170,8 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-handle_cast({inc, {{Protocol, Port}, Metric, Num}}, State) ->
-    update_counter({{Protocol, Port}, Metric}, Num),
-    {noreply, State};
-
-handle_cast({dec, {{Protocol, Port}, Metric, Num}}, State) ->
-    update_counter({{Protocol, Port}, Metric}, -Num),
-    {noreply, State};
-
 handle_cast({del, {Protocol, Port}}, State) ->
-    ets:match_delete(?STATS_TAB, {{{Protocol, Port}, '$1'}, '$2'}),
+    ets:match_delete(?STATS_TAB, {{{Protocol, Port}, '_'}, '_'}),
     {noreply, State};
 
 handle_cast(_Request, State) ->
@@ -187,10 +213,5 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
-update_counter(Key, Num) ->
-    case ets:lookup(?STATS_TAB, Key) of
-        []  -> ets:insert(?STATS_TAB, {Key, Num});
-        [_] -> ets:update_counter(?STATS_TAB, Key, {2, Num})
-    end.
 
 
