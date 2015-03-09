@@ -1,6 +1,14 @@
 
-ChangeLog
+eSockd ChangeLog
 ==================
+
+v1.1.0-beta (2015/03/10)
+------------------------
+
+Make esockd_stats table public and write_concurrency
+
+esockd_acceptor: fix format of Accept log
+
 
 v1.0.0-beta (2015/03/03)
 ------------------------
@@ -80,4 +88,5 @@ esockd_acceptor: add 'tune_buffer_size'
 redesign listener api
 
 first release...
+
 
