@@ -99,7 +99,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manag
     AcceptStatsFun({inc, 1}),
 
 	{ok, Peername} = inet:peername(Sock),
-    Logger:info("~s: Accept from ~s~n", [SockName, esockd_net:format(peername, Peername)]),
+    Logger:info("~s - Accept from ~s~n", [SockName, esockd_net:format(peername, Peername)]),
     case tune_buffer_size(Sock) of
         ok -> 
             case esockd_manager:new_connection(Manager, Mod, Sock, SockFun) of
