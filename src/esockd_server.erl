@@ -69,7 +69,7 @@ destory_stats({Protocol, Port}) ->
 %% @end
 %%------------------------------------------------------------------------------
 init([]) ->
-    ets:new(esockd_stats, [set, protected, named_table]),
+    ets:new(esockd_stats, [set, protected, named_table, {write_concurrency, true}]),
     {ok, #state{}}.
 
 %%------------------------------------------------------------------------------
