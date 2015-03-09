@@ -38,21 +38,24 @@
 
 %% Management API
 -export([listeners/0, listener/1,
+         get_stats/1,
          get_acceptor_pool/1,
          get_max_clients/1,
          set_max_clients/2,
          get_current_clients/1]).
 
-%% utility functions...
+%% Utility functions...
 -export([sockopts/1, ulimit/0]).
 
 -type ssl_socket() :: #ssl_socket{}.
 
--type sock_args()  :: {atom(), inet:socket(), fun()}.
+-type sock_fun() :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()}).
+
+-type sock_args()  :: {atom(), inet:socket(), sock_fun()}.
 
 -type mfargs() :: {module(), atom(), [term()]}.
 
--type callback() :: mfargs() | atom() | function().
+-type callback() :: atom() | {atom(), atom()} | mfargs().
 
 -type option() ::
 		{acceptor_pool, pos_integer()} |
@@ -61,7 +64,7 @@
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 
--export_type([ssl_socket/0, sock_args/0, callback/0, option/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, callback/0, option/0]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -75,7 +78,7 @@ start() ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Listen on port.
+%% Open a listener.
 %%
 %% @end
 %%------------------------------------------------------------------------------
@@ -125,10 +128,21 @@ listener({Protocol, Port}) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
+%% Get stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
+get_stats({Protocol, Port}) ->
+    esockd_server:get_stats({Protocol, Port}).
+
+%%------------------------------------------------------------------------------
+%% @doc
 %% Get acceptor_pool size.
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec get_acceptor_pool({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_acceptor_pool({Protocol, Port}) ->
     LSup = listener({Protocol, Port}),
     get_acceptor_pool(LSup); 
@@ -144,6 +158,7 @@ get_acceptor_pool(LSup) when is_pid(LSup) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec get_max_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_max_clients({Protocol, Port}) ->
     LSup = listener({Protocol, Port}),
     get_max_clients(LSup);
@@ -159,6 +174,7 @@ get_max_clients(LSup) when is_pid(LSup) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec set_max_clients({atom(), inet:port_number()}, pos_integer()) -> undefined | pos_integer().
 set_max_clients({Protocol, Port}, MaxClients) ->
     LSup = listener({Protocol, Port}),
     set_max_clients(LSup, MaxClients);
@@ -174,6 +190,7 @@ set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec get_current_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_current_clients({Protocol, Port}) ->
     LSup = listener({Protocol, Port}),
     get_current_clients(LSup);
@@ -199,8 +216,8 @@ sockopts([{acceptor_pool, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{ssl, _}|Opts], Acc) ->
     sockopts(Opts, Acc);
-sockopts([H|Opts], Acc) ->
-	sockopts(Opts, [H|Acc]).
+sockopts([Opt|Opts], Acc) ->
+	sockopts(Opts, [Opt|Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc

@@ -7,6 +7,6 @@
                   kernel,
                   stdlib
                  ]},
-  {mod, { esockd_app, []}},
+  {mod, {esockd_app, []}},
   {env, [{logger, {error_logger, info}}]}
  ]}.

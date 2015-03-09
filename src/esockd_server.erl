@@ -33,13 +33,18 @@
 -define(SERVER, ?MODULE).
 
 %% Start esockd server
--export([start_link/0, init_stats/2, destory_stats/1]).
+-export([start_link/0]).
+
+%% stats API
+-export([stats_fun/2, inc_stats/3, dec_stats/3, get_stats/1, del_stats/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {}).
+
+-define(STATS_TAB, esockd_stats).
 
 %%%=============================================================================
 %%% API
@@ -55,11 +60,53 @@
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-init_stats({Protocol, Port}, Name) ->
-    gen_server:call(?SERVER, {init_stats, {Protocol, Port}, Name}).
+%%------------------------------------------------------------------------------
+%% @doc
+%% New Stats Fun.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+stats_fun({Protocol, Port}, Metric) ->
+    fun({inc, Num}) -> esockd_server:inc_stats({Protocol, Port}, Metric, Num);
+       ({dec, Num}) -> esockd_server:dec_stats({Protocol, Port}, Metric, Num)
+    end.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Inc Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
+    gen_server:cast(?SERVER, {inc, {{Protocol, Port}, Metric, Num}}).
     
-destory_stats({Protocol, Port}) ->
-    gen_server:cast(?SERVER, {destory_stats, {Protocol, Port}}).
+%%------------------------------------------------------------------------------
+%% @doc
+%% Dec Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
+    gen_server:cast(?SERVER, {dec, {{Protocol, Port}, Metric, Num}}).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Get Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+get_stats({Protocol, Port}) ->
+    [{Metric, Val} || [Metric, Val]
+                      <- ets:match(?STATS_TAB, {{{Protocol, Port}, '$1'}, '$2'})].
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Del Stats.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+del_stats({Protocol, Port}) ->
+    gen_server:cast(?SERVER, {del, {Protocol, Port}}).
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -79,11 +126,6 @@ init([]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-handle_call({init_stats, {Protocol, Port}, Name}, _From, State) ->
-    Key = {{Protocol, Port}, Name},
-    ets:insert(esockd_stats, {Key, 0}),
-    {reply, ok, State};
-
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
@@ -94,9 +136,18 @@ handle_call(_Request, _From, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-handle_cast({destory_stats, {Protocol, Port}}, State) ->
-    %TODO:.....
+handle_cast({inc, {{Protocol, Port}, Metric, Num}}, State) ->
+    update_counter({{Protocol, Port}, Metric}, Num),
     {noreply, State};
+
+handle_cast({dec, {{Protocol, Port}, Metric, Num}}, State) ->
+    update_counter({{Protocol, Port}, Metric}, -Num),
+    {noreply, State};
+
+handle_cast({del, {Protocol, Port}}, State) ->
+    ets:match_delete(?STATS_TAB, {{{Protocol, Port}, '$1'}, '$2'}),
+    {noreply, State};
+
 handle_cast(_Request, State) ->
     {noreply, State}.
 
@@ -136,4 +187,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+update_counter(Key, Num) ->
+    case ets:lookup(?STATS_TAB, Key) of
+        []  -> ets:insert(?STATS_TAB, {Key, Num});
+        [_] -> ets:update_counter(?STATS_TAB, Key, {2, Num})
+    end.
+
 

@@ -33,10 +33,3 @@
 
 -define(IS_SSL(Sock), is_record(Sock, ssl_socket)).
 
-%%------------------------------------------------------------------------------
-%% Sock Args
-%%------------------------------------------------------------------------------
--record(sock_args, {transport = esockd_transport,
-                    sock    :: inet:socket(),
-                    sockfun :: fun((inet:socket()) -> {ok, inet:socket() | #ssl_socket{}} | {error, any()})}).
-

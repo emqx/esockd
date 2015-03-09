@@ -49,13 +49,10 @@ count_connection(Sup) ->
 init([Callback]) ->
     ChildSpec = {connection,
                     {esockd_connection, start_link, [Callback]},
-                        temporary, 5000, worker, [cb_mod(Callback)]},
+                        temporary, 5000, worker, [mod(Callback)]},
     {ok, {{simple_one_for_one, 0, 3600}, [ChildSpec]}}.
 
-cb_mod(M) when is_atom(M) ->
-    M;
-cb_mod({M, _F}) when is_atom(M) ->
-    M;
-cb_mod({M, _F, _A}) when is_atom(M) ->
-    M.
+mod(M) when is_atom(M) -> M;
+mod({M, _F}) when is_atom(M) -> M;
+mod({M, _F, _A}) when is_atom(M) -> M.
 

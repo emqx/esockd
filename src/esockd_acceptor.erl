@@ -32,21 +32,18 @@
 
 -behaviour(gen_server).
 
--export([start_link/4]).
+-export([start_link/5]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--type socket() :: inet:socket() | esockd:ssl_socket().
-
--type sockfun() :: fun((inet:socket()) -> {ok, socket()} | {error, any()}).
-
 -record(state, {manager     :: pid(),
                 lsock       :: inet:socket(),
-                sockfun     :: sockfun(),
+                sockfun     :: esockd:sock_fun(),
                 sockname    :: iolist(),
+                statsfun    :: fun(),
                 logger      :: gen_logger:logmod(),
-                ref         :: reference(), 
+                ref         :: reference(),
                 emfile_count = 0}).
 
 %%------------------------------------------------------------------------------
@@ -55,22 +52,27 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Manager, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
-      Manager   :: pid(),
-      Logger    :: gen_logger:logmod(),
-      LSock     :: inet:socket(),
-      SockFun   :: socket().
-start_link(Manager, Logger, LSock, SockFun) ->
-    gen_server:start_link(?MODULE, {Manager, Logger, LSock, SockFun}, []).
+-spec start_link(Manager, AcceptStatsFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+    Manager        :: pid(),
+    AcceptStatsFun :: fun(),
+    Logger         :: gen_logger:logmod(),
+    LSock          :: inet:socket(),
+    SockFun        :: esockd:sock_fun().
+start_link(Manager, AcceptStatsFun, Logger, LSock, SockFun) ->
+    gen_server:start_link(?MODULE, {Manager, AcceptStatsFun, Logger, LSock, SockFun}, []).
 
-init({Manager, Logger, LSock, SockFun}) ->
+%%%=============================================================================
+%% gen_server callbacks
+%%%=============================================================================
+init({Manager, AcceptStatsFun, Logger, LSock, SockFun}) ->
     {ok, SockName} = inet:sockname(LSock),
     gen_server:cast(self(), accept),
-    {ok, #state{manager = Manager,
-                lsock = LSock,
-                sockfun = SockFun,
+    {ok, #state{manager  = Manager,
+                lsock    = LSock,
+                sockfun  = SockFun,
                 sockname = esockd_net:format(sockname, SockName),
-                logger = Logger}}.
+                statsfun = AcceptStatsFun,
+                logger   = Logger}}.
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -85,13 +87,16 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manag
                                                                  lsock=LSock,
                                                                  sockfun = SockFun,
                                                                  sockname = SockName,
+                                                                 statsfun = AcceptStatsFun,
                                                                  logger = Logger,
                                                                  ref=Ref}) ->
 
-    %% patch up the socket so it looks like one we got from
-    %% gen_tcp:accept/1
+    %% patch up the socket so it looks like one we got from gen_tcp:accept/1
     {ok, Mod} = inet_db:lookup_socket(LSock),
     inet_db:register_socket(Sock, Mod),
+
+    %% accepted stats.
+    AcceptStatsFun({inc, 1}),
 
 	{ok, Peername} = inet:peername(Sock),
     Logger:info("~s: Accept from ~s~n", [SockName, esockd_net:format(peername, Peername)]),
@@ -114,14 +119,13 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manag
     %% accept more
     accept(State);
 
-
 handle_info({inet_async, LSock, Ref, {error, closed}},
             State=#state{lsock=LSock, ref=Ref}) ->
     %% It would be wrong to attempt to restart the acceptor when we
     %% know this will fail.
     {stop, normal, State};
 
-%%TODO: async accept errors??
+%% async accept errors...
 %% {error, timeout} ->
 %% {error, econnaborted} -> ??continue?
 %% {error, esslaccept} ->
@@ -177,7 +181,7 @@ sockerr(Error, State = #state{sockname = SockName, logger = Logger}) ->
 %%--------------------------------------------------------------------
 %% suspend for a while...
 %%--------------------------------------------------------------------
-suspend(Time, State) -> 
+suspend(Time, State) ->
     erlang:send_after(Time, self(), resume),
 	{noreply, State#state{ref=undefined}, hibernate}.
 
@@ -187,3 +191,4 @@ tune_buffer_size(Sock) ->
                           inet:setopts(Sock, [{buffer, BufSz}]);
         Error          -> Error
 	end.
+

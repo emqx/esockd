@@ -88,12 +88,14 @@ handle_cast(_Msg, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{lsock=LSock, protocol=Protocol, logger = Logger}) ->
+terminate(_Reason, #state{lsock = LSock, protocol = Protocol, logger = Logger}) ->
     {ok, {IPAddress, Port}} = esockd_transport:sockname(LSock),
     esockd_transport:close(LSock),
     %%error report
     Logger:info("stopped ~s on ~s:~p~n",
                 [Protocol, esockd_net:ntoab(IPAddress), Port]),
+    %%TODO: depend on esockd_server?
+    esockd_server:del_stats({Protocol, Port}),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->
