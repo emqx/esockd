@@ -1,7 +1,7 @@
 {application, esockd,
  [
   {description, "General Non-blocking TCP/SSL Server"},
-  {vsn, "1.0.0"},
+  {vsn, "1.1.0"},
   {registered, []},
   {applications, [
                   kernel,
