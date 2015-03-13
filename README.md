@@ -49,7 +49,7 @@ ok = esockd:start().
 SockOpts = [binary, 
             {reuseaddr, true}, 
             {nodelay, false},
-            {acceptor_pool, 10},
+            {acceptors, 10},
             {max_clients, 1024}].
 
 MFArgs = {echo_server, start_link, []},
@@ -104,7 +104,7 @@ Options:
 
 ```
 -type option() :: 
-		{acceptor_pool, pos_integer()} |
+		{acceptors, pos_integer()} |
 		{max_clients, pos_integer()} | 
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |

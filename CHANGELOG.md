@@ -2,6 +2,12 @@
 eSockd ChangeLog
 ==================
 
+v1.2.0-beta (2015/03/13)
+------------------------
+
+rename 'acceptor_pool' option to 'acceptors'
+
+
 v1.1.0-beta (2015/03/10)
 ------------------------
 

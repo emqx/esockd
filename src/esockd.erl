@@ -39,7 +39,7 @@
 %% Management API
 -export([listeners/0, listener/1,
          get_stats/1,
-         get_acceptor_pool/1,
+         get_acceptors/1,
          get_max_clients/1,
          set_max_clients/2,
          get_current_clients/1]).
@@ -58,7 +58,7 @@
 -type callback() :: atom() | {atom(), atom()} | mfargs().
 
 -type option() ::
-		{acceptor_pool, pos_integer()} |
+		{acceptors, pos_integer()} |
 		{max_clients, pos_integer()} | 
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
@@ -138,17 +138,17 @@ get_stats({Protocol, Port}) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Get acceptor_pool size.
+%% Get acceptors number.
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec get_acceptor_pool({atom(), inet:port_number()}) -> undefined | pos_integer().
-get_acceptor_pool({Protocol, Port}) ->
+-spec get_acceptors({atom(), inet:port_number()}) -> undefined | pos_integer().
+get_acceptors({Protocol, Port}) ->
     LSup = listener({Protocol, Port}),
-    get_acceptor_pool(LSup); 
-get_acceptor_pool(undefined) ->
+    get_acceptors(LSup); 
+get_acceptors(undefined) ->
     undefined;
-get_acceptor_pool(LSup) when is_pid(LSup) ->
+get_acceptors(LSup) when is_pid(LSup) ->
     AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
     esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
@@ -212,7 +212,7 @@ sockopts([], Acc) ->
 	Acc;
 sockopts([{max_clients, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
-sockopts([{acceptor_pool, _}|Opts], Acc) ->
+sockopts([{acceptors, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{ssl, _}|Opts], Acc) ->
     sockopts(Opts, Acc);

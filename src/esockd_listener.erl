@@ -41,7 +41,7 @@
                 lsock     :: inet:socket(),
                 logger    :: gen_logger:logmod()}).
 
--define(ACCEPTOR_POOL, 10).
+-define(ACCEPTOR_POOL, 16).
 
 %%------------------------------------------------------------------------------
 %% @doc 
@@ -65,7 +65,7 @@ init({Protocol, Port, Options, AcceptorSup, Logger}) ->
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
-			AcceptorNum = proplists:get_value(acceptor_pool, Options, ?ACCEPTOR_POOL),
+			AcceptorNum = proplists:get_value(acceptors, Options, ?ACCEPTOR_POOL),
 			lists:foreach(fun (_) ->
 				{ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock, SockFun)
 			end, lists:seq(1, AcceptorNum)),

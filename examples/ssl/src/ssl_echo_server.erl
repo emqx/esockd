@@ -42,7 +42,7 @@ start(Port) ->
                {keyfile,  "./crt/demo.key"}],
     SockOpts = [binary, 
                 {reuseaddr, true},
-                {acceptor_pool, 4},
+                {acceptors, 4},
                 {max_clients, 1000}, 
                 {ssl, SslOpts}],
     {ok, _} = esockd:open('echo/ssl', Port, SockOpts, ssl_echo_server).
