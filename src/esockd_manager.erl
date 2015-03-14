@@ -36,13 +36,16 @@
 %% Manage
 -export([get_max_clients/1, set_max_clients/2]).
 
+%% Allow, Deny
+-export([access_rules/1, allow/2, deny/2]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -define(MAX_CLIENTS, 1024).
 
--record(state, {conn_sup, max_clients = 1024}).
+-record(state, {conn_sup, max_clients = 1024, access_rules = []}).
 
 %%%=============================================================================
 %%% API
@@ -79,7 +82,9 @@ new_connection(Manager, Mod, Sock, SockFun) ->
                 {error, Error}
             end;
         {reject, Reason} ->
-            {error, {reject, Reason}}
+            {error, {reject, Reason}};
+        fobidden ->
+            {error, fobidden}
     end.
 
 get_max_clients(Manager) when is_pid(Manager) ->
@@ -87,6 +92,15 @@ get_max_clients(Manager) when is_pid(Manager) ->
 
 set_max_clients(Manager, MaxClients) when is_pid(Manager) ->
     gen_server:call(Manager, {set_max_clients, MaxClients}).
+
+access_rules(Manager) ->
+    gen_server:call(Manager, access_rules).
+
+allow(Manager, CIDR) ->
+    gen_server:call(Manager, {add_rule, {allow, CIDR}}).
+
+deny(Manager, CIDR) ->
+    gen_server:call(Manager, {add_rule, {deny, CIDR}}).
 
 %%%=============================================================================
 %%% gen_server callbacks
@@ -110,12 +124,19 @@ init([Options, ConnSup]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-handle_call(new_connection, _From, State = #state{conn_sup = ConnSup, max_clients = MaxClients}) ->
+handle_call({new_connection, Sock}, _From, State = #state{conn_sup = ConnSup, max_clients = MaxClients, access_rules = Rules}) ->
     Count = esockd_connection_sup:count_connection(ConnSup),
     Reply =
     if
-        Count >= MaxClients -> {reject, limit};
-        true -> {ok, ConnSup}
+        Count >= MaxClients ->
+            {reject, limit};
+        true -> 
+            {ok, {Addr, _Port}} = inet:peername(Sock),
+            case esockd_access:match(Addr, Rules) of
+                nomatch          -> {ok, ConnSup};
+                {matched, allow} -> {ok, ConnSup};
+                {matched, deny}   -> fobidden
+            end
     end,
     {reply, Reply, State};
 
@@ -124,6 +145,23 @@ handle_call(get_max_clients, _From, State = #state{max_clients = MaxClients}) ->
 
 handle_call({set_max_clients, MaxClients}, _From, State) ->
     {reply, ok, State#state{max_clients = MaxClients}};
+
+handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
+    {reply, [raw(Rule) || Rule <- Rules], State};
+
+handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
+    case catch esockd_access:rule(RawRule) of
+        {'EXIT', Error} -> 
+            lager:error("Access Rule Error: ~p", [Error]),
+            {reply, {error, bad_cidr}, State};
+        Rule -> 
+            case lists:member(Rule, Rules) of
+                true ->
+                    {reply, {error, alread_existed}, State};
+                false ->
+                    {reply, ok, State#state{access_rules = [Rule | Rules]}}
+            end
+    end;
 
 handle_call(_Req, _From, State) ->
     {reply, ok, State}.
@@ -177,4 +215,11 @@ code_change(_OldVsn, State, _Extra) ->
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
+
+raw({allow, {CIDR, _, _}}) ->
+     {allow, CIDR};
+raw({deny, {CIDR, _, _}}) ->
+     {deny, CIDR};
+raw(Rule) ->
+     Rule.
 

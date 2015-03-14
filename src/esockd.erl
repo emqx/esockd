@@ -44,6 +44,9 @@
          set_max_clients/2,
          get_current_clients/1]).
 
+%% Allow, Deny API
+-export([get_access_rules/1, allow/2, deny/2]).
+
 %% Utility functions...
 -export([sockopts/1, ulimit/0]).
 
@@ -202,6 +205,43 @@ get_current_clients(LSup) when is_pid(LSup) ->
 
 %%------------------------------------------------------------------------------
 %% @doc
+%% Get access rules.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+get_access_rules({Protocol, Port}) ->
+    LSup = listener({Protocol, Port}),
+    get_access_rules(LSup);
+get_access_rules(undefined) ->
+    undefined;
+get_access_rules(LSup) ->
+    Manager = esockd_listener_sup:manager(LSup),
+    esockd_manager:access_rules(Manager).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Allow access address.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+allow({Protocol, Port}, CIDR) ->
+    LSup = listener({Protocol, Port}),
+    Manager = esockd_listener_sup:manager(LSup),
+    esockd_manager:allow(Manager, CIDR).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Deny access address.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+deny({Protocol, Port}, CIDR) ->
+    LSup = listener({Protocol, Port}),
+    Manager = esockd_listener_sup:manager(LSup),
+    esockd_manager:deny(Manager, CIDR).
+  
+%%------------------------------------------------------------------------------
+%% @doc
 %% Filter socket options.
 %%
 %% @end
@@ -214,6 +254,8 @@ sockopts([{max_clients, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{acceptors, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
+sockopts([{access, _}|Opts], Acc) ->
+    sockopts(Opts, Acc);
 sockopts([{ssl, _}|Opts], Acc) ->
     sockopts(Opts, Acc);
 sockopts([Opt|Opts], Acc) ->
