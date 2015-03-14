@@ -70,7 +70,7 @@ start_link(Options, ConnSup) ->
 %% @end
 %%------------------------------------------------------------------------------
 new_connection(Manager, Mod, Sock, SockFun) ->
-    case gen_server:call(Manager, new_connection) of
+    case gen_server:call(Manager, {new_connection, Sock}) of
         {ok, ConnSup} ->
             SockArgs = {esockd_transport, Sock, SockFun},
             case esockd_connection_sup:start_connection(ConnSup, SockArgs) of
@@ -151,9 +151,8 @@ handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
 
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     case catch esockd_access:rule(RawRule) of
-        {'EXIT', Error} -> 
-            lager:error("Access Rule Error: ~p", [Error]),
-            {reply, {error, bad_cidr}, State};
+        {'EXIT', _Error} -> 
+            {reply, {error, bad_access_rule}, State};
         Rule -> 
             case lists:member(Rule, Rules) of
                 true ->
