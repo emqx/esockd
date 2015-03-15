@@ -10,3 +10,4 @@ rel/example_project
 .rebar
 .idea
 examples/*/ebin
+.idea/
