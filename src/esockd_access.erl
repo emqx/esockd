@@ -38,9 +38,9 @@
 -type range() :: {cidr(), pos_integer(), pos_integer()}.
 
 -type range_rule() :: {allow, all} |
-                       {allow, range()} |
-                       {deny,  all} |
-                       {deny,  cidr()}.
+                      {allow, range()} |
+                      {deny,  all} |
+                      {deny,  cidr()}.
 
 -export([rule/1, match/2, itoa/1]).
 
@@ -52,7 +52,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Make rule.
+%% Build CIDR, Make rule.
 %%
 %% @end
 %%------------------------------------------------------------------------------
@@ -69,6 +69,31 @@ rule({deny, all}) ->
 rule(Type, CIDR) when is_list(CIDR) ->
     {ok, Start, End} = range(CIDR),
     {Type, {CIDR, Start, End}}.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Match Addr with Access Rules.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+-spec match(inet:ip_address(), [range_rule()]) -> {matched, allow} | {matched, deny} | nomatch.
+match(Addr, Rules) when is_tuple(Addr) ->
+    match2(atoi(Addr), Rules).
+
+match2(_I, []) ->
+    nomatch;
+match2(_I, [{allow, all}|_]) ->
+    {matched, allow};
+match2(I, [{allow, {_, Start, End}}|_]) when I >= Start, I =< End ->
+    {matched, allow};
+match2(I, [{allow, {_, _Start, _End}}|Rules]) ->
+    match2(I, Rules);
+match2(I, [{deny, {_, Start, End}}|_]) when I >= Start, I =< End ->
+    {matched, deny};
+match2(I, [{deny, {_, _Start, _End}}|Rules]) ->
+    match2(I, Rules);
+match2(_I, [{deny, all}|_]) ->
+    {matched, deny}.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -106,31 +131,6 @@ mask(32) ->
     16#FFFFFFFF;
 mask(N) when N >= 1, N =< 31 ->
     lists:foldl(fun(I, Mask) -> (1 bsl I) bor Mask end, 0, lists:seq(32 - N, 31)).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Match Addr with Access Rules.
-%%
-%% @end
-%%------------------------------------------------------------------------------
--spec match(inet:ip_address(), [range_rule()]) -> {matched, allow} | {matched, deny} | nomatch.
-match(Addr, Rules) when is_tuple(Addr) ->
-    match2(atoi(Addr), Rules).
-
-match2(_I, []) ->
-    nomatch;
-match2(_I, [{allow, all} | _Rules]) ->
-    {matched, allow};
-match2(I, [{allow, {_, Start, End}} | _Rules]) when I >= Start, I =< End ->
-    {matched, allow};
-match2(I, [{allow, {_, _Start, _End}} | Rules]) ->
-    match2(I, Rules);
-match2(_I, [{deny, all} | _Rules]) ->
-    {matched, deny};
-match2(I, [{deny, {_, Start, End}} | _Rules]) when I >= Start, I =< End ->
-    {matched, deny};
-match2(I, [{deny, {_, _Start, _End}} | Rules]) ->
-    match2(I, Rules).
 
 %%------------------------------------------------------------------------------
 %% @doc
