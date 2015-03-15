@@ -35,7 +35,7 @@
 		binary,
 		{packet, raw},
 		{reuseaddr, true},
-		{backlog, 128},
+		{backlog, 1024},
 		{nodelay, false}]).
 
 %%------------------------------------------------------------------------------
@@ -53,8 +53,8 @@ start(Port) when is_integer(Port) ->
     esockd:start(),
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access, Access},
-                {acceptors, 10}, 
-                {max_clients, 1024} | ?TCP_OPTIONS],
+                {acceptors, 16}, 
+                {max_clients, 1000000} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
