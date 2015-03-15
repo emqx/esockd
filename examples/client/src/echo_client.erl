@@ -26,13 +26,13 @@
 %%%-----------------------------------------------------------------------------
 -module(echo_client).
 
--export([start/1, start/2, send/2, run/3, connect/3, loop/2]).
+-export([start/1, start/3, send/2, run/4, connect/4, loop/2]).
 
-start([Port, N]) when is_atom(Port), is_atom(N) ->
-	start(a2i(Port), a2i(N)).
+start([Port, Host, N]) when is_atom(Port), is_atom(Host), is_atom(N) ->
+	start(a2i(Port), atom_to_list(Host), a2i(N)).
 
-start(Port, N) ->
-	spawn(?MODULE, run, [self(), Port, N]),
+start(Port, Host, N) ->
+	spawn(?MODULE, run, [self(), Host, Port, N]),
 	mainloop(0).
 
 mainloop(Count) ->
@@ -42,15 +42,15 @@ mainloop(Count) ->
 			mainloop(Count+1)
 	end.
 
-run(_Parent, _Port, 0) ->
+run(_Parent, _Host, _Port, 0) ->
 	ok;
-run(Parent, Port, N) ->
-	spawn(?MODULE, connect, [Parent, Port, N]),
-    timer:sleep(2),
-	run(Parent, Port, N-1).
+run(Parent, Host, Port, N) ->
+	spawn(?MODULE, connect, [Parent, Host, Port, N]),
+	timer:sleep(2),
+	run(Parent, Host, Port, N-1).
 
-connect(Parent, Port, N) ->
-	{ok, Sock} = gen_tcp:connect("localhost", Port, [binary, {packet, raw}, {active, true}]),
+connect(Parent, Host, Port, N) ->
+	{ok, Sock} = gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, true}]),
 	Parent ! {connected, Sock},
 	send(N, Sock).
 
@@ -61,11 +61,11 @@ send(N, Sock) ->
 	loop(N, Sock).
 
 loop(N, Sock) ->
-	Timeout = 5000 + random:uniform(5000),
+	Timeout = 10000 + random:uniform(10000),
 	receive
 		{tcp, Sock, _Data} -> 
             %io:format("~p received: ~s~n", [N, Data]), 
-            loop(N, Sock);
+		loop(N, Sock);
 		{tcp_closed, Sock} -> 
 			io:format("~p socket closed~n", [N]);
 		{tcp_error, Sock, Reason} -> 
