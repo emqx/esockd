@@ -151,8 +151,7 @@ handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
 
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     case catch esockd_access:rule(RawRule) of
-        {'EXIT', Error} -> 
-            lager:error("Access Rule Error: ~p", [Error]),
+        {'EXIT', _Error} -> 
             {reply, {error, bad_cidr}, State};
         Rule -> 
             case lists:member(Rule, Rules) of

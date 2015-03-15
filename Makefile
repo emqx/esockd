@@ -16,6 +16,9 @@ xref:
 clean:
 	@$(REBAR) clean
 
+eunit:
+	@$(REBAR) eunit
+
 test:
 	@$(REBAR) skip_deps=true eunit
 

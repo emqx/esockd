@@ -26,15 +26,27 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_access).
 
+-type cidr() :: {string(), pos_integer(), pos_integer()}.
+
 -type rule() :: {allow, all} |
                 {allow, cidr()} |
                 {deny,  all} |
                 {deny,  cidr()}.
 
--type cidr() :: {string(), pos_integer(), pos_integer()}.
+-export([rule/1, match/2, itoa/1]).
 
--export([rule/1, match/2, range/1]).
+-ifdef(TEST).
 
+-export([range/1, mask/1, atoi/1]).
+
+-endif.
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Make rule.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 rule({allow, all}) ->
     {allow, all};
 rule({allow, CIDR}) when is_list(CIDR) ->
@@ -48,6 +60,12 @@ rule(Type, CIDR) when is_list(CIDR) ->
     {ok, Start, End} = range(CIDR),
     {Type, {CIDR, Start, End}}.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% CIDR range.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 range(CIDR) ->
     case string:tokens(CIDR, "/") of
         [Addr] ->
@@ -55,29 +73,73 @@ range(CIDR) ->
             {ok, atoi(IP), atoi(IP)};
         [Addr, Mask] ->
             {ok, IP} = inet:getaddr(Addr, inet),
-            subnet(IP, list_to_integer(Mask))
+            {Start, End} = subnet(IP, mask(list_to_integer(Mask))),
+            {ok, Start, End}
     end.
 
-subnet(IP, Mask) when Mask >= 0, Mask =< 32 ->
-    {atoi(IP), atoi(IP)}.
+subnet(IP, Mask) ->
+    Start = atoi(IP) band Mask,
+    End = Start bor (Mask bxor 16#FFFFFFFF),
+    {Start, End}.
 
 %%------------------------------------------------------------------------------
 %% @doc
-%% Match IpAddr with access rules.
+%% Mask Int
+%%
+%% @end
+%%------------------------------------------------------------------------------
+mask(0) ->
+    16#00000000;
+mask(32) ->
+    16#FFFFFFFF;
+mask(N) when N >= 1, N =< 31 ->
+    lists:foldl(fun(I, Mask) -> (1 bsl I) bor Mask end, 0, lists:seq(32 - N, 31)).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Match Addr with Access Rules.
 %%
 %% @end
 %%------------------------------------------------------------------------------
 -spec match(inet:ip_address(), [rule()]) -> {matched, allow} | {matched, deny} | nomatch.
-match(_Addr, _Rules) ->
-    nomatch.
+match(Addr, Rules) when is_tuple(Addr) ->
+    match2(atoi(Addr), Rules).
 
+match2(_I, []) ->
+    nomatch;
+match2(_I, [{allow, all} | _Rules]) ->
+    {matched, allow};
+match2(I, [{allow, {_, Start, End}} | _Rules]) when I >= Start, I =< End ->
+    {matched, allow};
+match2(I, [{allow, {_, _Start, _End}} | Rules]) ->
+    match2(I, Rules);
+match2(_I, [{deny, all} | _Rules]) ->
+    {matched, deny};
+match2(I, [{deny, {_, Start, End}} | _Rules]) when I >= Start, I =< End ->
+    {matched, deny};
+match2(I, [{deny, {_, _Start, _End}} | Rules]) ->
+    match2(I, Rules).
 
-atoi(S) when is_list(S) ->
-    {ok, Addr} = inet:parse_ipv4_address(S),
-    atoi(Addr);
+%%------------------------------------------------------------------------------
+%% @doc
+%% Addr to Integer.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 atoi({A, B, C, D}) ->
-    (A bsl 24) + (B bsl 16) + C bsl 8 + D.
-    
+    (A bsl 24) + (B bsl 16) + (C bsl 8) + D.
 
+%%------------------------------------------------------------------------------
+%% @doc
+%% Integer to Addr.
+%%
+%% @end
+%%------------------------------------------------------------------------------
+itoa(I) ->
+    A = (I bsr 24) band 16#FF,
+    B = (I bsr 16) band 16#FF,
+    C = (I bsr 8)  band 16#FF,
+    D = I band 16#FF,
+    {A, B, C, D}.
 
 
