@@ -26,12 +26,21 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_access).
 
--type cidr() :: {string(), pos_integer(), pos_integer()}.
+-type cidr() :: string().
 
 -type rule() :: {allow, all} |
                 {allow, cidr()} |
                 {deny,  all} |
                 {deny,  cidr()}.
+
+-export_type([cidr/0, rule/0]).
+
+-type range() :: {cidr(), pos_integer(), pos_integer()}.
+
+-type range_rule() :: {allow, all} |
+                       {allow, range()} |
+                       {deny,  all} |
+                       {deny,  cidr()}.
 
 -export([rule/1, match/2, itoa/1]).
 
@@ -47,6 +56,7 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec rule(rule()) -> [range_rule()].
 rule({allow, all}) ->
     {allow, all};
 rule({allow, CIDR}) when is_list(CIDR) ->
@@ -66,6 +76,7 @@ rule(Type, CIDR) when is_list(CIDR) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec range(cidr()) -> {ok, pos_integer(), pos_integer()}.
 range(CIDR) ->
     case string:tokens(CIDR, "/") of
         [Addr] ->
@@ -88,6 +99,7 @@ subnet(IP, Mask) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec mask(0..32) -> 0..16#FFFFFFFF.
 mask(0) ->
     16#00000000;
 mask(32) ->
@@ -101,7 +113,7 @@ mask(N) when N >= 1, N =< 31 ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec match(inet:ip_address(), [rule()]) -> {matched, allow} | {matched, deny} | nomatch.
+-spec match(inet:ip_address(), [range_rule()]) -> {matched, allow} | {matched, deny} | nomatch.
 match(Addr, Rules) when is_tuple(Addr) ->
     match2(atoi(Addr), Rules).
 

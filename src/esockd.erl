@@ -63,6 +63,7 @@
 -type option() ::
 		{acceptors, pos_integer()} |
 		{max_clients, pos_integer()} | 
+        {access, [esockd_access:rule()]} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
@@ -117,6 +118,7 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec listeners() -> [{atom(), inet:port_number()}].
 listeners() ->
     esockd_sup:listeners().
 
@@ -224,6 +226,7 @@ get_access_rules(LSup) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec allow({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 allow({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
     Manager = esockd_listener_sup:manager(LSup),
@@ -235,6 +238,7 @@ allow({Protocol, Port}, CIDR) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec deny({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 deny({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
     Manager = esockd_listener_sup:manager(LSup),

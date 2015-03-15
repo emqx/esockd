@@ -51,7 +51,9 @@ start([Port]) when is_atom(Port) ->
     start(a2i(Port));
 start(Port) when is_integer(Port) ->
     esockd:start(),
-    SockOpts = [{acceptors, 10}, 
+    Access = application:get_env(esockd, access, [{allow, all}]),
+    SockOpts = [{access, Access},
+                {acceptors, 10}, 
                 {max_clients, 1024} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).

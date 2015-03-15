@@ -70,7 +70,7 @@ start_link(Options, ConnSup) ->
 %% @end
 %%------------------------------------------------------------------------------
 new_connection(Manager, Mod, Sock, SockFun) ->
-    case gen_server:call(Manager, new_connection) of
+    case gen_server:call(Manager, {new_connection, Sock}) of
         {ok, ConnSup} ->
             SockArgs = {esockd_transport, Sock, SockFun},
             case esockd_connection_sup:start_connection(ConnSup, SockArgs) of
@@ -82,9 +82,7 @@ new_connection(Manager, Mod, Sock, SockFun) ->
                 {error, Error}
             end;
         {reject, Reason} ->
-            {error, {reject, Reason}};
-        fobidden ->
-            {error, fobidden}
+            {error, {reject, Reason}}
     end.
 
 get_max_clients(Manager) when is_pid(Manager) ->
@@ -115,7 +113,9 @@ deny(Manager, CIDR) ->
 %%------------------------------------------------------------------------------
 init([Options, ConnSup]) ->
     MaxClients = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
-    {ok, #state{conn_sup = ConnSup, max_clients = MaxClients}}.
+    AccessRules = [esockd_access:rule(Rule)
+                   || Rule <- proplists:get_value(access, Options, [{allow, all}])],
+    {ok, #state{conn_sup = ConnSup, max_clients = MaxClients, access_rules = AccessRules}}.
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -135,7 +135,7 @@ handle_call({new_connection, Sock}, _From, State = #state{conn_sup = ConnSup, ma
             case esockd_access:match(Addr, Rules) of
                 nomatch          -> {ok, ConnSup};
                 {matched, allow} -> {ok, ConnSup};
-                {matched, deny}   -> fobidden
+                {matched, deny}  -> {reject, fobidden}
             end
     end,
     {reply, Reply, State};
@@ -162,8 +162,8 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
             end
     end;
 
-handle_call(_Req, _From, State) ->
-    {reply, ok, State}.
+handle_call(Req, _From, State) ->
+    {stop, {error, {badreq, Req}}, State}.
 
 %%------------------------------------------------------------------------------
 %% @private

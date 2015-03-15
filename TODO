@@ -4,5 +4,11 @@ Design doc
 
 Test Cases...
 
-Deny/Allow Address?
+Limit connections per addr?
+
+    limit_conn addr 1;
+
+Limit the bandwidth per connection?
+
+    limit_rate 50k;
 

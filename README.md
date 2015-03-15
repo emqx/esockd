@@ -11,6 +11,8 @@ Acceptor Pool and Asynchronous TCP Accept.
 
 Max connections management.
 
+Allow/Deny by peer address.
+
 ## Usage
 
 A Simple Echo Server:
@@ -106,6 +108,7 @@ Options:
 -type option() :: 
 		{acceptors, pos_integer()} |
 		{max_clients, pos_integer()} | 
+        {access, [esockd_access:rule()]} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
@@ -117,6 +120,56 @@ Callback:
 -type mfargs() :: {module(), atom(), [term()]}.
 
 -type callback() :: mfargs() | {atom(), atom()} | atom().
+```
+
+### Get Setting and Stats
+
+Get stats:
+
+```
+esockd:get_stats({echo, 5000}).
+```
+
+Get acceptors:
+
+```
+esockd:get_acceptors({echo, 5000}).
+```
+
+Get/Set max clients:
+
+```
+esockd:get_max_clients({echo, 5000}).
+esockd:set_max_clients({echo, 5000}, 100000).
+```
+
+### Allow/Deny
+
+Same to Allow/Deny Syntax of nginx:
+
+```
+allow address | CIDR | all;
+
+deny address | CIDR | all;
+```
+
+allow/deny by options:
+
+```
+esockd:open(echo, 5000, [
+    {access, [{deny, "192.168.1.1"},
+              {allow, "192.168.1.0/24"},
+              {deny, all}]}
+]).
+```
+
+allow/deny by API:
+
+```
+esockd:allow({echo, 5000}, all).
+esockd:allow({echo, 5000}, "192.168.0.1/24").
+esockd:deny({echo, 5000}, all).
+esockd:deny({echo, 5000}, "10.10.0.0/16").
 ```
 
 ### Close

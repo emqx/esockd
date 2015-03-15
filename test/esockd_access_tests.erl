@@ -37,16 +37,16 @@ atoi_test() ->
     [?assertEqual(Ip, itoa(atoi(Ip))) || Ip <- IpList].
 
 mask_test() ->
-    ?assertEqual(16#FFFFFF00, mask(24)),
+    ?assertEqual(16#FF000000, mask(8)),
     ?assertEqual(16#FFFF0000, mask(16)),
-    ?assertEqual(16#FFFFFF00, mask(8)),
+    ?assertEqual(16#FFFFFF00, mask(24)),
     ?assertEqual(16#FFFF8000, mask(17)),
     ?assertEqual(16#FFFFFF80, mask(25)).
 
 range_test() ->
     {ok, Start, End} = range("192.168.1.0/24"),
-    ?assertEqual({192,168,1.0}, itoa(Start)),
-    ?assertEqual({192,168,1.255}, itoa(End)),
+    ?assertEqual({192,168,1,0}, itoa(Start)),
+    ?assertEqual({192,168,1,255}, itoa(End)),
     {ok, Start1, End1} = range("10.10.0.0/16"),
     ?assertEqual({10,10,0,0}, itoa(Start1)),
     ?assertEqual({10,10,255,255}, itoa(End1)).
