@@ -199,7 +199,7 @@ Logger environment:
 Logger option:
 
 ```
-esockd:open(echo, 5000, [{logger, {otp, info}}], {echo_server, start_link, []}).
+esockd:open(echo, 5000, [{logger, {error_logger, info}}], {echo_server, start_link, []}).
 ```
 
 ## License
