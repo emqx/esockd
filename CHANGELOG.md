@@ -2,6 +2,26 @@
 eSockd ChangeLog
 ==================
 
+2.0.1-alpha (2015/03/15)
+------------------------
+
+esockd.app.src: update vsn to 2.0.1
+
+update change logs
+
+
+2.0.0-alpha (2015/03/15)
+------------------------
+
+Support [Allow/Deny](https://github.com/emqtt/esockd/wiki/Allow-and-Deny) features like NGINX.
+
+esockd to add allow/2, deny/2, get_access_rules/1 APIs
+
+esockd_manager to add allow/2, deny/2, access_rules/1 APIs
+
+new esockd_access file
+
+
 v1.2.0-beta (2015/03/13)
 ------------------------
 
