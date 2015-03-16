@@ -50,7 +50,7 @@ run(Parent, Host, Port, N) ->
 	run(Parent, Host, Port, N-1).
 
 connect(Parent, Host, Port, N) ->
-	{ok, Sock} = gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, true}]),
+	{ok, Sock} = gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, true}], 30000),
 	Parent ! {connected, Sock},
 	send(N, Sock).
 
