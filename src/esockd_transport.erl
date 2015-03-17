@@ -30,7 +30,7 @@
 
 -include("esockd.hrl").
 
--export([listen/2, send/2, port_command/2, recv/2, async_recv/3, close/1,controlling_process/2]).
+-export([listen/2, send/2, port_command/2, recv/2, recv/3, async_recv/3, close/1,controlling_process/2]).
 
 -export([getopts/2, setopts/2, getstat/2]).
 
@@ -114,7 +114,7 @@ port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Receive data.
+%%% Receive Data.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -126,6 +126,16 @@ recv(Sock, Length) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length);
 recv(#ssl_socket{ssl = SslSock}, Length)  ->
     ssl:recv(SslSock, Length).
+
+-spec recv(Sock, Length, Timout) -> {ok, Data} | {error, closed | atom()} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
+    Length  :: non_neg_integer(),
+    Timout  :: timeout(),
+    Data    :: [char()] | binary().
+recv(Sock, Length, Timeout) when is_port(Sock) ->
+    gen_tcp:recv(Sock, Length, Timeout);
+recv(#ssl_socket{ssl = SslSock}, Length, Timeout)  ->
+    ssl:recv(SslSock, Length, Timeout).
 
 %%%-----------------------------------------------------------------------------
 %%% @doc
