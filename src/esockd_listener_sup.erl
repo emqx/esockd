@@ -30,7 +30,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/4, connection_sup/1, manager/1, acceptor_sup/1]).
+-export([start_link/4, connection_sup/1, acceptor_sup/1]).
 
 -export([init/1]).
 
@@ -75,15 +75,6 @@ start_link(Protocol, Port, Options, Callback) ->
 %%------------------------------------------------------------------------------
 connection_sup(Sup) ->
     child_pid(Sup, connection_sup).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get manager.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-manager(Sup) ->
-    child_pid(Sup, manager).
 
 %%------------------------------------------------------------------------------
 %% @doc

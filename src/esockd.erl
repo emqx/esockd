@@ -170,8 +170,8 @@ get_max_clients({Protocol, Port}) ->
 get_max_clients(undefined) ->
     undefined;
 get_max_clients(LSup) when is_pid(LSup) ->
-    Manager = esockd_listener_sup:manager(LSup),
-    esockd_manager:get_max_clients(Manager).
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:get_max_clients(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -186,8 +186,8 @@ set_max_clients({Protocol, Port}, MaxClients) ->
 set_max_clients(undefined, _MaxClients) ->
     undefined;
 set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
-    Manager = esockd_listener_sup:manager(LSup),
-    esockd_manager:set_max_clients(Manager, MaxClients).
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:set_max_clients(ConnSup, MaxClients).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -203,7 +203,7 @@ get_current_clients(undefined) ->
     undefined;
 get_current_clients(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:count_connection(ConnSup).
+    esockd_connection_sup:count_connections(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -217,8 +217,8 @@ get_access_rules({Protocol, Port}) ->
 get_access_rules(undefined) ->
     undefined;
 get_access_rules(LSup) ->
-    Manager = esockd_listener_sup:manager(LSup),
-    esockd_manager:access_rules(Manager).
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:access_rules(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -229,8 +229,8 @@ get_access_rules(LSup) ->
 -spec allow({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 allow({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
-    Manager = esockd_listener_sup:manager(LSup),
-    esockd_manager:allow(Manager, CIDR).
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:allow(ConnSup, CIDR).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -241,8 +241,8 @@ allow({Protocol, Port}, CIDR) ->
 -spec deny({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 deny({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
-    Manager = esockd_listener_sup:manager(LSup),
-    esockd_manager:deny(Manager, CIDR).
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:deny(ConnSup, CIDR).
   
 %%------------------------------------------------------------------------------
 %% @doc

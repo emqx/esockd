@@ -161,9 +161,8 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
             end
     end;
 
-handle_call(Req, _From, State) ->
+handle_call(_Req, _From, State) ->
     {stop, {error, badreq}, State}.
-
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -210,6 +209,15 @@ handle_info(_Info, State) ->
 -spec terminate(Reason, State) -> any() when
     Reason  :: normal | shutdown | {shutdown, term()} | term(),
     State :: #state{}.
+terminate(normal, _State) ->
+    %%KILL ALL connection pids...
+    ok;
+terminate(shutdown, _State) ->
+    %%KILL ALL connection pids...
+    ok;
+terminate({shutdown, _Error}, _State) ->
+    %%KILL ALL connection pids...
+    ok;
 terminate(_Reason, _State) ->
     %%KILL ALL connection pids...
     ok.
@@ -224,11 +232,12 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+
 %%%=============================================================================
 %%% Internal functions
 %%%=============================================================================
 allowed(Addr, Rules) ->
-    case esockd_access:match(Addr, Rules) of 
+    case esockd_access:match(Addr, Rules) of
         nomatch          -> true;
         {matched, allow} -> true;
         {matched, deny}  -> false
@@ -240,5 +249,6 @@ raw({deny, {CIDR, _, _}}) ->
      {deny, CIDR};
 raw(Rule) ->
      Rule.
+
 
 

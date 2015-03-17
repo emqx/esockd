@@ -37,10 +37,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {manager     :: pid(),
-                lsock       :: inet:socket(),
+-record(state, {lsock       :: inet:socket(),
                 sockfun     :: esockd:sock_fun(),
                 sockname    :: iolist(),
+                conn_sup    :: pid(),
                 statsfun    :: fun(),
                 logger      :: gen_logger:logmod(),
                 ref         :: reference(),
@@ -52,8 +52,8 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Manager, AcceptStatsFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
-    Manager        :: pid(),
+-spec start_link(ConnSup, AcceptStatsFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+    ConnSup        :: pid(),
     AcceptStatsFun :: fun(),
     Logger         :: gen_logger:logmod(),
     LSock          :: inet:socket(),
@@ -64,13 +64,13 @@ start_link(Manager, AcceptStatsFun, Logger, LSock, SockFun) ->
 %%%=============================================================================
 %% gen_server callbacks
 %%%=============================================================================
-init({Manager, AcceptStatsFun, Logger, LSock, SockFun}) ->
+init({ConnSup, AcceptStatsFun, Logger, LSock, SockFun}) ->
     {ok, SockName} = inet:sockname(LSock),
     gen_server:cast(self(), accept),
-    {ok, #state{manager  = Manager,
-                lsock    = LSock,
+    {ok, #state{lsock    = LSock,
                 sockfun  = SockFun,
                 sockname = esockd_net:format(sockname, SockName),
+                conn_sup = ConnSup,
                 statsfun = AcceptStatsFun,
                 logger   = Logger}}.
 
@@ -83,13 +83,13 @@ handle_cast(accept, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manager,
-                                                                 lsock=LSock,
-                                                                 sockfun = SockFun,
+handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSock,
+                                                                 sockfun  = SockFun,
                                                                  sockname = SockName,
+                                                                 conn_sup = ConnSup,
                                                                  statsfun = AcceptStatsFun,
-                                                                 logger = Logger,
-                                                                 ref=Ref}) ->
+                                                                 logger   = Logger,
+                                                                 ref      = Ref}) ->
 
     %% patch up the socket so it looks like one we got from gen_tcp:accept/1
     {ok, Mod} = inet_db:lookup_socket(LSock),
@@ -102,7 +102,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{manager = Manag
     Logger:info("~s - Accept from ~s~n", [SockName, esockd_net:format(peername, Peername)]),
     case tune_buffer_size(Sock) of
         ok -> 
-            case esockd_manager:new_connection(Manager, Mod, Sock, SockFun) of
+            case esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun) of
                 {ok, _Pid} ->
                     ok;
                 {error, Reason} ->
