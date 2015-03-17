@@ -50,6 +50,7 @@ start() ->
 start([Port]) when is_atom(Port) ->
     start(a2i(Port));
 start(Port) when is_integer(Port) ->
+    application:start(sasl),
     esockd:start(),
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access, Access},
