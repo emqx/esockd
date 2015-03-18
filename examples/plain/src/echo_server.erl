@@ -48,7 +48,7 @@ start() ->
     start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
-    start(a2i(Port));
+    start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
     application:start(sasl),
     {ok, LSock} = gen_tcp:listen(Port, [{active, false} | ?TCP_OPTIONS]),
@@ -82,6 +82,3 @@ loop(Sock) ->
 			{stop, Reason}
 	end.
     
-a2i(A) -> list_to_integer(atom_to_list(A)).
-    
-
