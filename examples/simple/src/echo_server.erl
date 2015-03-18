@@ -32,8 +32,8 @@
 -export([start_link/1, init/1, loop/3]).
 
 -define(TCP_OPTIONS, [
-		%binary,
-		%{packet, raw},
+		binary,
+		{packet, raw},
 		%{buffer, 1024},
 		{reuseaddr, true},
 		{backlog, 1024},
@@ -49,7 +49,7 @@ start() ->
     start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
-    start(a2i(Port));
+    start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
     [application:start(App) || App <- [sasl, esockd]],
     Access = application:get_env(esockd, access, [{allow, all}]),
@@ -84,5 +84,4 @@ loop(Transport, Sock, State) ->
 			{stop, Reason}
 	end.
 
-a2i(A) -> list_to_integer(atom_to_list(A)).
 
