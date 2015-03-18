@@ -30,7 +30,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/4, connection_sup/1, manager/1, acceptor_sup/1]).
+-export([start_link/4, connection_sup/1, acceptor_sup/1]).
 
 -export([init/1]).
 
@@ -54,16 +54,14 @@ start_link(Protocol, Port, Options, Callback) ->
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ConnSup} = supervisor:start_child(Sup,
 		{connection_sup,
-			{esockd_connection_sup, start_link, [Callback]},
+			{esockd_connection_sup, start_link, [Options, Callback]},
 				transient, infinity, supervisor, [esockd_connection_sup]}),
-    {ok, Manager} = supervisor:start_child(Sup,
-        {manager,
-            {esockd_manager, start_link, [Options, ConnSup]},
-                transient, 16#ffffffff, worker, [esockd_manager]}),
     AcceptStatsFun = esockd_server:stats_fun({Protocol, Port}, accepted),
+    BufferTuneFun = buffer_tune_fun(proplists:get_value(buffer, Options),
+                              proplists:get_value(tune_buffer, Options, false)),
 	{ok, AcceptorSup} = supervisor:start_child(Sup,
 		{acceptor_sup,
-			{esockd_acceptor_sup, start_link, [Manager, AcceptStatsFun, Logger]},
+			{esockd_acceptor_sup, start_link, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]},
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup,
 		{listener,
@@ -79,15 +77,6 @@ start_link(Protocol, Port, Options, Callback) ->
 %%------------------------------------------------------------------------------
 connection_sup(Sup) ->
     child_pid(Sup, connection_sup).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Get manager.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-manager(Sup) ->
-    child_pid(Sup, manager).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -117,6 +106,22 @@ init([]) ->
 %%%=============================================================================
 %% Internal functions
 %%%=============================================================================
+
+%% when 'buffer' is undefined, and 'tune_buffer' is true... 
+buffer_tune_fun(undefined, true) ->
+    fun(Sock) -> 
+        case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of
+            {ok, BufSizes} -> 
+                BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
+                inet:setopts(Sock, [{buffer, BufSz}]);
+            Error -> 
+                Error
+        end
+    end;
+
+buffer_tune_fun(_, _) ->
+    fun(_Sock) -> ok end.
+
 logger(Options) ->
     {ok, Default} = application:get_env(esockd, logger),
     gen_logger:new(proplists:get_value(logger, Options, Default)).

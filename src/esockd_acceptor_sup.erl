@@ -28,7 +28,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/3, start_acceptor/3, count_acceptors/1]).
+-export([start_link/4, start_acceptor/3, count_acceptors/1]).
 
 -export([init/1]).
 
@@ -38,12 +38,13 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Manager, AcceptStatsFun, Logger) -> {ok, pid()} when
-    Manager        :: pid(),
+-spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) -> {ok, pid()} when
+    ConnSup        :: pid(),
     AcceptStatsFun :: fun(),
+    BufferTuneFun  :: esockd:tune_fun(),
     Logger         :: gen_logger:logmod().
-start_link(Manager, AcceptStatsFun, Logger) ->
-    supervisor:start_link(?MODULE, [Manager, AcceptStatsFun, Logger]).
+start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) ->
+    supervisor:start_link(?MODULE, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]).
 
 %%------------------------------------------------------------------------------
 %% @doc 
@@ -66,8 +67,8 @@ count_acceptors(AcceptorSup) ->
 %%%=============================================================================
 %% Supervisor callbacks
 %%%=============================================================================
-init([Manager, AcceptStatsFun, Logger]) ->
+init([ConnSup, AcceptStatsFun, BufferTuneFun, Logger]) ->
     {ok, {{simple_one_for_one, 1000, 3600},
-          [{acceptor, {esockd_acceptor, start_link, [Manager, AcceptStatsFun, Logger]},
+          [{acceptor, {esockd_acceptor, start_link, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]},
             transient, 5000, worker, [esockd_acceptor]}]}}.
 

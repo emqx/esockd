@@ -34,6 +34,7 @@
 -define(TCP_OPTIONS, [
 		binary,
 		{packet, raw},
+		%{buffer, 1024},
 		{reuseaddr, true},
 		{backlog, 1024},
 		{nodelay, false}]).
@@ -48,13 +49,12 @@ start() ->
     start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
-    start(a2i(Port));
+    start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    application:start(sasl),
-    esockd:start(),
+    [ok = application:start(App) || App <- [sasl, esockd]],
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access, Access},
-                {acceptors, 16}, 
+                {acceptors, 32}, 
                 {max_clients, 1000000} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
@@ -75,8 +75,8 @@ init(SockArgs = {Transport, _Sock, _SockFun}) ->
 loop(Transport, Sock, State) ->
 	case Transport:recv(Sock, 0) of
 		{ok, Data} ->
-			{ok, PeerName} = Transport:peername(Sock),
-			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
+			%{ok, PeerName} = Transport:peername(Sock),
+			%io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
 			Transport:send(Sock, Data),
 			loop(Transport, Sock, State);
 		{error, Reason} ->
@@ -84,5 +84,4 @@ loop(Transport, Sock, State) ->
 			{stop, Reason}
 	end.
 
-a2i(A) -> list_to_integer(atom_to_list(A)).
 

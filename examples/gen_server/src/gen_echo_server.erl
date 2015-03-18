@@ -42,6 +42,7 @@
 
 -define(TCP_OPTIONS, [
 		binary,
+        %{buffer, 1024},
 		{reuseaddr, true},
 		{backlog, 512},
 		{nodelay, false}]).
@@ -50,11 +51,12 @@ start() ->
     start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
-    start(a2i(Port));
+    start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
+    application:start(sasl),
     ok = esockd:start(),
-    SockOpts = [{acceptors, 10}, 
-                {max_clients, 10} | ?TCP_OPTIONS],
+    SockOpts = [{acceptors, 32},
+                {max_clients, 1000000} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
@@ -95,5 +97,3 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-a2i(A) -> list_to_integer(atom_to_list(A)).

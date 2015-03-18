@@ -28,12 +28,17 @@
 
 -export([start/1, start/3, send/2, run/4, connect/4, loop/2]).
 
+-define(TCP_OPTIONS, [binary,
+                      {packet, raw},
+                      {buffer, 1024},
+                      {active, true}]).
+
 start([Port, Host, N]) when is_atom(Port), is_atom(Host), is_atom(N) ->
 	start(a2i(Port), atom_to_list(Host), a2i(N)).
 
 start(Port, Host, N) ->
 	spawn(?MODULE, run, [self(), Host, Port, N]),
-	mainloop(0).
+	mainloop(1).
 
 mainloop(Count) ->
 	receive
@@ -46,34 +51,38 @@ run(_Parent, _Host, _Port, 0) ->
 	ok;
 run(Parent, Host, Port, N) ->
 	spawn(?MODULE, connect, [Parent, Host, Port, N]),
-	timer:sleep(2),
+	timer:sleep(5),
 	run(Parent, Host, Port, N-1).
 
 connect(Parent, Host, Port, N) ->
-	{ok, Sock} = gen_tcp:connect(Host, Port, [binary, {packet, raw}, {active, true}], 30000),
-	Parent ! {connected, Sock},
-	send(N, Sock).
-
-send(N, Sock) ->
-	random:seed(now()),
-	%Data = iolist_to_binary(lists:duplicate(128, "00000000")),
-	gen_tcp:send(Sock, [integer_to_list(N), ":", <<"Hello, eSockd!">>]),
-	loop(N, Sock).
+	case gen_tcp:connect(Host, Port, ?TCP_OPTIONS, 60000) of
+    {ok, Sock} -> 
+        Parent ! {connected, Sock},
+        random:seed(now()),
+        loop(N, Sock);
+    {error, Error} ->
+        io:format("client ~p connect error: ~p~n", [N, Error])
+    end.
 
 loop(N, Sock) ->
-	Timeout = 10000 + random:uniform(10000),
+	Timeout = 5000+random:uniform(10000),
 	receive
-		{tcp, Sock, _Data} -> 
-            %io:format("~p received: ~s~n", [N, Data]), 
-		loop(N, Sock);
+		{tcp, Sock, Data} -> 
+            io:format("client ~p received: ~s~n", [N, Data]), 
+            loop(N, Sock);
 		{tcp_closed, Sock} -> 
-			io:format("~p socket closed~n", [N]);
+			io:format("client ~p socket closed~n", [N]);
 		{tcp_error, Sock, Reason} -> 
-			io:format("~p socket error: ~p~n", [N, Reason]);
+			io:format("client ~p socket error: ~p~n", [N, Reason]);
 		Other -> 
-			io:format("unexpected: ~p", [Other])
+			io:format("client ~p unexpected: ~p", [N, Other])
 	after
-		Timeout -> send(N, Sock)
+		Timeout -> send(N, Sock), loop(N, Sock)
 	end.
+
+send(N, Sock) ->
+	%Data = iolist_to_binary(lists:duplicate(128, "00000000")),
+	gen_tcp:send(Sock, [integer_to_list(N), ":", <<"Hello, eSockd!">>]).
 	 
 a2i(A) -> list_to_integer(atom_to_list(A)).
+

@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -20,51 +20,65 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% echo server.
+%%% Simple Echo Server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(ssl_echo_server).
+-module(echo_server).
 
-% start
 -export([start/0, start/1]).
 
-%% callback 
--export([start_link/1, init/1, loop/3]).
+%%callback 
+-export([accept/2, loop/1]).
 
+-define(TCP_OPTIONS, [
+		%binary,
+		%{packet, raw},
+		{reuseaddr, true},
+		{backlog, 1024},
+		{nodelay, false}]).
+
+%%------------------------------------------------------------------------------
+%% @doc
+%% Start echo server.
+%%
+%% @end
+%%------------------------------------------------------------------------------
 start() ->
     start(5000).
+%% shell
+start([Port]) when is_atom(Port) ->
+    start(list_to_integer(atom_to_list(Port)));
+start(Port) when is_integer(Port) ->
+    application:start(sasl),
+    {ok, LSock} = gen_tcp:listen(Port, [{active, false} | ?TCP_OPTIONS]),
+    io:format("Listening on ~p~n", [Port]),
+    spawn(?MODULE, accept, [self(), LSock]),
+    mainloop().
 
-start(Port) ->
-    [ok = application:start(App) ||
-        App <- [sasl, syntax_tools, asn1, crypto, public_key, ssl]],
-    ok = esockd:start(),
-    %{cacertfile, "./crt/cacert.pem"}, 
-    SslOpts = [{certfile, "./crt/demo.crt"},
-               {keyfile,  "./crt/demo.key"}],
-    SockOpts = [binary, 
-                {reuseaddr, true},
-                {acceptors, 4},
-                {max_clients, 1000}, 
-                {ssl, SslOpts}],
-    {ok, _} = esockd:open('echo/ssl', Port, SockOpts, ssl_echo_server).
+mainloop() ->
+    receive 
+        {accecpted, PeerName} -> 
+            io:format("Accept from ~p~n", [PeerName]),
+            mainloop()
+    end.
 
-start_link(SockArgs) ->
-	{ok, spawn_link(?MODULE, init, [SockArgs])}.
+accept(Parent, LSock) ->
+    {ok, Sock} = gen_tcp:accept(LSock),
+    {ok, PeerName} = inet:peername(Sock),
+    Parent ! {accepted, PeerName},
+    spawn(?MODULE, accept, [Parent, LSock]),
+    loop(Sock).
 
-init(SockArgs = {Transport, _Sock, _SockFun}) ->
-    {ok, NewSock} = esockd_connection:accept(SockArgs),
-	loop(Transport, NewSock, state).
-
-loop(Transport, Sock, State) ->
-	case Transport:recv(Sock, 0) of
-		{ok, Data} -> 
-			{ok, PeerName} = Transport:peername(Sock),
-            io:format("~s - ~p~n", [esockd_net:format(peername, PeerName), Data]),
-			Transport:send(Sock, Data),
-			loop(Transport, Sock, State);
+loop(Sock) ->
+	case gen_tcp:recv(Sock, 0, 30000) of
+		{ok, Data} ->
+			{ok, PeerName} = inet:peername(Sock),
+			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
+			gen_tcp:send(Sock, Data),
+			loop(Sock);
 		{error, Reason} ->
 			io:format("tcp ~s~n", [Reason]),
 			{stop, Reason}
-	end. 
-
+	end.
+    

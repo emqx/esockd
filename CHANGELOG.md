@@ -2,6 +2,26 @@
 eSockd ChangeLog
 ==================
 
+2.1.0-alpha (2015/03/18)
+------------------------
+
+esockd_connections_sup: do not user supervisor, write a new implematation
+
+remove esockd_manager, merge its functions to the new esockd_connectioins_sup
+
+esockd_acceptor: fix the tune buffer issue. when set buffer as max of sndbuf, recbuf, esockd will consume too much memories
+
+esockd: add 'tune_buffer' option to tune 'buffer' for hight throughput socket
+
+esockd_transport: add recv/3 function
+
+Benchmark this release on one 8 cores, 32G memory ubuntu/14.04 server from QingCloud:
+
+```
+2500K concurrent connections, 50K messages/sec, 40Mbps In/Out Consumed 5G memory, 20% CPU/core
+```
+
+
 2.0.1-alpha (2015/03/15)
 ------------------------
 

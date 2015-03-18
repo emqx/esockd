@@ -1,5 +1,0 @@
-{release, {"OTP SASL","R17"}, {erts, "6.3"},
-    [{kernel,"3.1"},
-    {stdlib,"2.3"},
-    {sasl,"2.4.1"}
-    ]}.
