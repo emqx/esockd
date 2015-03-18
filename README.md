@@ -13,6 +13,14 @@ Max connections management.
 
 Allow/Deny by peer address.
 
+## Benchmark
+
+Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server from qingcloud.com:
+
+```
+2500K concurrent connections, 50K messages/sec, 40Mbps In/Out consumed 5G memory, 20% CPU/core
+```
+
 ## Usage
 
 A Simple Echo Server:
@@ -108,6 +116,7 @@ Options:
 -type option() :: 
 		{acceptors, pos_integer()} |
 		{max_clients, pos_integer()} | 
+		{tune_buffer, false | true} |
         {access, [esockd_access:rule()]} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
