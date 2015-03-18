@@ -36,6 +36,8 @@ start() ->
     start(5000).
 
 start(Port) ->
+    [ok = application:start(App) ||
+        App <- [sasl, syntax_tools, asn1, crypto, public_key, ssl]],
     ok = esockd:start(),
     %{cacertfile, "./crt/cacert.pem"}, 
     SslOpts = [{certfile, "./crt/demo.crt"},

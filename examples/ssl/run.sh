@@ -2,4 +2,4 @@
 # -*- tab-width:4;indent-tabs-mode:nil -*-
 # ex: ts=4 sw=4 et
 
-erl -pa ebin -pa ../../ebin -pa ../../deps/*/ebin +K true +P 200000 -env ERL_MAX_PORTS 100000 -env ERTS_MAX_PORTS 100000 -boot start_ssl -s ssl_echo_server
+erl -pa ebin -pa ../../ebin -pa ../../deps/*/ebin +K true +P 200000 -env ERL_MAX_PORTS 100000 -env ERTS_MAX_PORTS 100000 -s ssl_echo_server

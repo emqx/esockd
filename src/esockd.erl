@@ -52,6 +52,8 @@
 
 -type ssl_socket() :: #ssl_socket{}.
 
+-type tune_fun() :: fun((inet:socket()) -> ok | {error, any()}).
+
 -type sock_fun() :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()}).
 
 -type sock_args()  :: {atom(), inet:socket(), sock_fun()}.
@@ -62,13 +64,14 @@
 
 -type option() ::
 		{acceptors, pos_integer()} |
-		{max_clients, pos_integer()} | 
+		{max_clients, pos_integer()} |
         {access, [esockd_access:rule()]} |
+        {tune_buffer, false | true} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, callback/0, option/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, callback/0, option/0]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -257,6 +260,8 @@ sockopts([], Acc) ->
 sockopts([{max_clients, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{acceptors, _}|Opts], Acc) ->
+	sockopts(Opts, Acc);
+sockopts([{tune_buffer, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{access, _}|Opts], Acc) ->
     sockopts(Opts, Acc);

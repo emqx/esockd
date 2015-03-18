@@ -57,9 +57,11 @@ start_link(Protocol, Port, Options, Callback) ->
 			{esockd_connection_sup, start_link, [Options, Callback]},
 				transient, infinity, supervisor, [esockd_connection_sup]}),
     AcceptStatsFun = esockd_server:stats_fun({Protocol, Port}, accepted),
+    BufferTuneFun = buffer_tune_fun(proplists:get_value(buffer, Options),
+                              proplists:get_value(tune_buffer, Options, false)),
 	{ok, AcceptorSup} = supervisor:start_child(Sup,
 		{acceptor_sup,
-			{esockd_acceptor_sup, start_link, [ConnSup, AcceptStatsFun, Logger]},
+			{esockd_acceptor_sup, start_link, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]},
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup,
 		{listener,
@@ -104,6 +106,22 @@ init([]) ->
 %%%=============================================================================
 %% Internal functions
 %%%=============================================================================
+
+%% when 'buffer' is undefined, and 'tune_buffer' is true... 
+buffer_tune_fun(undefined, true) ->
+    fun(Sock) -> 
+        case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of
+            {ok, BufSizes} -> 
+                BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
+                inet:setopts(Sock, [{buffer, BufSz}]);
+            Error -> 
+                Error
+        end
+    end;
+
+buffer_tune_fun(_, _) ->
+    fun(_Sock) -> ok end.
+
 logger(Options) ->
     {ok, Default} = application:get_env(esockd, logger),
     gen_logger:new(proplists:get_value(logger, Options, Default)).

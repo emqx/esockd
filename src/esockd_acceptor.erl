@@ -32,13 +32,14 @@
 
 -behaviour(gen_server).
 
--export([start_link/5]).
+-export([start_link/6]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {lsock       :: inet:socket(),
                 sockfun     :: esockd:sock_fun(),
+                tunefun     :: escokd:tune_fun(),
                 sockname    :: iolist(),
                 conn_sup    :: pid(),
                 statsfun    :: fun(),
@@ -52,23 +53,25 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(ConnSup, AcceptStatsFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+-spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
     ConnSup        :: pid(),
     AcceptStatsFun :: fun(),
+    BufferTuneFun  :: esockd:tune_fun(),
     Logger         :: gen_logger:logmod(),
     LSock          :: inet:socket(),
     SockFun        :: esockd:sock_fun().
-start_link(ConnSup, AcceptStatsFun, Logger, LSock, SockFun) ->
-    gen_server:start_link(?MODULE, {ConnSup, AcceptStatsFun, Logger, LSock, SockFun}, []).
+start_link(ConnSup, AcceptStatsFun, BufTuneFun, Logger, LSock, SockFun) ->
+    gen_server:start_link(?MODULE, {ConnSup, AcceptStatsFun, BufTuneFun, Logger, LSock, SockFun}, []).
 
 %%%=============================================================================
 %% gen_server callbacks
 %%%=============================================================================
-init({ConnSup, AcceptStatsFun, Logger, LSock, SockFun}) ->
+init({ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun}) ->
     {ok, SockName} = inet:sockname(LSock),
     gen_server:cast(self(), accept),
     {ok, #state{lsock    = LSock,
                 sockfun  = SockFun,
+                tunefun  = BufferTuneFun,
                 sockname = esockd_net:format(sockname, SockName),
                 conn_sup = ConnSup,
                 statsfun = AcceptStatsFun,
@@ -85,6 +88,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSock,
                                                                  sockfun  = SockFun,
+                                                                 tunefun  = BufferTuneFun,
                                                                  sockname = SockName,
                                                                  conn_sup = ConnSup,
                                                                  statsfun = AcceptStatsFun,
@@ -99,8 +103,8 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSoc
     AcceptStatsFun({inc, 1}),
 
 	{ok, Peername} = inet:peername(Sock),
-    Logger:info("~s - Accept from ~s~n", [SockName, esockd_net:format(peername, Peername)]),
-    case tune_buffer_size(Sock) of
+    Logger:info("~s - Accept from ~s", [SockName, esockd_net:format(peername, Peername)]),
+    case BufferTuneFun(Sock) of
         ok -> 
             case esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun) of
                 {ok, _Pid} ->
@@ -115,7 +119,6 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSoc
             Logger:error("failed to tune buffer size of connection accepted on ~s - ~s", [SockName, Err]),
             catch port_close(Sock)
     end,
-
     %% accept more
     accept(State);
 
@@ -184,16 +187,4 @@ sockerr(Error, State = #state{sockname = SockName, logger = Logger}) ->
 suspend(Time, State) ->
     erlang:send_after(Time, self(), resume),
 	{noreply, State#state{ref=undefined}, hibernate}.
-
-
-%tune_buffer_size(Sock) -> ok.
-
-tune_buffer_size(Sock) ->
-    case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of
-        {ok, BufSizes} -> 
-            io:format("BufSizes: ~p~n", [BufSizes]), 
-                        BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-                          inet:setopts(Sock, [{buffer, BufSz}]);
-        Error          -> Error
-	end.
 
