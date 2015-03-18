@@ -58,8 +58,8 @@
     Logger         :: gen_logger:logmod(),
     LSock          :: inet:socket(),
     SockFun        :: esockd:sock_fun().
-start_link(Manager, AcceptStatsFun, Logger, LSock, SockFun) ->
-    gen_server:start_link(?MODULE, {Manager, AcceptStatsFun, Logger, LSock, SockFun}, []).
+start_link(ConnSup, AcceptStatsFun, Logger, LSock, SockFun) ->
+    gen_server:start_link(?MODULE, {ConnSup, AcceptStatsFun, Logger, LSock, SockFun}, []).
 
 %%%=============================================================================
 %% gen_server callbacks
@@ -185,9 +185,14 @@ suspend(Time, State) ->
     erlang:send_after(Time, self(), resume),
 	{noreply, State#state{ref=undefined}, hibernate}.
 
+
+%tune_buffer_size(Sock) -> ok.
+
 tune_buffer_size(Sock) ->
     case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of
-        {ok, BufSizes} -> BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
+        {ok, BufSizes} -> 
+            io:format("BufSizes: ~p~n", [BufSizes]), 
+                        BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
                           inet:setopts(Sock, [{buffer, BufSz}]);
         Error          -> Error
 	end.
