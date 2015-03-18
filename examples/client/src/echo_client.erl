@@ -46,7 +46,7 @@ run(_Parent, _Host, _Port, 0) ->
 	ok;
 run(Parent, Host, Port, N) ->
 	spawn(?MODULE, connect, [Parent, Host, Port, N]),
-	timer:sleep(2),
+	timer:sleep(5),
 	run(Parent, Host, Port, N-1).
 
 connect(Parent, Host, Port, N) ->
