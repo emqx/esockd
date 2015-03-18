@@ -61,7 +61,7 @@ send(N, Sock) ->
 	loop(N, Sock).
 
 loop(N, Sock) ->
-	Timeout = 5000 + random:uniform(5000),
+	Timeout = random:uniform(10000),
 	receive
 		{tcp, Sock, _Data} -> 
             %io:format("~p received: ~s~n", [N, Data]), 
