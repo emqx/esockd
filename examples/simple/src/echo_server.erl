@@ -34,7 +34,7 @@
 -define(TCP_OPTIONS, [
 		%binary,
 		%{packet, raw},
-		{buffer, 1024},
+		%{buffer, 1024},
 		{reuseaddr, true},
 		{backlog, 1024},
 		{nodelay, false}]).
@@ -73,7 +73,7 @@ init(SockArgs = {Transport, _Sock, _SockFun}) ->
 	loop(Transport, NewSock, state).
 
 loop(Transport, Sock, State) ->
-	case Transport:recv(Sock, 0, 30000) of
+	case Transport:recv(Sock, 0) of
 		{ok, Data} ->
 			%{ok, PeerName} = Transport:peername(Sock),
 			%io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
