@@ -43,8 +43,9 @@
 		Callback :: esockd:callback(). 
 start_link(SockArgs, Callback) ->
 	case call(SockArgs, Callback) of
-	{ok, Pid} -> {ok, Pid};
-	{error, Error} -> {error, Error}
+        {ok, Pid}       -> {ok, Pid};
+        ignore          -> ignore;
+        {error, Error}  -> {error, Error}
 	end.
 
 %%------------------------------------------------------------------------------
