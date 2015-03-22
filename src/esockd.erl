@@ -64,6 +64,7 @@
 		{acceptors, pos_integer()} |
 		{max_clients, pos_integer()} |
         {access, [esockd_access:rule()]} |
+        {shutdown, brutal_kill | infinity | pos_integer()} |
         {tune_buffer, false | true} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
