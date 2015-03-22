@@ -38,11 +38,11 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(SockArgs, Callback) -> {ok, pid()} | {error, any()} when
+-spec start_link(SockArgs, MFArgs) -> {ok, pid()} | {error, any()} when
 		SockArgs :: esockd:sockargs(),
-		Callback :: esockd:callback(). 
-start_link(SockArgs, Callback) ->
-	case call(SockArgs, Callback) of
+		MFArgs   :: esockd:mfargs(). 
+start_link(SockArgs, MFArgs) ->
+	case call(SockArgs, MFArgs) of
         {ok, Pid}       -> {ok, Pid};
         ignore          -> ignore;
         {error, Error}  -> {error, Error}
@@ -91,10 +91,9 @@ transform({_Transport, Sock, SockFun}) ->
 call(SockArgs, M) when is_atom(M) ->
     M:start_link(SockArgs);
 
-call(SockArgs, {M, F}) ->
+call(SockArgs, {M, F}) when is_atom(M), is_atom(F) ->
     M:F(SockArgs);
 
-call(SockArgs, {M, F, Args}) ->
+call(SockArgs, {M, F, Args}) when is_atom(M), is_atom(F) ->
     erlang:apply(M, F, [SockArgs|Args]).
-
 

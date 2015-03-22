@@ -44,17 +44,17 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Protocol, Port, Options, Callback) -> {ok, pid()} when
+-spec start_link(Protocol, Port, Options, MFArgs) -> {ok, pid()} when
     Protocol  :: atom(),
     Port      :: inet:port_number(),
     Options	  :: [esockd:option()],
-    Callback  :: esockd:callback().
-start_link(Protocol, Port, Options, Callback) ->
+    MFArgs    :: esockd:mfargs().
+start_link(Protocol, Port, Options, MFArgs) ->
     Logger = logger(Options),
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ConnSup} = supervisor:start_child(Sup,
 		{connection_sup,
-			{esockd_connection_sup, start_link, [Options, Callback]},
+			{esockd_connection_sup, start_link, [Options, MFArgs]},
 				transient, infinity, supervisor, [esockd_connection_sup]}),
     AcceptStatsFun = esockd_server:stats_fun({Protocol, Port}, accepted),
     BufferTuneFun = buffer_tune_fun(proplists:get_value(buffer, Options),

@@ -62,14 +62,14 @@ start_link() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_listener(Protocol, Port, Options, Callback) -> {ok, pid()} when
+-spec start_listener(Protocol, Port, Options, MFArgs) -> {ok, pid()} when
     Protocol   :: atom(),
     Port       :: inet:port_number(),
     Options    :: [esockd:option()],
-    Callback   :: esockd:callback().
-start_listener(Protocol, Port, Options, Callback) ->
+    MFArgs     :: esockd:mfargs().
+start_listener(Protocol, Port, Options, MFArgs) ->
 	MFA = {esockd_listener_sup, start_link,
-            [Protocol, Port, Options, Callback]},
+            [Protocol, Port, Options, MFArgs]},
 	ChildSpec = {child_id({Protocol, Port}), MFA,
                     transient, infinity, supervisor, [esockd_listener_sup]},
 	supervisor:start_child(?MODULE, ChildSpec).

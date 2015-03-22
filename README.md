@@ -103,11 +103,11 @@ esockd:open(echo, 5000, [binary, {reuseaddr, true}], {echo_server, start_link, [
 Spec:
 
 ```
--spec open(Protocol, Port, Options, Callback) -> {ok, pid()} | {error, any()} when
+-spec open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
     Protocol     :: atom(),
     Port         :: inet:port_number(),
     Options		 :: [option()], 
-    Callback     :: callback().
+    MFArgs       :: esockd:mfargs().
 ```
 
 Options:
@@ -123,12 +123,11 @@ Options:
         gen_tcp:listen_option().
 ```
 
-Callback:
+MFArgs:
 
 ```
--type mfargs() :: {module(), atom(), [term()]}.
+-type mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}.
 
--type callback() :: mfargs() | {atom(), atom()} | atom().
 ```
 
 ### Get Setting and Stats

@@ -58,9 +58,7 @@
 
 -type sock_args()  :: {atom(), inet:socket(), sock_fun()}.
 
--type mfargs() :: {module(), atom(), [term()]}.
-
--type callback() :: atom() | {atom(), atom()} | mfargs().
+-type mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}.
 
 -type option() ::
 		{acceptors, pos_integer()} |
@@ -71,7 +69,7 @@
         {ssl, [ssl:ssloption()]} |
         gen_tcp:listen_option().
 
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, callback/0, option/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, option/0]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -89,13 +87,13 @@ start() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec open(Protocol, Port, Options, Callback) -> {ok, pid()} | {error, any()} when
+-spec open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
     Protocol     :: atom(),
     Port         :: inet:port_number(),
     Options		 :: [option()], 
-    Callback     :: callback().
-open(Protocol, Port, Options, Callback)  ->
-	esockd_sup:start_listener(Protocol, Port, Options, Callback).
+    MFArgs       :: mfargs().
+open(Protocol, Port, Options, MFArgs) ->
+	esockd_sup:start_listener(Protocol, Port, Options, MFArgs).
 
 %%------------------------------------------------------------------------------
 %% @doc

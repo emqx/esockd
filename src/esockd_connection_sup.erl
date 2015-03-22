@@ -46,7 +46,7 @@
 
 -define(MAX_CLIENTS, 1024).
 
--record(state, {callback,
+-record(state, {mfargs,
                 curr_clients = 0,
                 max_clients  = ?MAX_CLIENTS,
                 access_rules = [],
@@ -67,12 +67,12 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Options, Callback, Logger) -> {ok, Pid :: pid()} | ignore | {error, any()} when
+-spec start_link(Options, MFArgs, Logger) -> {ok, Pid :: pid()} | ignore | {error, any()} when
     Options  :: [esockd:option()],
-    Callback :: esockd:callback(),
+    MFArgs   :: esockd:mfargs(),
     Logger   :: gen_logger:logmod().
-start_link(Options, Callback, Logger) ->
-	gen_server:start_link(?MODULE, [Options, Callback, Logger], []).
+start_link(Options, MFArgs, Logger) ->
+	gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -115,13 +115,13 @@ call(Sup, Req) ->
 %% ------------------------------------------------------------------
 %% gen_server Function Definitions
 %% ------------------------------------------------------------------
-init([Options, Callback, Logger]) ->
+init([Options, MFArgs, Logger]) ->
 	process_flag(trap_exit, true),
     Shutdown = proplists:get_value(shutdown, Options, brutal_kill),
     MaxClients = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
     AccessRules = [esockd_access:rule(Rule) || 
             Rule <- proplists:get_value(access, Options, [{allow, all}])],
-    {ok, #state{callback = Callback, max_clients = MaxClients,
+    {ok, #state{mfargs = MFArgs, max_clients = MaxClients,
                 access_rules = AccessRules, logger = Logger,
                 shutdown = Shutdown}}.
 
@@ -138,11 +138,11 @@ handle_call({start_connection, _SockArgs}, _From, State = #state{curr_clients = 
     {reply, {error, maxlimit}, State};
 
 handle_call({start_connection, SockArgs = {_, Sock, _SockFun}}, _From, 
-            State = #state{callback = Callback, curr_clients = Count, access_rules = Rules}) ->
+            State = #state{mfargs = MFArgs, curr_clients = Count, access_rules = Rules}) ->
     {ok, {Addr, _Port}} = inet:peername(Sock),
     case allowed(Addr, Rules) of
         true ->
-            case catch esockd_connection:start_link(SockArgs, Callback) of
+            case catch esockd_connection:start_link(SockArgs, MFArgs) of
                 {ok, Pid} when is_pid(Pid) -> 
                     put(Pid, true),
                     {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
@@ -205,7 +205,7 @@ handle_cast(_Msg, State) ->
 handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count, logger = Logger}) ->
     case erase(Pid) of
         true ->
-            connection_terminated(Pid, Reason, State),
+            connection_crashed(Pid, Reason, State),
             {noreply, State#state{curr_clients = Count-1}};
         undefined ->
             Logger:error("Unexpected EXIT from ~p: ~p", [Pid, Reason]),
@@ -260,23 +260,16 @@ raw({deny, {CIDR, _, _}}) ->
 raw(Rule) ->
      Rule.
 
-connection_terminated(_Pid, normal, _State) ->
+connection_crashed(_Pid, normal, _State) ->
     ok;
-connection_terminated(_Pid, shutdown, _State) ->
+connection_crashed(_Pid, shutdown, _State) ->
     ok;
-connection_terminated(_Pid, {shutdown, _Reason}, _State) ->
+connection_crashed(_Pid, {shutdown, _Reason}, _State) ->
     ok;
-connection_terminated(Pid, Reason, #state{callback = Callback}) ->
-    SupName  = list_to_atom("esockd_connection_sup - " ++ pid_to_list(self())),
-    ErrorMsg = [{supervisor, SupName},
-                {errorContext, connection_terminated},
-                {reason, Reason},
-                {offender, [{pid, Pid},
-                            {name, connection},
-                            {mfargs, Callback}]}],
-    error_logger:error_report(supervisor_report, ErrorMsg).
+connection_crashed(Pid, Reason, State) ->
+    report_error(connection_crashed, Reason, Pid, State).
 
-terminate_children(State = #state{shutdown = Shutdown, mfargs = MFArgs) ->
+terminate_children(State = #state{shutdown = Shutdown}) ->
     {Pids, EStack0} = monitor_children(),
     Sz = ?SETS:size(Pids),
     EStack = case Shutdown of
@@ -286,19 +279,18 @@ terminate_children(State = #state{shutdown = Shutdown, mfargs = MFArgs) ->
                  infinity ->
                      ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
                      wait_children(Shutdown, Pids, Sz, undefined, EStack0);
-                 Time ->
+                 Time when is_integer(Time) ->
                      ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
                      TRef = erlang:start_timer(Time, self(), kill),
                      wait_children(Shutdown, Pids, Sz, TRef, EStack0)
              end,
     %% Unroll stacked errors and report them
-    ?DICT:fold(fun(Reason, Ls, _) ->
-                       report_error(shutdown_error, Reason,
-                                    Child#child{pid=Ls}, SupName)
-               end, ok, EStack).
+    ?DICT:fold(fun(Reason, Pid, _) ->
+        report_error(connection_shutdown_error, Reason, Pid, State)
+    end, ok, EStack).
 
 monitor_children() ->
-    lists:foreach(fun(P, {Pids, EStack}) ->
+    lists:foldl(fun(P, {Pids, EStack}) ->
         case monitor_child(P) of
             ok ->
                 {?SETS:add_element(P, Pids), EStack};
@@ -351,78 +343,43 @@ wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
 wait_children(brutal_kill, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, killed} ->
-            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
-                                  TRef, EStack);
+            erase(Pid),
+            wait_children(brutal_kill, ?SETS:del_element(Pid, Pids),
+                          Sz-1, TRef, EStack);
 
         {'DOWN', _MRef, process, Pid, Reason} ->
-            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
-                                  TRef, ?DICT:append(Reason, Pid, EStack))
+            erase(Pid),
+            wait_children(brutal_kill, ?SETS:del_element(Pid, Pids),
+                          Sz-1, TRef, ?DICT:append(Reason, Pid, EStack))
     end;
-wait_dynamic_children(#child{restart_type=RType} = Child, Pids, Sz,
-                      TRef, EStack) ->
+
+wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, shutdown} ->
-            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
-                                  TRef, EStack);
+            erase(Pid),
+            wait_children(Shutdown, ?SETS:del_element(Pid, Pids), Sz-1, TRef, EStack);
 
-        {'DOWN', _MRef, process, Pid, normal} when RType =/= permanent ->
-            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
-                                  TRef, EStack);
-
+        {'DOWN', _MRef, process, Pid, normal} ->
+            erase(Pid),
+            wait_children(Shutdown, ?SETS:del_element(Pid, Pids), Sz-1, TRef, EStack);
         {'DOWN', _MRef, process, Pid, Reason} ->
-            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
-                                  TRef, ?DICT:append(Reason, Pid, EStack));
-
+            erase(Pid),
+            wait_children(Shutdown, ?SETS:del_element(Pid, Pids), Sz-1,
+                          TRef, ?DICT:append(Reason, Pid, EStack));
         {timeout, TRef, kill} ->
             ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
-            wait_dynamic_children(Child, Pids, Sz-1, undefined, EStack)
+            wait_children(Shutdown, Pids, Sz-1, undefined, EStack)
     end.
 
 
+report_error(Error, Reason, Pid, #state{mfargs = MFArgs}) ->
+    SupName  = list_to_atom("esockd_connection_sup - " ++ pid_to_list(self())),
+    ErrorMsg = [{supervisor, SupName},
+                {errorContext, Error},
+                {reason, Reason},
+                {offender, [{pid, Pid},
+                            {name, connection},
+                            {mfargs, MFArgs}]}],
+    error_logger:error_report(supervisor_report, ErrorMsg).
 
-
-
-
-%%-----------------------------------------------------------------
-%% Shutdowns a child. We must check the EXIT value 
-%% of the child, because it might have died with another reason than
-%% the wanted. In that case we want to report the error. We put a 
-%% monitor on the child an check for the 'DOWN' message instead of 
-%% checking for the 'EXIT' message, because if we check the 'EXIT' 
-%% message a "naughty" child, who does unlink(Sup), could hang the 
-%% supervisor. 
-%% Returns: ok | {error, OtherReason}  (this should be reported)
-%%-----------------------------------------------------------------
-shutdown(Pid, brutal_kill) ->
-    case monitor_child(Pid) of
-	ok ->
-	    exit(Pid, kill),
-	    receive
-		{'DOWN', _MRef, process, Pid, killed} ->
-		    ok;
-		{'DOWN', _MRef, process, Pid, OtherReason} ->
-		    {error, OtherReason}
-	    end;
-	{error, Reason} ->      
-	    {error, Reason}
-    end;
-shutdown(Pid, Time) ->
-    case monitor_child(Pid) of
-	ok ->
-	    exit(Pid, shutdown), %% Try to shutdown gracefully
-	    receive 
-		{'DOWN', _MRef, process, Pid, shutdown} ->
-		    ok;
-		{'DOWN', _MRef, process, Pid, OtherReason} ->
-		    {error, OtherReason}
-	    after Time ->
-		    exit(Pid, kill),  %% Force termination.
-		    receive
-			{'DOWN', _MRef, process, Pid, OtherReason} ->
-			    {error, OtherReason}
-		    end
-	    end;
-	{error, Reason} ->      
-	    {error, Reason}
-    end.
 
