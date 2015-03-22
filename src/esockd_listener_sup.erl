@@ -54,7 +54,7 @@ start_link(Protocol, Port, Options, MFArgs) ->
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ConnSup} = supervisor:start_child(Sup,
 		{connection_sup,
-			{esockd_connection_sup, start_link, [Options, MFArgs]},
+			{esockd_connection_sup, start_link, [Options, MFArgs, Logger]},
 				transient, infinity, supervisor, [esockd_connection_sup]}),
     AcceptStatsFun = esockd_server:stats_fun({Protocol, Port}, accepted),
     BufferTuneFun = buffer_tune_fun(proplists:get_value(buffer, Options),
