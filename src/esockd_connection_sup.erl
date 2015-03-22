@@ -53,6 +53,10 @@
                 logger,
                 shutdown = brutal_kill}).
 
+-define(DICT, dict).
+-define(SETS, sets).
+-define(SET, set).
+
 %%%=============================================================================
 %%% API
 %%%=============================================================================
@@ -225,9 +229,8 @@ handle_info(Info, State = #state{logger = Logger}) ->
 -spec terminate(Reason, State) -> any() when
     Reason  :: normal | shutdown | {shutdown, term()} | term(),
     State :: #state{}.
-terminate(_Reason, #state{shutdown = Shutdown}) ->
-    shutdown_children(Shutdown),
-    ok.
+terminate(_Reason, State) ->
+    terminate_children(State).
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -273,20 +276,153 @@ connection_terminated(Pid, Reason, #state{callback = Callback}) ->
                             {mfargs, Callback}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
 
-shutdown_children(brutal_kill) ->
-    ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
-    wait_dynamic_children(Child, Pids, Sz, undefined, EStack0);
-    todo;
+terminate_children(State = #state{shutdown = Shutdown, mfargs = MFArgs) ->
+    {Pids, EStack0} = monitor_children(),
+    Sz = ?SETS:size(Pids),
+    EStack = case Shutdown of
+                 brutal_kill ->
+                     ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
+                     wait_children(Shutdown, Pids, Sz, undefined, EStack0);
+                 infinity ->
+                     ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
+                     wait_children(Shutdown, Pids, Sz, undefined, EStack0);
+                 Time ->
+                     ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
+                     TRef = erlang:start_timer(Time, self(), kill),
+                     wait_children(Shutdown, Pids, Sz, TRef, EStack0)
+             end,
+    %% Unroll stacked errors and report them
+    ?DICT:fold(fun(Reason, Ls, _) ->
+                       report_error(shutdown_error, Reason,
+                                    Child#child{pid=Ls}, SupName)
+               end, ok, EStack).
 
-shutdown_children(infinity) ->
-    ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
-    wait_dynamic_children(Child, Pids, Sz, undefined, EStack0);
-    todo;
+monitor_children() ->
+    lists:foreach(fun(P, {Pids, EStack}) ->
+        case monitor_child(P) of
+            ok ->
+                {?SETS:add_element(P, Pids), EStack};
+            {error, normal} ->
+                {Pids, EStack};
+            {error, Reason} ->
+                {Pids, ?DICT:append(Reason, P, EStack)}
+        end
+    end, {?SETS:new(), ?DICT:new()}, get_keys(true)).
 
-shutdown_children(Time) when is_integer(Time) ->
-    ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
-    TRef = erlang:start_timer(Time, self(), kill),
-    wait_dynamic_children(Child, Pids, Sz, TRef, EStack0)
-    todo.
+%% Help function to shutdown/2 switches from link to monitor approach
+monitor_child(Pid) ->
+    %% Do the monitor operation first so that if the child dies 
+    %% before the monitoring is done causing a 'DOWN'-message with
+    %% reason noproc, we will get the real reason in the 'EXIT'-message
+    %% unless a naughty child has already done unlink...
+    erlang:monitor(process, Pid),
+    unlink(Pid),
 
+    receive
+	%% If the child dies before the unlik we must empty
+	%% the mail-box of the 'EXIT'-message and the 'DOWN'-message.
+	{'EXIT', Pid, Reason} -> 
+	    receive 
+		{'DOWN', _, process, Pid, _} ->
+		    {error, Reason}
+	    end
+    after 0 -> 
+	    %% If a naughty child did unlink and the child dies before
+	    %% monitor the result will be that shutdown/2 receives a 
+	    %% 'DOWN'-message with reason noproc.
+	    %% If the child should die after the unlink there
+	    %% will be a 'DOWN'-message with a correct reason
+	    %% that will be handled in shutdown/2. 
+	    ok   
+    end.
+
+wait_children(_Shutdown, _Pids, 0, undefined, EStack) ->
+    EStack;
+wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
+	%% If the timer has expired before its cancellation, we must empty the
+	%% mail-box of the 'timeout'-message.
+    erlang:cancel_timer(TRef),
+    receive
+        {timeout, TRef, kill} ->
+            EStack
+    after 0 ->
+            EStack
+    end;
+wait_children(brutal_kill, Pids, Sz, TRef, EStack) ->
+    receive
+        {'DOWN', _MRef, process, Pid, killed} ->
+            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
+                                  TRef, EStack);
+
+        {'DOWN', _MRef, process, Pid, Reason} ->
+            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
+                                  TRef, ?DICT:append(Reason, Pid, EStack))
+    end;
+wait_dynamic_children(#child{restart_type=RType} = Child, Pids, Sz,
+                      TRef, EStack) ->
+    receive
+        {'DOWN', _MRef, process, Pid, shutdown} ->
+            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
+                                  TRef, EStack);
+
+        {'DOWN', _MRef, process, Pid, normal} when RType =/= permanent ->
+            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
+                                  TRef, EStack);
+
+        {'DOWN', _MRef, process, Pid, Reason} ->
+            wait_dynamic_children(Child, ?SETS:del_element(Pid, Pids), Sz-1,
+                                  TRef, ?DICT:append(Reason, Pid, EStack));
+
+        {timeout, TRef, kill} ->
+            ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
+            wait_dynamic_children(Child, Pids, Sz-1, undefined, EStack)
+    end.
+
+
+
+
+
+
+%%-----------------------------------------------------------------
+%% Shutdowns a child. We must check the EXIT value 
+%% of the child, because it might have died with another reason than
+%% the wanted. In that case we want to report the error. We put a 
+%% monitor on the child an check for the 'DOWN' message instead of 
+%% checking for the 'EXIT' message, because if we check the 'EXIT' 
+%% message a "naughty" child, who does unlink(Sup), could hang the 
+%% supervisor. 
+%% Returns: ok | {error, OtherReason}  (this should be reported)
+%%-----------------------------------------------------------------
+shutdown(Pid, brutal_kill) ->
+    case monitor_child(Pid) of
+	ok ->
+	    exit(Pid, kill),
+	    receive
+		{'DOWN', _MRef, process, Pid, killed} ->
+		    ok;
+		{'DOWN', _MRef, process, Pid, OtherReason} ->
+		    {error, OtherReason}
+	    end;
+	{error, Reason} ->      
+	    {error, Reason}
+    end;
+shutdown(Pid, Time) ->
+    case monitor_child(Pid) of
+	ok ->
+	    exit(Pid, shutdown), %% Try to shutdown gracefully
+	    receive 
+		{'DOWN', _MRef, process, Pid, shutdown} ->
+		    ok;
+		{'DOWN', _MRef, process, Pid, OtherReason} ->
+		    {error, OtherReason}
+	    after Time ->
+		    exit(Pid, kill),  %% Force termination.
+		    receive
+			{'DOWN', _MRef, process, Pid, OtherReason} ->
+			    {error, OtherReason}
+		    end
+	    end;
+	{error, Reason} ->      
+	    {error, Reason}
+    end.
 
