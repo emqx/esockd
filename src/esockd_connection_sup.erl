@@ -44,18 +44,16 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
 	 terminate/2, code_change/3]).
 
--define(MAX_CLIENTS, 1024).
-
--record(state, {mfargs,
-                curr_clients = 0,
-                max_clients  = ?MAX_CLIENTS,
-                access_rules = [],
-                logger,
-                shutdown = brutal_kill}).
-
 -define(DICT, dict).
 -define(SETS, sets).
--define(SET, set).
+-define(MAX_CLIENTS, 1024).
+
+-record(state, {curr_clients = 0,
+                max_clients  = ?MAX_CLIENTS,
+                access_rules = [],
+                shutdown = brutal_kill,
+                mfargs,
+                logger}).
 
 %%%=============================================================================
 %%% API
@@ -67,7 +65,7 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(Options, MFArgs, Logger) -> {ok, Pid :: pid()} | ignore | {error, any()} when
+-spec start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
     Options  :: [esockd:option()],
     MFArgs   :: esockd:mfargs(),
     Logger   :: gen_logger:logmod().
@@ -84,6 +82,7 @@ start_connection(Sup, Mod, Sock, SockFun) ->
     SockArgs = {esockd_transport, Sock, SockFun},
     case call(Sup, {start_connection, SockArgs}) of
         {ok, ConnPid} ->
+            % transfer controlling from acceptor to connection
             Mod:controlling_process(Sock, ConnPid),
             esockd_connection:ready(ConnPid, SockArgs),
             {ok, ConnPid};
@@ -121,9 +120,11 @@ init([Options, MFArgs, Logger]) ->
     MaxClients = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
     AccessRules = [esockd_access:rule(Rule) || 
             Rule <- proplists:get_value(access, Options, [{allow, all}])],
-    {ok, #state{mfargs = MFArgs, max_clients = MaxClients,
-                access_rules = AccessRules, logger = Logger,
-                shutdown = Shutdown}}.
+    {ok, #state{max_clients  = MaxClients,
+                access_rules = AccessRules,
+                shutdown     = Shutdown,
+                mfargs       = MFArgs,
+                logger       = Logger}}.
 
 %%------------------------------------------------------------------------------
 %% @private
@@ -172,7 +173,7 @@ handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     case catch esockd_access:rule(RawRule) of
         {'EXIT', _Error} -> 
-            {reply, {error, bad_cidr}, State};
+            {reply, {error, bad_access_rule}, State};
         Rule -> 
             case lists:member(Rule, Rules) of
                 true ->
@@ -192,7 +193,8 @@ handle_call(_Req, _From, State) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State = #state{logger = Logger}) ->
+    Logger:error("Bad MSG: ~p", [Msg]),
     {noreply, State}.
 
 %%------------------------------------------------------------------------------
@@ -208,12 +210,12 @@ handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count, logger =
             connection_crashed(Pid, Reason, State),
             {noreply, State#state{curr_clients = Count-1}};
         undefined ->
-            Logger:error("Unexpected EXIT from ~p: ~p", [Pid, Reason]),
+            Logger:error("'EXIT' from unkown ~p: ~p", [Pid, Reason]),
             {noreply, State}
     end;
 
 handle_info(Info, State = #state{logger = Logger}) ->
-    Logger:error("Unexpected INFO: from: ~p", [Info]),
+    Logger:error("Bad INFO: ~p", [Info]),
     {noreply, State}.
 
 %%------------------------------------------------------------------------------
@@ -228,7 +230,7 @@ handle_info(Info, State = #state{logger = Logger}) ->
 %%------------------------------------------------------------------------------
 -spec terminate(Reason, State) -> any() when
     Reason  :: normal | shutdown | {shutdown, term()} | term(),
-    State :: #state{}.
+    State   :: #state{}.
 terminate(_Reason, State) ->
     terminate_children(State).
 
@@ -340,37 +342,31 @@ wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
     after 0 ->
             EStack
     end;
+
+%%TODO: copied from supervisor.erl, rewrite it later.
 wait_children(brutal_kill, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, killed} ->
-            erase(Pid),
-            wait_children(brutal_kill, ?SETS:del_element(Pid, Pids),
-                          Sz-1, TRef, EStack);
+            wait_children(brutal_kill, del(Pid, Pids), Sz-1, TRef, EStack);
 
         {'DOWN', _MRef, process, Pid, Reason} ->
-            erase(Pid),
-            wait_children(brutal_kill, ?SETS:del_element(Pid, Pids),
+            wait_children(brutal_kill, del(Pid, Pids),
                           Sz-1, TRef, ?DICT:append(Reason, Pid, EStack))
     end;
 
 wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, shutdown} ->
-            erase(Pid),
-            wait_children(Shutdown, ?SETS:del_element(Pid, Pids), Sz-1, TRef, EStack);
-
+            wait_children(Shutdown, del(Pid, Pids), Sz-1, TRef, EStack);
         {'DOWN', _MRef, process, Pid, normal} ->
-            erase(Pid),
-            wait_children(Shutdown, ?SETS:del_element(Pid, Pids), Sz-1, TRef, EStack);
+            wait_children(Shutdown, del(Pid, Pids), Sz-1, TRef, EStack);
         {'DOWN', _MRef, process, Pid, Reason} ->
-            erase(Pid),
-            wait_children(Shutdown, ?SETS:del_element(Pid, Pids), Sz-1,
+            wait_children(Shutdown, del(Pid, Pids), Sz-1,
                           TRef, ?DICT:append(Reason, Pid, EStack));
         {timeout, TRef, kill} ->
             ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
             wait_children(Shutdown, Pids, Sz-1, undefined, EStack)
     end.
-
 
 report_error(Error, Reason, Pid, #state{mfargs = MFArgs}) ->
     SupName  = list_to_atom("esockd_connection_sup - " ++ pid_to_list(self())),
@@ -382,4 +378,6 @@ report_error(Error, Reason, Pid, #state{mfargs = MFArgs}) ->
                             {mfargs, MFArgs}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
 
+del(Pid, Pids) ->
+    erase(Pid), ?SETS:del_element(Pid, Pids).
 

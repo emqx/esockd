@@ -52,6 +52,10 @@ start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, any()} | ignore when
+    AcceptorSup :: pid(),
+    LSock       :: inet:socket(),
+    SockFun     :: esockd:sock_fun().
 start_acceptor(AcceptorSup, LSock, SockFun) ->
     supervisor:start_child(AcceptorSup, [LSock, SockFun]).
 
@@ -61,6 +65,7 @@ start_acceptor(AcceptorSup, LSock, SockFun) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec count_acceptors(AcceptorSup :: pid()) -> pos_integer().
 count_acceptors(AcceptorSup) ->
     length(supervisor:which_children(AcceptorSup)).
 
