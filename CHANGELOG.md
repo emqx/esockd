@@ -2,6 +2,18 @@
 eSockd ChangeLog
 ==================
 
+2.2.0-alpha (2015/03/22)
+------------------------
+
+esockd_connection_sup: merge supervisor:terminate/2 code
+
+esockd_connection_sup: add 'shutdown' option
+
+esockd: rename 'callback' to 'mfargs'
+
+esockd: add 'shutdown' option
+
+
 2.1.0-alpha (2015/03/18)
 ------------------------
 
