@@ -65,7 +65,7 @@ connect(Parent, Host, Port, N) ->
     end.
 
 loop(N, Sock) ->
-	Timeout = 5000+random:uniform(10000),
+	Timeout = 5000+random:uniform(5000),
 	receive
 		{tcp, Sock, Data} -> 
             io:format("client ~p received: ~s~n", [N, Data]), 
