@@ -129,6 +129,7 @@ listeners() ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec listener({atom(), inet:port_number()}) -> pid() | undefined.
 listener({Protocol, Port}) ->
     esockd_sup:listener({Protocol, Port}).
 
@@ -212,6 +213,7 @@ get_current_clients(LSup) when is_pid(LSup) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
+-spec get_access_rules({atom(), inet:port_number()}) -> [esockd_access:rule()] | undefined.
 get_access_rules({Protocol, Port}) ->
     LSup = listener({Protocol, Port}),
     get_access_rules(LSup);
