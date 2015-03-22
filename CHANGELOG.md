@@ -30,7 +30,7 @@ esockd_transport: add recv/3 function
 Benchmark this release on one 8 cores, 32G memory ubuntu/14.04 server from QingCloud:
 
 ```
-2500K concurrent connections, 50K messages/sec, 40Mbps In/Out Consumed 5G memory, 20% CPU/core
+250K concurrent connections, 50K messages/sec, 40Mbps In/Out Consumed 5G memory, 20% CPU/core
 ```
 
 
