@@ -55,6 +55,7 @@ start(Port) when is_integer(Port) ->
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access, Access},
                 {acceptors, 32}, 
+                {shutdown, infinity},
                 {max_clients, 1000000} | ?TCP_OPTIONS],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
