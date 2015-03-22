@@ -261,6 +261,8 @@ sockopts([{acceptors, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
 sockopts([{tune_buffer, _}|Opts], Acc) ->
 	sockopts(Opts, Acc);
+sockopts([{shutdown, _}|Opts], Acc) ->
+	sockopts(Opts, Acc);
 sockopts([{access, _}|Opts], Acc) ->
     sockopts(Opts, Acc);
 sockopts([{ssl, _}|Opts], Acc) ->
