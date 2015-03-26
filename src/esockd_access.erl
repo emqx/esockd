@@ -22,6 +22,8 @@
 %%% @doc
 %%% esockd access control.
 %%%
+%%% CIDR: Classless Inter-Domain Routing
+%%%
 %%% @end
 %%%-----------------------------------------------------------------------------
 -module(esockd_access).
@@ -33,22 +35,16 @@
                 {deny,  all} |
                 {deny,  cidr()}.
 
--export_type([cidr/0, rule/0]).
-
 -type range() :: {cidr(), pos_integer(), pos_integer()}.
+
+-export_type([cidr/0, range/0, rule/0]).
 
 -type range_rule() :: {allow, all} |
                       {allow, range()} |
                       {deny,  all} |
-                      {deny,  cidr()}.
+                      {deny,  range()}.
 
--export([rule/1, match/2, itoa/1]).
-
--ifdef(TEST).
-
--export([range/1, mask/1, atoi/1]).
-
--endif.
+-export([rule/1, match/2, range/1,  mask/1, atoi/1, itoa/1]).
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -56,7 +52,7 @@
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec rule(rule()) -> [range_rule()].
+-spec rule(rule()) -> range_rule().
 rule({allow, all}) ->
     {allow, all};
 rule({allow, CIDR}) when is_list(CIDR) ->
@@ -67,8 +63,7 @@ rule({deny, all}) ->
     {deny, all}.
 
 rule(Type, CIDR) when is_list(CIDR) ->
-    {ok, Start, End} = range(CIDR),
-    {Type, {CIDR, Start, End}}.
+    {Start, End} = range(CIDR), {Type, {CIDR, Start, End}}.
 
 %%------------------------------------------------------------------------------
 %% @doc
@@ -101,16 +96,16 @@ match2(_I, [{deny, all}|_]) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
--spec range(cidr()) -> {ok, pos_integer(), pos_integer()}.
+-spec range(cidr()) -> {pos_integer(), pos_integer()}.
 range(CIDR) ->
     case string:tokens(CIDR, "/") of
         [Addr] ->
             {ok, IP} = inet:getaddr(Addr, inet),
-            {ok, atoi(IP), atoi(IP)};
+            {atoi(IP), atoi(IP)};
         [Addr, Mask] ->
             {ok, IP} = inet:getaddr(Addr, inet),
             {Start, End} = subnet(IP, mask(list_to_integer(Mask))),
-            {ok, Start, End}
+            {Start, End}
     end.
 
 subnet(IP, Mask) ->

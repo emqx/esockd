@@ -2,6 +2,14 @@
 eSockd ChangeLog
 ==================
 
+2.2.2-alpha (2015/03/26)
+------------------------
+
+esockd_access: export 'cidr(), range()' types
+
+esockd_access: -spec range(cidr()) -> {pos_integer(), pos_integer()}.
+
+
 2.2.1-alpha (2015/03/23)
 ------------------------
 
