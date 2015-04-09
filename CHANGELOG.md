@@ -2,6 +2,18 @@
 eSockd ChangeLog
 ==================
 
+2.3.0-beta (2015/04/09)
+------------------------
+
+Bugfix: issue #9 - enotconn error occured when call ‘inet:peername(Sock)’ in esockd_acceptor.erl sometimes
+
+
+2.2.3-alpha (2015/03/26)
+------------------------
+
+esockd_access: rewrite 'atoi/1'
+
+
 2.2.2-alpha (2015/03/26)
 ------------------------
 
