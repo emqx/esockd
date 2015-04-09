@@ -140,22 +140,26 @@ handle_call({start_connection, _SockArgs}, _From, State = #state{curr_clients = 
 
 handle_call({start_connection, SockArgs = {_, Sock, _SockFun}}, _From, 
             State = #state{mfargs = MFArgs, curr_clients = Count, access_rules = Rules}) ->
-    {ok, {Addr, _Port}} = inet:peername(Sock),
-    case allowed(Addr, Rules) of
-        true ->
-            case catch esockd_connection:start_link(SockArgs, MFArgs) of
-                {ok, Pid} when is_pid(Pid) -> 
-                    put(Pid, true),
-                    {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
-                ignore ->
-                    {reply, ignore, State};
-                {error, Reason} ->
-                    {reply, {error, Reason}, State};
-                What ->
-                    {reply, {error, What}, State}
+    case inet:peername(Sock) of
+        {ok, {Addr, _Port}} ->
+            case allowed(Addr, Rules) of
+                true ->
+                    case catch esockd_connection:start_link(SockArgs, MFArgs) of
+                        {ok, Pid} when is_pid(Pid) ->
+                            put(Pid, true),
+                            {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
+                        ignore ->
+                            {reply, ignore, State};
+                        {error, Reason} ->
+                            {reply, {error, Reason}, State};
+                        What ->
+                            {reply, {error, What}, State}
+                    end;
+                false ->
+                    {reply, {error, fobidden}, State}
             end;
-        false -> 
-            {reply, {error, fobidden}, State}
+        {error, Reason} ->
+            {reply, {error, Reason}, State}
     end;
 
 handle_call(count_connections, _From, State = #state{curr_clients = Count}) ->

@@ -102,8 +102,9 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSoc
     %% accepted stats.
     AcceptStatsFun({inc, 1}),
 
-	{ok, Peername} = inet:peername(Sock),
-    Logger:info("~s - Accept from ~s", [SockName, esockd_net:format(peername, Peername)]),
+    %% fix issues#9: enotconn error occured...
+	%{ok, Peername} = inet:peername(Sock),
+    %Logger:info("~s - Accept from ~s", [SockName, esockd_net:format(peername, Peername)]),
     case BufferTuneFun(Sock) of
         ok -> 
             case esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun) of
