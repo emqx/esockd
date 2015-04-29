@@ -2,6 +2,14 @@
 eSockd ChangeLog
 ==================
 
+2.4.0-beta (2015/04/29)
+------------------------
+
+esockd_transport: add type/1 API
+
+Changes: update comments format
+
+
 2.3.0-beta (2015/04/09)
 ------------------------
 
