@@ -49,6 +49,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc Start Acceptor
+%% @end
 %%------------------------------------------------------------------------------
 -spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
     ConnSup        :: pid(),

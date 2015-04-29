@@ -34,6 +34,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc Start a connection.
+%% @end
 %%------------------------------------------------------------------------------
 -spec start_link(SockArgs, MFArgs) -> {ok, pid()} | {error, any()} | ignore when
 		SockArgs :: esockd:sockargs(),
@@ -47,6 +48,7 @@ start_link(SockArgs, MFArgs) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Tell the connection that socket is ready. Called by acceptor.
+%% @end
 %%------------------------------------------------------------------------------
 -spec ready(Conn, SockArgs) -> any() when
         Conn     :: pid(),
@@ -56,6 +58,7 @@ ready(Conn, SockArgs = {_Transport, _Sock, _SockFun}) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Connection accept the socket. Called by connection.
+%% @end
 %%------------------------------------------------------------------------------
 -spec accept(SockArgs) -> {ok, NewSock} when
     SockArgs    :: esockd:sock_args(),
@@ -67,6 +70,7 @@ accept(SockArgs) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Transform Socket. Callbed by connection proccess.
+%% @end
 %%------------------------------------------------------------------------------
 transform({_Transport, Sock, SockFun}) ->
     case SockFun(Sock) of

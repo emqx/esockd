@@ -55,6 +55,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc Start esockd server.
+%% @end
 %%------------------------------------------------------------------------------
 -spec start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}.
 start_link() ->
@@ -62,6 +63,7 @@ start_link() ->
 
 %%------------------------------------------------------------------------------
 %% @doc New Stats Fun.
+%% @end
 %%------------------------------------------------------------------------------
 -spec stats_fun({atom(), inet:port_number()}, atom()) -> fun().
 stats_fun({Protocol, Port}, Metric) ->
@@ -72,6 +74,7 @@ stats_fun({Protocol, Port}, Metric) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get Stats.
+%% @end
 %%------------------------------------------------------------------------------
 -spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
 get_stats({Protocol, Port}) ->
@@ -80,6 +83,7 @@ get_stats({Protocol, Port}) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Inc Stats.
+%% @end
 %%------------------------------------------------------------------------------
 -spec inc_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
 inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
@@ -87,6 +91,7 @@ inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
     
 %%------------------------------------------------------------------------------
 %% @doc Dec Stats.
+%% @end
 %%------------------------------------------------------------------------------
 -spec dec_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
 dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
@@ -95,12 +100,14 @@ dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
 %%------------------------------------------------------------------------------
 %% @private
 %% @doc Update stats counter.
+%% @end
 %%------------------------------------------------------------------------------
 update_counter(Key, Num) ->
     ets:update_counter(?STATS_TAB, Key, {2, Num}).
 
 %%------------------------------------------------------------------------------
 %% @doc Init Stats.
+%% @end
 %%------------------------------------------------------------------------------
 -spec init_stats({atom(), inet:port_number()}, atom()) -> ok.
 init_stats({Protocol, Port}, Metric) ->
@@ -108,6 +115,7 @@ init_stats({Protocol, Port}, Metric) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Del Stats.
+%% @end
 %%------------------------------------------------------------------------------
 -spec del_stats({atom(), inet:port_number()}) -> ok.
 del_stats({Protocol, Port}) ->

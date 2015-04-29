@@ -74,6 +74,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc Start esockd application.
+%% @end
 %%------------------------------------------------------------------------------
 -spec start() -> ok.
 start() ->
@@ -81,6 +82,7 @@ start() ->
 
 %%------------------------------------------------------------------------------
 %% @doc Open a listener.
+%% @end
 %%------------------------------------------------------------------------------
 -spec open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
     Protocol     :: atom(),
@@ -92,6 +94,7 @@ open(Protocol, Port, Options, MFArgs) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Close the listener
+%% @end
 %%------------------------------------------------------------------------------
 -spec close({Protocol, Port}) -> ok when
     Protocol    :: atom(),
@@ -107,6 +110,7 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get listeners
+%% @end
 %%------------------------------------------------------------------------------
 -spec listeners() -> [{atom(), inet:port_number()}].
 listeners() ->
@@ -114,6 +118,7 @@ listeners() ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get one listener
+%% @end
 %%------------------------------------------------------------------------------
 -spec listener({atom(), inet:port_number()}) -> pid() | undefined.
 listener({Protocol, Port}) ->
@@ -121,6 +126,7 @@ listener({Protocol, Port}) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get stats
+%% @end
 %%------------------------------------------------------------------------------
 -spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
 get_stats({Protocol, Port}) ->
@@ -128,6 +134,7 @@ get_stats({Protocol, Port}) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get acceptors number
+%% @end
 %%------------------------------------------------------------------------------
 -spec get_acceptors({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_acceptors({Protocol, Port}) ->
@@ -141,6 +148,7 @@ get_acceptors(LSup) when is_pid(LSup) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get max clients
+%% @end
 %%------------------------------------------------------------------------------
 -spec get_max_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_max_clients({Protocol, Port}) ->
@@ -154,6 +162,7 @@ get_max_clients(LSup) when is_pid(LSup) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Set max clients
+%% @end
 %%------------------------------------------------------------------------------
 -spec set_max_clients({atom(), inet:port_number()}, pos_integer()) -> undefined | pos_integer().
 set_max_clients({Protocol, Port}, MaxClients) ->
@@ -167,6 +176,7 @@ set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get current clients
+%% @end
 %%------------------------------------------------------------------------------
 -spec get_current_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_current_clients({Protocol, Port}) ->
@@ -180,6 +190,7 @@ get_current_clients(LSup) when is_pid(LSup) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get access rules
+%% @end
 %%------------------------------------------------------------------------------
 -spec get_access_rules({atom(), inet:port_number()}) -> [esockd_access:rule()] | undefined.
 get_access_rules({Protocol, Port}) ->
@@ -193,6 +204,7 @@ get_access_rules(LSup) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Allow access address
+%% @end
 %%------------------------------------------------------------------------------
 -spec allow({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 allow({Protocol, Port}, CIDR) ->
@@ -202,6 +214,7 @@ allow({Protocol, Port}, CIDR) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Deny access address
+%% @end
 %%------------------------------------------------------------------------------
 -spec deny({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 deny({Protocol, Port}, CIDR) ->
@@ -211,6 +224,7 @@ deny({Protocol, Port}, CIDR) ->
   
 %%------------------------------------------------------------------------------
 %% @doc Filter socket options
+%% @end
 %%------------------------------------------------------------------------------
 sockopts(Opts) ->
 	sockopts(Opts, []).
@@ -233,6 +247,7 @@ sockopts([Opt|Opts], Acc) ->
 
 %%------------------------------------------------------------------------------
 %% @doc System `ulimit -n`
+%% @end
 %%------------------------------------------------------------------------------
 -spec ulimit() -> pos_integer().
 ulimit() ->

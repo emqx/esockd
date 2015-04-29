@@ -40,6 +40,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc Start listener supervisor
+%% @end
 %%------------------------------------------------------------------------------
 -spec start_link(Protocol, Port, Options, MFArgs) -> {ok, pid()} when
     Protocol  :: atom(),
@@ -68,19 +69,22 @@ start_link(Protocol, Port, Options, MFArgs) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Get connection supervisor.
+%% @end
 %%------------------------------------------------------------------------------
 connection_sup(Sup) ->
     child_pid(Sup, connection_sup).
 
 %%------------------------------------------------------------------------------
 %% @doc Get acceptor supervisor.
+%% @end
 %%------------------------------------------------------------------------------
 acceptor_sup(Sup) ->
     child_pid(Sup, acceptor_sup).
 
 %%------------------------------------------------------------------------------
-%% @private
 %% @doc Get child pid with id.
+%% @private
+%% @end
 %%------------------------------------------------------------------------------
 child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _} <- supervisor:which_children(Sup), Id =:= ChildId]).

@@ -61,6 +61,7 @@
 
 %%------------------------------------------------------------------------------
 %% @doc Start connection supervisor.
+%% @end
 %%------------------------------------------------------------------------------
 -spec start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
     Options  :: [esockd:option()],
@@ -71,6 +72,7 @@ start_link(Options, MFArgs, Logger) ->
 
 %%------------------------------------------------------------------------------
 %% @doc Start connection.
+%% @end
 %%------------------------------------------------------------------------------
 start_connection(Sup, Mod, Sock, SockFun) ->
     SockArgs = {esockd_transport, Sock, SockFun},
