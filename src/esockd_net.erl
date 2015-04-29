@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_net).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -include_lib("kernel/include/inet.hrl").
 

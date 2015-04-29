@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_server).
 
--author("feng@emqtt.io").
+-author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(gen_server).
 
@@ -54,20 +54,14 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start esockd server.
-%%
-%% @end
+%% @doc Start esockd server.
 %%------------------------------------------------------------------------------
 -spec start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% New Stats Fun.
-%%
-%% @end
+%% @doc New Stats Fun.
 %%------------------------------------------------------------------------------
 -spec stats_fun({atom(), inet:port_number()}, atom()) -> fun().
 stats_fun({Protocol, Port}, Metric) ->
@@ -77,10 +71,7 @@ stats_fun({Protocol, Port}, Metric) ->
     end.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get Stats.
-%%
-%% @end
+%% @doc Get Stats.
 %%------------------------------------------------------------------------------
 -spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
 get_stats({Protocol, Port}) ->
@@ -88,73 +79,48 @@ get_stats({Protocol, Port}) ->
                       <- ets:match(?STATS_TAB, {{{Protocol, Port}, '$1'}, '$2'})].
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Inc Stats.
-%%
-%% @end
+%% @doc Inc Stats.
 %%------------------------------------------------------------------------------
 -spec inc_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
 inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, Port}, Metric}, Num).
     
 %%------------------------------------------------------------------------------
-%% @doc
-%% Dec Stats.
-%%
-%% @end
+%% @doc Dec Stats.
 %%------------------------------------------------------------------------------
 -spec dec_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
 dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, Port}, Metric}, -Num).
 
 %%------------------------------------------------------------------------------
-%% @doc
 %% @private
-%% update stats counter.
-%%
-%% @end
+%% @doc Update stats counter.
 %%------------------------------------------------------------------------------
 update_counter(Key, Num) ->
     ets:update_counter(?STATS_TAB, Key, {2, Num}).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Init Stats.
-%%
-%% @end
+%% @doc Init Stats.
 %%------------------------------------------------------------------------------
 -spec init_stats({atom(), inet:port_number()}, atom()) -> ok.
 init_stats({Protocol, Port}, Metric) ->
     gen_server:call(?SERVER, {init, {Protocol, Port}, Metric}).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Del Stats.
-%%
-%% @end
+%% @doc Del Stats.
 %%------------------------------------------------------------------------------
 -spec del_stats({atom(), inet:port_number()}) -> ok.
 del_stats({Protocol, Port}) ->
     gen_server:cast(?SERVER, {del, {Protocol, Port}}).
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Initializes the server
-%%
-%% @end
-%%------------------------------------------------------------------------------
+%%%=============================================================================
+%%% gen_server callbacks
+%%%=============================================================================
+
 init([]) ->
     ets:new(?STATS_TAB, [set, public, named_table, {write_concurrency, true}]),
     {ok, #state{}}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%%
-%% @end
-%%------------------------------------------------------------------------------
 handle_call({init, {Protocol, Port}, Metric}, _From, State) ->
     Key = {{Protocol, Port}, Metric},
     ets:insert(?STATS_TAB, {Key, 0}),
@@ -163,13 +129,6 @@ handle_call({init, {Protocol, Port}, Metric}, _From, State) ->
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling cast messages
-%%
-%% @end
-%%------------------------------------------------------------------------------
 handle_cast({del, {Protocol, Port}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, Port}, '_'}, '_'}),
     {noreply, State};
@@ -177,41 +136,12 @@ handle_cast({del, {Protocol, Port}}, State) ->
 handle_cast(_Request, State) ->
     {noreply, State}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling all non call/cast messages
-%%
-%% @end
-%%------------------------------------------------------------------------------
 handle_info(_Info, State) ->
     {noreply, State}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_server terminates
-%% with Reason. The return value is ignored.
-%%
-%% @end
-%%------------------------------------------------------------------------------
 terminate(_Reason, _State) ->
     ok.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @end
-%%------------------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
-
 

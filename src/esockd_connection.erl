@@ -26,17 +26,14 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_connection).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -include("esockd.hrl").
 
 -export([start_link/2, ready/2, accept/1, transform/1]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start a connection.
-%%
-%% @end
+%% @doc Start a connection.
 %%------------------------------------------------------------------------------
 -spec start_link(SockArgs, MFArgs) -> {ok, pid()} | {error, any()} | ignore when
 		SockArgs :: esockd:sockargs(),
@@ -49,10 +46,7 @@ start_link(SockArgs, MFArgs) ->
 	end.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Tell the connection that socket is ready. Called by acceptor.
-%%
-%% @end
+%% @doc Tell the connection that socket is ready. Called by acceptor.
 %%------------------------------------------------------------------------------
 -spec ready(Conn, SockArgs) -> any() when
         Conn     :: pid(),
@@ -61,10 +55,7 @@ ready(Conn, SockArgs = {_Transport, _Sock, _SockFun}) ->
 	Conn ! {sock_ready, SockArgs}.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Connection accept the socket. Called by connection.
-%%
-%% @end
+%% @doc Connection accept the socket. Called by connection.
 %%------------------------------------------------------------------------------
 -spec accept(SockArgs) -> {ok, NewSock} when
     SockArgs    :: esockd:sock_args(),
@@ -75,10 +66,7 @@ accept(SockArgs) ->
     end.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Transform Socket. Callbed by connection proccess.
-%%
-%% @end
+%% @doc Transform Socket. Callbed by connection proccess.
 %%------------------------------------------------------------------------------
 transform({_Transport, Sock, SockFun}) ->
     case SockFun(Sock) of

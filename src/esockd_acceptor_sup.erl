@@ -26,6 +26,8 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_acceptor_sup).
 
+-author("Feng Lee <feng@emqtt.io>").
+
 -behaviour(supervisor).
 
 -export([start_link/4, start_acceptor/3, count_acceptors/1]).
@@ -33,10 +35,7 @@
 -export([init/1]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start Acceptor Supervisor.
-%%
-%% @end
+%% @doc Start Acceptor Supervisor.
 %%------------------------------------------------------------------------------
 -spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) -> {ok, pid()} when
     ConnSup        :: pid(),
@@ -47,10 +46,7 @@ start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) ->
     supervisor:start_link(?MODULE, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]).
 
 %%------------------------------------------------------------------------------
-%% @doc 
-%% Start a acceptor.
-%%
-%% @end
+%% @doc Start a acceptor.
 %%------------------------------------------------------------------------------
 -spec start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, any()} | ignore when
     AcceptorSup :: pid(),
@@ -60,10 +56,7 @@ start_acceptor(AcceptorSup, LSock, SockFun) ->
     supervisor:start_child(AcceptorSup, [LSock, SockFun]).
 
 %%------------------------------------------------------------------------------
-%% @doc 
-%% Count Acceptors.
-%%
-%% @end
+%% @doc Count Acceptors.
 %%------------------------------------------------------------------------------
 -spec count_acceptors(AcceptorSup :: pid()) -> pos_integer().
 count_acceptors(AcceptorSup) ->
@@ -72,6 +65,7 @@ count_acceptors(AcceptorSup) ->
 %%%=============================================================================
 %% Supervisor callbacks
 %%%=============================================================================
+
 init([ConnSup, AcceptStatsFun, BufferTuneFun, Logger]) ->
     {ok, {{simple_one_for_one, 1000, 3600},
           [{acceptor, {esockd_acceptor, start_link, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]},

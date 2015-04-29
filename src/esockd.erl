@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd).
 
--author("feng@emqtt.io").
+-author("Feng Lee <feng@emqtt.io>").
 
 -include("esockd.hrl").
 
@@ -73,20 +73,14 @@
 -export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, option/0]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start esockd application.
-%%
-%% @end
+%% @doc Start esockd application.
 %%------------------------------------------------------------------------------
 -spec start() -> ok.
 start() ->
     application:start(esockd).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Open a listener.
-%%
-%% @end
+%% @doc Open a listener.
 %%------------------------------------------------------------------------------
 -spec open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
     Protocol     :: atom(),
@@ -97,10 +91,7 @@ open(Protocol, Port, Options, MFArgs) ->
 	esockd_sup:start_listener(Protocol, Port, Options, MFArgs).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Close the listener.
-%%
-%% @end
+%% @doc Close the listener
 %%------------------------------------------------------------------------------
 -spec close({Protocol, Port}) -> ok when
     Protocol    :: atom(),
@@ -115,40 +106,28 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 	esockd_sup:stop_listener(Protocol, Port).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get listeners.
-%%
-%% @end
+%% @doc Get listeners
 %%------------------------------------------------------------------------------
 -spec listeners() -> [{atom(), inet:port_number()}].
 listeners() ->
     esockd_sup:listeners().
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get one listener.
-%%
-%% @end
+%% @doc Get one listener
 %%------------------------------------------------------------------------------
 -spec listener({atom(), inet:port_number()}) -> pid() | undefined.
 listener({Protocol, Port}) ->
     esockd_sup:listener({Protocol, Port}).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get stats.
-%%
-%% @end
+%% @doc Get stats
 %%------------------------------------------------------------------------------
 -spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
 get_stats({Protocol, Port}) ->
     esockd_server:get_stats({Protocol, Port}).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get acceptors number.
-%%
-%% @end
+%% @doc Get acceptors number
 %%------------------------------------------------------------------------------
 -spec get_acceptors({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_acceptors({Protocol, Port}) ->
@@ -161,10 +140,7 @@ get_acceptors(LSup) when is_pid(LSup) ->
     esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get max clients.
-%%
-%% @end
+%% @doc Get max clients
 %%------------------------------------------------------------------------------
 -spec get_max_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_max_clients({Protocol, Port}) ->
@@ -177,10 +153,7 @@ get_max_clients(LSup) when is_pid(LSup) ->
     esockd_connection_sup:get_max_clients(ConnSup).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Set max clients.
-%%
-%% @end
+%% @doc Set max clients
 %%------------------------------------------------------------------------------
 -spec set_max_clients({atom(), inet:port_number()}, pos_integer()) -> undefined | pos_integer().
 set_max_clients({Protocol, Port}, MaxClients) ->
@@ -193,10 +166,7 @@ set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
     esockd_connection_sup:set_max_clients(ConnSup, MaxClients).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get current clients.
-%%
-%% @end
+%% @doc Get current clients
 %%------------------------------------------------------------------------------
 -spec get_current_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_current_clients({Protocol, Port}) ->
@@ -209,10 +179,7 @@ get_current_clients(LSup) when is_pid(LSup) ->
     esockd_connection_sup:count_connections(ConnSup).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get access rules.
-%%
-%% @end
+%% @doc Get access rules
 %%------------------------------------------------------------------------------
 -spec get_access_rules({atom(), inet:port_number()}) -> [esockd_access:rule()] | undefined.
 get_access_rules({Protocol, Port}) ->
@@ -225,10 +192,7 @@ get_access_rules(LSup) ->
     esockd_connection_sup:access_rules(ConnSup).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Allow access address.
-%%
-%% @end
+%% @doc Allow access address
 %%------------------------------------------------------------------------------
 -spec allow({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 allow({Protocol, Port}, CIDR) ->
@@ -237,10 +201,7 @@ allow({Protocol, Port}, CIDR) ->
     esockd_connection_sup:allow(ConnSup, CIDR).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Deny access address.
-%%
-%% @end
+%% @doc Deny access address
 %%------------------------------------------------------------------------------
 -spec deny({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
 deny({Protocol, Port}, CIDR) ->
@@ -249,10 +210,7 @@ deny({Protocol, Port}, CIDR) ->
     esockd_connection_sup:deny(ConnSup, CIDR).
   
 %%------------------------------------------------------------------------------
-%% @doc
-%% Filter socket options.
-%%
-%% @end
+%% @doc Filter socket options
 %%------------------------------------------------------------------------------
 sockopts(Opts) ->
 	sockopts(Opts, []).
@@ -274,9 +232,7 @@ sockopts([Opt|Opts], Acc) ->
 	sockopts(Opts, [Opt|Acc]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% System `ulimit -n`
-%% 
+%% @doc System `ulimit -n`
 %%------------------------------------------------------------------------------
 -spec ulimit() -> pos_integer().
 ulimit() ->

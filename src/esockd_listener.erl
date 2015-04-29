@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_listener).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -include("esockd.hrl").
 
@@ -44,10 +44,7 @@
 -define(ACCEPTOR_POOL, 16).
 
 %%------------------------------------------------------------------------------
-%% @doc 
-%% Start Listener
-%%
-%% @end
+%% @doc Start Listener
 %%------------------------------------------------------------------------------
 -spec start_link(Protocol, Port, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
     Protocol    :: atom(),
@@ -100,9 +97,4 @@ terminate(_Reason, #state{lsock = LSock, protocol = Protocol, logger = Logger}) 
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
-
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
-
 

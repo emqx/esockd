@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_acceptor).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -include("esockd.hrl").
 
@@ -48,10 +48,7 @@
                 emfile_count = 0}).
 
 %%------------------------------------------------------------------------------
-%% @doc 
-%% Start Acceptor.
-%%
-%% @end
+%% @doc Start Acceptor
 %%------------------------------------------------------------------------------
 -spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
     ConnSup        :: pid(),
@@ -64,8 +61,9 @@ start_link(ConnSup, AcceptStatsFun, BufTuneFun, Logger, LSock, SockFun) ->
     gen_server:start_link(?MODULE, {ConnSup, AcceptStatsFun, BufTuneFun, Logger, LSock, SockFun}, []).
 
 %%%=============================================================================
-%% gen_server callbacks
+%%% gen_server callbacks
 %%%=============================================================================
+
 init({ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun}) ->
     {ok, SockName} = inet:sockname(LSock),
     gen_server:cast(self(), accept),

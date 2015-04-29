@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_listener_sup).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(supervisor).
 
@@ -39,10 +39,7 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start listener supervisor
-%%
-%% @end
+%% @doc Start listener supervisor
 %%------------------------------------------------------------------------------
 -spec start_link(Protocol, Port, Options, MFArgs) -> {ok, pid()} when
     Protocol  :: atom(),
@@ -70,41 +67,32 @@ start_link(Protocol, Port, Options, MFArgs) ->
 	{ok, Sup}.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get connection supervisor.
-%%
-%% @end
+%% @doc Get connection supervisor.
 %%------------------------------------------------------------------------------
 connection_sup(Sup) ->
     child_pid(Sup, connection_sup).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get acceptor supervisor.
-%%
-%% @end
+%% @doc Get acceptor supervisor.
 %%------------------------------------------------------------------------------
 acceptor_sup(Sup) ->
     child_pid(Sup, acceptor_sup).
 
 %%------------------------------------------------------------------------------
-%% @doc
 %% @private
-%% Get child pid with id.
-%%
-%% @end
+%% @doc Get child pid with id.
 %%------------------------------------------------------------------------------
 child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _} <- supervisor:which_children(Sup), Id =:= ChildId]).
     
 %%%=============================================================================
-%% Supervisor callbacks
+%%% Supervisor callbacks
 %%%=============================================================================
 init([]) ->
     {ok, {{rest_for_one, 10, 100}, []}}.
 
 %%%=============================================================================
-%% Internal functions
+%%% Internal functions
 %%%=============================================================================
 
 %% when 'buffer' is undefined, and 'tune_buffer' is true... 

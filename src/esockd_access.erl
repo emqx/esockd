@@ -28,6 +28,8 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_access).
 
+-author("Feng Lee <feng@emqtt.io>").
+
 -type cidr() :: string().
 
 -type rule() :: {allow, all} |
@@ -47,10 +49,7 @@
 -export([rule/1, match/2, range/1,  mask/1, atoi/1, itoa/1]).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Build CIDR, Make rule.
-%%
-%% @end
+%% @doc Build CIDR, Make rule.
 %%------------------------------------------------------------------------------
 -spec rule(rule()) -> range_rule().
 rule({allow, all}) ->
@@ -66,10 +65,7 @@ rule(Type, CIDR) when is_list(CIDR) ->
     {Start, End} = range(CIDR), {Type, {CIDR, Start, End}}.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Match Addr with Access Rules.
-%%
-%% @end
+%% @doc Match Addr with Access Rules.
 %%------------------------------------------------------------------------------
 -spec match(inet:ip_address(), [range_rule()]) -> {matched, allow} | {matched, deny} | nomatch.
 match(Addr, Rules) when is_tuple(Addr) ->
@@ -91,10 +87,7 @@ match2(_I, [{deny, all}|_]) ->
     {matched, deny}.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% CIDR range.
-%%
-%% @end
+%% @doc CIDR range.
 %%------------------------------------------------------------------------------
 -spec range(cidr()) -> {pos_integer(), pos_integer()}.
 range(CIDR) ->
@@ -114,10 +107,7 @@ subnet(IP, Mask) ->
     {Start, End}.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Mask Int
-%%
-%% @end
+%% @doc Mask Int
 %%------------------------------------------------------------------------------
 -spec mask(0..32) -> 0..16#FFFFFFFF.
 mask(0) ->
@@ -128,20 +118,13 @@ mask(N) when N >= 1, N =< 31 ->
     lists:foldl(fun(I, Mask) -> (1 bsl I) bor Mask end, 0, lists:seq(32 - N, 31)).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Addr to Integer.
-%%
-%% @end
+%% @doc Addr to Integer.
 %%------------------------------------------------------------------------------
 atoi({A, B, C, D}) ->
     A bsl 8 bor B bsl 8 bor C bsl 8 bor D.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Integer to Addr.
-%% TODO: rewrite
-%%
-%% @end
+%% @doc Integer to Addr. TODO: rewrite later.
 %%------------------------------------------------------------------------------
 itoa(I) ->
     A = (I bsr 24) band 16#FF,
@@ -149,5 +132,4 @@ itoa(I) ->
     C = (I bsr 8)  band 16#FF,
     D = I band 16#FF,
     {A, B, C, D}.
-
 

@@ -26,7 +26,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_sup).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(supervisor).
 
@@ -46,10 +46,7 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start supervisor.
-%%
-%% @end
+%% @doc Start supervisor.
 %%------------------------------------------------------------------------------
 
 -spec start_link() -> {ok, pid()}.
@@ -57,10 +54,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start a listener.
-%%
-%% @end
+%% @doc Start a listener.
 %%------------------------------------------------------------------------------
 -spec start_listener(Protocol, Port, Options, MFArgs) -> {ok, pid()} when
     Protocol   :: atom(),
@@ -75,10 +69,7 @@ start_listener(Protocol, Port, Options, MFArgs) ->
 	supervisor:start_child(?MODULE, ChildSpec).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Stop the listener.
-%%
-%% @end
+%% @doc Stop the listener.
 %%------------------------------------------------------------------------------
 -spec stop_listener(Protocol, Port) -> ok | {error, any()} when
     Protocol :: atom(),
@@ -93,20 +84,14 @@ stop_listener(Protocol, Port) ->
 	end.
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get Listeners.
-%%
-%% @end
+%% @doc Get Listeners.
 %%------------------------------------------------------------------------------
 -spec listeners() -> [{term(), pid()}].
 listeners() ->
     [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _} <- supervisor:which_children(?MODULE)].
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Get listener pid.
-%%
-%% @end
+%% @doc Get listener pid.
 %%------------------------------------------------------------------------------
 -spec listener({atom(), inet:port_number()}) -> undefined | pid().
 listener({Protocol, Port}) ->
@@ -118,8 +103,9 @@ listener({Protocol, Port}) ->
 
 
 %%%=============================================================================
-%% Supervisor callbacks
+%%% Supervisor callbacks
 %%%=============================================================================
+
 init([]) ->
     {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]} }.
 
@@ -128,13 +114,9 @@ init([]) ->
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc
 %% @private
-%% Listener Child Id.
-%%
-%% @end
+%% @doc Listener Child Id.
 %%------------------------------------------------------------------------------
 child_id({Protocol, Port}) ->
     {listener_sup, {Protocol, Port}}.
-
 

@@ -27,7 +27,7 @@
 %%%-----------------------------------------------------------------------------
 -module(esockd_connection_sup).
 
--author('feng@emqtt.io').
+-author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(gen_server).
 
@@ -60,10 +60,7 @@
 %%%=============================================================================
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start connection supervisor.
-%%
-%% @end
+%% @doc Start connection supervisor.
 %%------------------------------------------------------------------------------
 -spec start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
     Options  :: [esockd:option()],
@@ -73,10 +70,7 @@ start_link(Options, MFArgs, Logger) ->
 	gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
 
 %%------------------------------------------------------------------------------
-%% @doc
-%% Start connection.
-%%
-%% @end
+%% @doc Start connection.
 %%------------------------------------------------------------------------------
 start_connection(Sup, Mod, Sock, SockFun) ->
     SockArgs = {esockd_transport, Sock, SockFun},
@@ -111,9 +105,10 @@ deny(Sup, CIDR) ->
 call(Sup, Req) ->
     gen_server:call(Sup, Req, infinity).
 
-%% ------------------------------------------------------------------
-%% gen_server Function Definitions
-%% ------------------------------------------------------------------
+%%%=============================================================================
+%%% gen_server callbacks
+%%%=============================================================================
+
 init([Options, MFArgs, Logger]) ->
 	process_flag(trap_exit, true),
     Shutdown = proplists:get_value(shutdown, Options, brutal_kill),
@@ -126,13 +121,6 @@ init([Options, MFArgs, Logger]) ->
                 mfargs       = MFArgs,
                 logger       = Logger}}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling call messages
-%%
-%% @end
-%%------------------------------------------------------------------------------
 handle_call({start_connection, _SockArgs}, _From, State = #state{curr_clients = CurrClients,
                                                                  max_clients = MaxClients})
         when CurrClients >= MaxClients ->
@@ -190,24 +178,10 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
 handle_call(_Req, _From, State) ->
     {stop, {error, badreq}, State}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling cast messages
-%%
-%% @end
-%%------------------------------------------------------------------------------
 handle_cast(Msg, State = #state{logger = Logger}) ->
     Logger:error("Bad MSG: ~p", [Msg]),
     {noreply, State}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Handling all non call/cast messages
-%%
-%% @end
-%%------------------------------------------------------------------------------
 handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count, logger = Logger}) ->
     case erase(Pid) of
         true ->
@@ -222,29 +196,12 @@ handle_info(Info, State = #state{logger = Logger}) ->
     Logger:error("Bad INFO: ~p", [Info]),
     {noreply, State}.
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% This function is called by a gen_server when it is about to
-%% terminate. It should be the opposite of Module:init/1 and do any
-%% necessary cleaning up. When it returns, the gen_server terminates
-%% with Reason. The return value is ignored.
-%%
-%% @end
-%%------------------------------------------------------------------------------
 -spec terminate(Reason, State) -> any() when
     Reason  :: normal | shutdown | {shutdown, term()} | term(),
     State   :: #state{}.
 terminate(_Reason, State) ->
     terminate_children(State).
 
-%%------------------------------------------------------------------------------
-%% @private
-%% @doc
-%% Convert process state when code is changed
-%%
-%% @end
-%%------------------------------------------------------------------------------
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
@@ -270,8 +227,8 @@ connection_crashed(_Pid, normal, _State) ->
     ok;
 connection_crashed(_Pid, shutdown, _State) ->
     ok;
-connection_crashed(_Pid, {shutdown, _Reason}, _State) ->
-    ok;
+connection_crashed(Pid, {shutdown, Reason}, State) ->
+    report_error(connection_shutdown, Reason, Pid, State);
 connection_crashed(Pid, Reason, State) ->
     report_error(connection_crashed, Reason, Pid, State).
 
