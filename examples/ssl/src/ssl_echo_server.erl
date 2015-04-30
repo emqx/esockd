@@ -42,12 +42,12 @@ start(Port) ->
     %{cacertfile, "./crt/cacert.pem"}, 
     SslOpts = [{certfile, "./crt/demo.crt"},
                {keyfile,  "./crt/demo.key"}],
-    SockOpts = [binary, 
-                {reuseaddr, true},
-                {acceptors, 4},
-                {max_clients, 1000}, 
-                {ssl, SslOpts}],
-    {ok, _} = esockd:open('echo/ssl', Port, SockOpts, ssl_echo_server).
+    SockOpts = [binary, {reuseaddr, true}],
+    Opts = [{acceptors, 4},
+            {max_clients, 1000}, 
+            {ssl, SslOpts},
+            {sockopts, SockOpts}],
+    {ok, _} = esockd:open('echo/ssl', Port, Opts, ssl_echo_server).
 
 start_link(SockArgs) ->
 	{ok, spawn_link(?MODULE, init, [SockArgs])}.

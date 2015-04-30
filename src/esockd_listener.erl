@@ -59,7 +59,7 @@ start_link(Protocol, Port, Options, AcceptorSup, Logger) ->
 init({Protocol, Port, Options, AcceptorSup, Logger}) ->
     process_flag(trap_exit, true),
     %%don't active the socket...
-	SockOpts = esockd:sockopts(Options),
+    SockOpts = proplists:get_value(sockopts, Options, [{reuseaddr, true}]),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),

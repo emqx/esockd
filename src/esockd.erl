@@ -48,7 +48,7 @@
 -export([get_access_rules/1, allow/2, deny/2]).
 
 %% Utility functions...
--export([sockopts/1, ulimit/0]).
+-export([ulimit/0]).
 
 -type ssl_socket() :: #ssl_socket{}.
 
@@ -221,29 +221,6 @@ deny({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:deny(ConnSup, CIDR).
-  
-%%------------------------------------------------------------------------------
-%% @doc Filter socket options
-%% @end
-%%------------------------------------------------------------------------------
-sockopts(Opts) ->
-	sockopts(Opts, []).
-sockopts([], Acc) ->
-	Acc;
-sockopts([{max_clients, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{acceptors, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{tune_buffer, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{shutdown, _}|Opts], Acc) ->
-	sockopts(Opts, Acc);
-sockopts([{access, _}|Opts], Acc) ->
-    sockopts(Opts, Acc);
-sockopts([{ssl, _}|Opts], Acc) ->
-    sockopts(Opts, Acc);
-sockopts([Opt|Opts], Acc) ->
-	sockopts(Opts, [Opt|Acc]).
 
 %%------------------------------------------------------------------------------
 %% @doc System 'ulimit -n'
