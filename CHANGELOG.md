@@ -2,6 +2,14 @@
 eSockd ChangeLog
 ==================
 
+2.5.1-beta (2015/05/01)
+------------------------
+
+update README.md
+
+update esockd:option/0 type
+
+
 2.5.0-beta (2015/05/01)
 ------------------------
 
