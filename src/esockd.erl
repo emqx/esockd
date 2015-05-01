@@ -68,7 +68,7 @@
         {tune_buffer, false | true} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
-        gen_tcp:listen_option().
+        {sockopts, [gen_tcp:listen_option()]}.
 
 -export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, option/0]).
 

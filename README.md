@@ -56,15 +56,15 @@ Startup Echo Server:
 %% start eSockd application
 ok = esockd:start().
 
-SockOpts = [binary, 
-            {reuseaddr, true}, 
-            {nodelay, false},
-            {acceptors, 10},
-            {max_clients, 1024}].
+Options = [{acceptors, 10},
+           {max_clients, 1024},
+           {sockopts, [binary,
+                       {reuseaddr, true},
+                       {nodelay, false}]}].
 
 MFArgs = {echo_server, start_link, []},
 
-esockd:open(echo, 5000, SockOpts, MFArgs).
+esockd:open(echo, 5000, Options, MFArgs).
 ```
 
 ## Examples
@@ -97,7 +97,7 @@ application:start(esockd).
 ### Open
 
 ```
-esockd:open(echo, 5000, [binary, {reuseaddr, true}], {echo_server, start_link, []}).
+esockd:open(echo, 5000, [{sockopts, [binary, {reuseaddr, true}]}], {echo_server, start_link, []}).
 ```
 
 Spec:
@@ -120,7 +120,7 @@ Options:
         {access, [esockd_access:rule()]} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
-        gen_tcp:listen_option().
+        {sockopts, [gen_tcp:listen_option()]}.
 ```
 
 MFArgs:
