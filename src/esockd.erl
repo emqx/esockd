@@ -67,10 +67,10 @@
         {shutdown, brutal_kill | infinity | pos_integer()} |
         {tune_buffer, false | true} |
         {logger, atom() | {atom(), atom()}} |
-        {ssl, [ssl:ssloption()]} |
+        {ssl, list()} | %%TODO: [ssl:ssloption()]
         {sockopts, [gen_tcp:listen_option()]}.
 
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, option/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0]).
 
 %%------------------------------------------------------------------------------
 %% @doc Start esockd application.

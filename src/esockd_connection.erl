@@ -37,7 +37,7 @@
 %% @end
 %%------------------------------------------------------------------------------
 -spec start_link(SockArgs, MFArgs) -> {ok, pid()} | {error, any()} | ignore when
-		SockArgs :: esockd:sockargs(),
+		SockArgs :: esockd:sock_args(),
 		MFArgs   :: esockd:mfargs(). 
 start_link(SockArgs, MFArgs) ->
 	case call(SockArgs, MFArgs) of

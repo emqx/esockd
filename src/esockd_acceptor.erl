@@ -39,7 +39,7 @@
 
 -record(state, {lsock       :: inet:socket(),
                 sockfun     :: esockd:sock_fun(),
-                tunefun     :: escokd:tune_fun(),
+                tunefun     :: esockd:tune_fun(),
                 sockname    :: iolist(),
                 conn_sup    :: pid(),
                 statsfun    :: fun(),
