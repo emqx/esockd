@@ -3,7 +3,7 @@
 
 Erlang General Non-blocking TCP/SSL Socket Server.
 
-## Features 
+## Features
 
 General Non-blocking TCP/SSL Socket Server.
 
@@ -12,6 +12,8 @@ Acceptor Pool and Asynchronous TCP Accept.
 Max connections management.
 
 Allow/Deny by peer address.
+
+Keepalive Support.
 
 ## Benchmark
 
