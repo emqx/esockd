@@ -59,6 +59,7 @@ format({Addr, Port}) ->
     lists:flatten(io_lib:format("~s:~p", [maybe_ntoab(Addr), Port])).
 
 maybe_ntoab(Addr) when is_tuple(Addr) -> ntoab(Addr);
+
 maybe_ntoab(Host)                     -> Host.
     
 %% Format IPv4-mapped IPv6 addresses as IPv4, since they're what we see
