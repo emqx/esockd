@@ -25,6 +25,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(esockd_connection_sup).
 
 -author("Feng Lee <feng@emqtt.io>").
@@ -36,6 +37,9 @@
 
 %% Max Clients
 -export([get_max_clients/1, set_max_clients/2]).
+
+%% Shutdown Count
+-export([get_shutdown_count/1]).
 
 %% Allow, Deny
 -export([access_rules/1, allow/2, deny/2]).
@@ -94,6 +98,9 @@ get_max_clients(Sup) when is_pid(Sup) ->
 
 set_max_clients(Sup, MaxClients) when is_pid(Sup) ->
     call(Sup, {set_max_clients, MaxClients}).
+
+get_shutdown_count(Sup) ->
+    call(Sup, get_shutdown_count).
 
 access_rules(Sup) ->
     call(Sup, access_rules).
@@ -160,6 +167,9 @@ handle_call(get_max_clients, _From, State = #state{max_clients = MaxClients}) ->
 
 handle_call({set_max_clients, MaxClients}, _From, State) ->
     {reply, ok, State#state{max_clients = MaxClients}};
+
+handle_call(get_shutdown_count, _From, State) ->
+    {reply, [{Reason, Count} || {{shutdown, Reason}, Count} <- get()], State};
 
 handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
     {reply, [raw(Rule) || Rule <- Rules], State};
@@ -229,10 +239,20 @@ connection_crashed(_Pid, normal, _State) ->
     ok;
 connection_crashed(_Pid, shutdown, _State) ->
     ok;
+connection_crashed(_Pid, {shutdown, Reason}, _State) when is_atom(Reason) ->
+    count_shutdown(Reason);
 connection_crashed(Pid, {shutdown, Reason}, State) ->
     report_error(connection_shutdown, Reason, Pid, State);
 connection_crashed(Pid, Reason, State) ->
     report_error(connection_crashed, Reason, Pid, State).
+
+count_shutdown(Reason) ->
+    case get({shutdown, Reason}) of
+        undefined ->
+            put({shutdown, Reason}, 1);
+        Count     ->
+            put({shutdown, Reason}, Count+1)
+    end.
 
 terminate_children(State = #state{shutdown = Shutdown}) ->
     {Pids, EStack0} = monitor_children(),
