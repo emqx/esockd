@@ -101,21 +101,20 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSoc
     %% accepted stats.
     AcceptStatsFun({inc, 1}),
 
-    %% fix issues#9: enotconn error occured...
-	%{ok, Peername} = inet:peername(Sock),
-    %Logger:info("~s - Accept from ~s", [SockName, esockd_net:format(peername, Peername)]),
+    %% Fix issues#9: enotconn error occured...
+	%% {ok, Peername} = inet:peername(Sock),
+    %% Logger:info("~s - Accept from ~s", [SockName, esockd_net:format(peername, Peername)]),
     case BufferTuneFun(Sock) of
-        ok -> 
+        ok ->
             case esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun) of
-                {ok, _Pid} ->
-                    ok;
-                {error, Reason} ->
-                    Logger:error("failed to start connection on ~s - ~p", [SockName, Reason]),
-                    catch port_close(Sock)
+                {ok, _Pid}        -> ok;
+                {error, enotconn} -> catch port_close(Sock); %% quiet...issue #10
+                {error, Reason}   -> catch port_close(Sock),
+                                     Logger:error("Failed to start connection on ~s - ~p", [SockName, Reason])
             end;
-        {error, enotconn} -> 
+        {error, enotconn} ->
 			catch port_close(Sock);
-        {error, Err} -> 
+        {error, Err} ->
             Logger:error("failed to tune buffer size of connection accepted on ~s - ~s", [SockName, Err]),
             catch port_close(Sock)
     end,
