@@ -2,6 +2,18 @@
 eSockd ChangeLog
 ==================
 
+2.7.0-beta (2015/09/08)
+------------------------
+
+issue #10: inet:peername(Sock) call return {error, 'enotconn'} on AliYun node
+
+issue #11: Too many connection_shutdown report logs when connections from unstable mobile network
+
+issue #12: Fast close the socket when server side error occurred?
+
+esockd.erl: add get_shutdown_count/1, with_listener/2 api
+
+
 2.6.0-beta (2015/07/28)
 ------------------------
 
