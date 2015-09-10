@@ -140,32 +140,32 @@ get_stats({Protocol, Port}) ->
 %%------------------------------------------------------------------------------
 -spec get_acceptors({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_acceptors({Protocol, Port}) ->
-    with_listener({Protocol, Port}, fun(LSup) ->
-        AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
-        esockd_acceptor_sup:count_acceptors(AcceptorSup)
-    end).
+    with_listener({Protocol, Port}, fun get_acceptors/1);
+get_acceptors(LSup) when is_pid(LSup) ->
+    AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
+    esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
 %%------------------------------------------------------------------------------
 %% @doc Get max clients
 %% @end
 %%------------------------------------------------------------------------------
--spec get_max_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
+-spec get_max_clients({atom(), inet:port_number()} | pid()) -> undefined | pos_integer().
 get_max_clients({Protocol, Port}) ->
-    with_listener({Protocol, Port}, fun(LSup) ->
-        ConnSup = esockd_listener_sup:connection_sup(LSup),
-        esockd_connection_sup:get_max_clients(ConnSup)
-    end).
+    with_listener({Protocol, Port}, fun get_max_clients/1);
+get_max_clients(LSup) when is_pid(LSup) ->
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:get_max_clients(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc Set max clients
 %% @end
 %%------------------------------------------------------------------------------
--spec set_max_clients({atom(), inet:port_number()}, pos_integer()) -> undefined | pos_integer().
+-spec set_max_clients({atom(), inet:port_number()} | pid(), pos_integer()) -> undefined | pos_integer().
 set_max_clients({Protocol, Port}, MaxClients) ->
-    with_listener({Protocol, Port}, fun(LSup) ->
-        ConnSup = esockd_listener_sup:connection_sup(LSup),
-        esockd_connection_sup:set_max_clients(ConnSup, MaxClients)
-    end).
+    with_listener({Protocol, Port}, fun set_max_clients/2, [MaxClients]);
+set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:set_max_clients(ConnSup, MaxClients).
 
 %%------------------------------------------------------------------------------
 %% @doc Get current clients
@@ -173,10 +173,10 @@ set_max_clients({Protocol, Port}, MaxClients) ->
 %%------------------------------------------------------------------------------
 -spec get_current_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_current_clients({Protocol, Port}) ->
-    with_listener({Protocol, Port}, fun(LSup) ->
-        ConnSup = esockd_listener_sup:connection_sup(LSup),
-        esockd_connection_sup:count_connections(ConnSup)
-    end).
+    with_listener({Protocol, Port}, fun get_current_clients/1);
+get_current_clients(LSup) when is_pid(LSup) ->
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:count_connections(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc Get shutdown count
@@ -184,10 +184,10 @@ get_current_clients({Protocol, Port}) ->
 %%------------------------------------------------------------------------------
 -spec get_shutdown_count({atom(), inet:port_number()}) -> undefined | pos_integer().
 get_shutdown_count({Protocol, Port}) ->
-    with_listener({Protocol, Port}, fun(LSup) ->
-        ConnSup = esockd_listener_sup:connection_sup(LSup),
-        esockd_connection_sup:get_shutdown_count(ConnSup)
-    end).
+    with_listener({Protocol, Port}, fun get_shutdown_count/1);
+get_shutdown_count(LSup) when is_pid(LSup) ->
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:get_shutdown_count(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc Get access rules
@@ -195,10 +195,10 @@ get_shutdown_count({Protocol, Port}) ->
 %%------------------------------------------------------------------------------
 -spec get_access_rules({atom(), inet:port_number()}) -> [esockd_access:rule()] | undefined.
 get_access_rules({Protocol, Port}) ->
-    with_listener({Protocol, Port}, fun(LSup) ->
-        ConnSup = esockd_listener_sup:connection_sup(LSup),
-        esockd_connection_sup:access_rules(ConnSup)
-    end).
+    with_listener({Protocol, Port}, fun get_access_rules/1);
+get_access_rules(LSup) when is_pid(LSup) ->
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    esockd_connection_sup:access_rules(ConnSup).
 
 %%------------------------------------------------------------------------------
 %% @doc Allow access address
@@ -233,10 +233,13 @@ ulimit() ->
 %% @end
 %%------------------------------------------------------------------------------
 with_listener({Protocol, Port}, Fun) ->
+    with_listener({Protocol, Port}, Fun, []).
+
+with_listener({Protocol, Port}, Fun, Args) ->
     LSup = listener({Protocol, Port}),
-    with_listener(LSup, Fun);
-with_listener(undefined, _Fun) ->
+    with_listener(LSup, Fun, Args);
+with_listener(undefined, _Fun, _Args) ->
     undefined;
-with_listener(LSup, Fun) when is_pid(LSup) ->
-    Fun(LSup).
+with_listener(LSup, Fun, Args) when is_pid(LSup) ->
+    apply(Fun, [LSup|Args]).
 
