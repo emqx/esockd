@@ -1,7 +1,8 @@
 {application, esockd,
  [
+  {id, "esockd"},
+  {vsn, "2.8.0"},
   {description, "Erlang General Non-blocking TCP/SSL Server"},
-  {vsn, "2.7.1"},
   {registered, []},
   {applications, [
                   kernel,
