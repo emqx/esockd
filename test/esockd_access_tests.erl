@@ -30,7 +30,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(esockd_access, [atoi/1, itoa/1, rule/1, range/1, match/2, mask/1]).
+-import(esockd_access, [atoi/1, itoa/1, compile/1, range/1, match/2, mask/1]).
 
 atoi_test() ->
     IpList = [{192,168,1,1}, {10,10,10,10}, {8, 8, 8,8}, {255,255,255,0}],
@@ -52,21 +52,21 @@ range_test() ->
     ?assertEqual({10,10,255,255}, itoa(End1)).
 
 match_test() ->
-    Rules = [rule({deny,  "192.168.1.1"}),
-             rule({allow, "192.168.1.0/24"}),
-             rule({deny,  all})],
+    Rules = [compile({deny,  "192.168.1.1"}),
+             compile({allow, "192.168.1.0/24"}),
+             compile({deny,  all})],
     ?assertEqual({matched, deny}, match({192,168,1,1}, Rules)),
     ?assertEqual({matched, allow}, match({192,168,1,4}, Rules)),
     ?assertEqual({matched, allow}, match({192,168,1,60}, Rules)),
     ?assertEqual({matched, deny}, match({10,10,10,10}, Rules)).
 
 match_local_test() ->
-    Rules = [rule({allow, "127.0.0.1"}), rule({deny, all})],
+    Rules = [compile({allow, "127.0.0.1"}), compile({deny, all})],
     ?assertEqual({matched, allow}, match({127,0,0,1}, Rules)),
     ?assertEqual({matched, deny}, match({192,168,0,1}, Rules)).
 
 match_allow_test() ->
-    Rules = [rule({deny, "10.10.0.0/16"}), rule({allow, all})],
+    Rules = [compile({deny, "10.10.0.0/16"}), compile({allow, all})],
     ?assertEqual({matched, deny}, match({10,10,0,10}, Rules)),
     ?assertEqual({matched, allow}, match({127,0,0,1}, Rules)),
     ?assertEqual({matched, allow}, match({192,168,0,1}, Rules)).

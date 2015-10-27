@@ -26,6 +26,8 @@
 %%%-----------------------------------------------------------------------------
 -module(gen_echo_server).
 
+-include("../../../include/esockd.hrl").
+
 -behaviour(gen_server).
 
 %% start
@@ -38,7 +40,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {transport, sock}).
+-record(state, {conn}).
 
 -define(TCP_OPTIONS, [
 		binary,
@@ -61,13 +63,13 @@ start(Port) when is_integer(Port) ->
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
-start_link(SockArgs) ->
-	{ok, proc_lib:spawn_link(?MODULE, init, [SockArgs])}.
+start_link(Conn) ->
+	{ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
 
-init(SockArgs = {Transport, _Sock, _SockFun}) ->
-    {ok, NewSock} = esockd_connection:accept(SockArgs),
-    Transport:setopts(NewSock, [{active, once}]),
-    gen_server:enter_loop(?MODULE, [], #state{transport = Transport, sock = NewSock}).
+init(Conn) ->
+    {ok, Conn1} = esockd_connection:ack(Conn),
+    Conn1:setopts([{active, once}]),
+    gen_server:enter_loop(?MODULE, [], #state{conn = Conn1}).
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -75,18 +77,18 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, State=#state{transport = Transport, sock = Sock}) ->
-	{ok, PeerName} = Transport:peername(Sock),
+handle_info({tcp, Sock, Data}, State=#state{conn = ?ESOCK(Sock) = Conn}) ->
+	{ok, PeerName} = Conn:peername(),
 	io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-	Transport:send(Sock, Data),
-	Transport:setopts(Sock, [{active, once}]),
+	Conn:send(Data),
+	Conn:setopts([{active, once}]),
     {noreply, State};
 
-handle_info({tcp_error, Sock, Reason}, State=#state{sock = Sock}) ->
+handle_info({tcp_error, Sock, Reason}, State=#state{conn = ?ESOCK(Sock)}) ->
 	io:format("tcp_error: ~s~n", [Reason]),
     {stop, {shutdown, {tcp_error, Reason}}, State};
 
-handle_info({tcp_closed, Sock}, State=#state{sock=Sock}) ->
+handle_info({tcp_closed, Sock}, State=#state{conn = ?ESOCK(Sock)}) ->
 	io:format("tcp_closed~n"),
 	{stop, normal, State};
 

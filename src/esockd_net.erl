@@ -56,7 +56,7 @@ format(sockname, SockName) ->
 format(peername, PeerName) ->
     format(PeerName).
 format({Addr, Port}) ->
-    lists:flatten(io_lib:format("~s:~p", [maybe_ntoab(Addr), Port])).
+    io_lib:format("~s:~p", [maybe_ntoab(Addr), Port]).
 
 maybe_ntoab(Addr) when is_tuple(Addr) -> ntoab(Addr);
 
@@ -75,5 +75,4 @@ ntoab(IP) ->
         0 -> Str;
         _ -> "[" ++ Str ++ "]"
     end.
-
 

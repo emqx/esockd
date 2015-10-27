@@ -34,7 +34,8 @@
 -export([type/1]).
 
 -export([listen/2, send/2, port_command/2,
-         recv/2, recv/3, async_recv/3,
+         recv/2, recv/3,
+         async_recv/2, async_recv/3,
          controlling_process/2,
          close/1, fast_close/1]).
 
@@ -173,6 +174,13 @@ recv(#ssl_socket{ssl = SslSock}, Length, Timeout)  ->
 %% @doc Async Receive data
 %% @end
 %%------------------------------------------------------------------------------
+-spec async_recv(Sock, Length) -> {ok, Ref} when
+    Sock    :: inet:socket() | esockd:ssl_socket(),
+    Length  :: non_neg_integer(),
+    Ref     :: reference().
+async_recv(Sock, Length) ->
+    async_recv(Sock, Length, infinity).
+
 -spec async_recv(Sock, Length, Timeout) -> {ok, Ref} when
     Sock    :: inet:socket() | esockd:ssl_socket(),
     Length  :: non_neg_integer(),

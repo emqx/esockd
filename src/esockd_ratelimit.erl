@@ -30,7 +30,7 @@
 %%% @end
 %%%-----------------------------------------------------------------------------
 
--module(esockd_rate_limiter).
+-module(esockd_ratelimit).
 
 -export([new/2, check/2]).
 

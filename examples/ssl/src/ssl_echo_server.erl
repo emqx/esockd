@@ -30,7 +30,7 @@
 -export([start/0, start/1]).
 
 %% callback 
--export([start_link/1, init/1, loop/3]).
+-export([start_link/1, init/1, loop/1]).
 
 start() ->
     start(5000).
@@ -49,20 +49,20 @@ start(Port) ->
             {sockopts, SockOpts}],
     {ok, _} = esockd:open('echo/ssl', Port, Opts, ssl_echo_server).
 
-start_link(SockArgs) ->
-	{ok, spawn_link(?MODULE, init, [SockArgs])}.
+start_link(Conn) ->
+	{ok, spawn_link(?MODULE, init, [Conn])}.
 
-init(SockArgs = {Transport, _Sock, _SockFun}) ->
-    {ok, NewSock} = esockd_connection:accept(SockArgs),
-	loop(Transport, NewSock, state).
+init(Conn) ->
+    {ok, NewConn} = Conn:ack(),
+	loop(NewConn).
 
-loop(Transport, Sock, State) ->
-	case Transport:recv(Sock, 0) of
-		{ok, Data} -> 
-			{ok, PeerName} = Transport:peername(Sock),
+loop(Conn) ->
+	case Conn:recv(0) of
+		{ok, Data} ->
+			{ok, PeerName} = Conn:peername(),
             io:format("~s - ~p~n", [esockd_net:format(peername, PeerName), Data]),
-			Transport:send(Sock, Data),
-			loop(Transport, Sock, State);
+			Conn:send(Data),
+			loop(Conn);
 		{error, Reason} ->
 			io:format("tcp ~s~n", [Reason]),
 			{stop, Reason}

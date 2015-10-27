@@ -2,6 +2,12 @@
 eSockd ChangeLog
 ==================
 
+3.0-beta (2015/10/27)
+------------------------
+
+Parameterized Connection Module
+
+
 2.8.0-beta (2015/10/26)
 ------------------------
 
