@@ -151,10 +151,10 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% accept...
 %%--------------------------------------------------------------------
-accept(State = #state{lsock=LSock}) ->
+accept(State = #state{lsock = LSock}) ->
     case prim_inet:async_accept(LSock, -1) of
         {ok, Ref} -> 
-			{noreply, State#state{ref=Ref}};
+			{noreply, State#state{ref = Ref}};
 		{error, Error} ->
 			sockerr(Error, State)
     end.
