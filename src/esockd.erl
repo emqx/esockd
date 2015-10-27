@@ -114,7 +114,7 @@ close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 %% @doc Get listeners
 %% @end
 %%------------------------------------------------------------------------------
--spec listeners() -> [{atom(), inet:port_number()}].
+-spec listeners() -> [{{atom(), inet:port_number()}, pid()}].
 listeners() ->
     esockd_sup:listeners().
 

@@ -29,15 +29,14 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
-
--module(esockd_rate_limiter).
+-module(esockd_ratelimit).
 
 -export([new/2, check/2]).
 
--record(bucket, {capacity   :: pos_integer(), %% tokens capacity
-                 remaining  :: pos_integer(), %% available tokens
-                 limitrate  :: float(),       %% bytes/millsec
-                 lastime    :: pos_integer()  %% millseconds
+-record(bucket, {capacity   :: pos_integer(),     %% tokens capacity
+                 remaining  :: non_neg_integer(), %% available tokens
+                 limitrate  :: float(),           %% bytes/millsec
+                 lastime    :: pos_integer()      %% millseconds
                 }).
 
 -type bucket() :: #bucket{}.
