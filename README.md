@@ -1,5 +1,5 @@
 
-# eSockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=master)](https://travis-ci.org/emqtt/esockd)
+# eSockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=3.0)](https://travis-ci.org/emqtt/esockd)
 
 Erlang General Non-blocking TCP/SSL Socket Server.
 
