@@ -2,7 +2,7 @@
 eSockd ChangeLog
 ==================
 
-2.8.0-beta (2015/10/26)
+2.8.0-beta (2015/10/28)
 ------------------------
 
 issue #16 - Rate Limiting based on Token Bucket Algorithm
