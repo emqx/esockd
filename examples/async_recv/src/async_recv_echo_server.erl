@@ -71,7 +71,7 @@ start_link(Conn) ->
 	{ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
-    {ok, Conn1} = Conn:ack(),
+    {ok, Conn1} = Conn:wait(),
     Conn1:async_recv(0, infinity),
     gen_server:enter_loop(?MODULE, [], #state{conn = Conn1}).
 
@@ -93,7 +93,6 @@ handle_info({inet_async, Sock, _Ref, {error, Reason}}, State = #state{conn = ?ES
     shutdown(Reason, State);
 
 handle_info({inet_reply, Sock ,ok}, State = #state{conn = ?ESOCK(Sock)}) ->
-    io:format("inet_reply ~p ok~n", [Sock]),
     {noreply, State};
 
 handle_info({inet_reply, Sock, {error, Reason}}, State = #state{conn = ?ESOCK(Sock)}) ->
