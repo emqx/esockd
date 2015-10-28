@@ -1,19 +1,18 @@
 
-# eSockd
+# eSockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=master)](https://travis-ci.org/emqtt/esockd)
+
 
 Erlang General Non-blocking TCP/SSL Socket Server.
 
 ## Features
 
-General Non-blocking TCP/SSL Socket Server.
-
-Acceptor Pool and Asynchronous TCP Accept.
-
-Max connections management.
-
-Allow/Deny by peer address.
-
-Keepalive Support.
+* General Non-blocking TCP/SSL Socket Server
+* Acceptor Pool and Asynchronous TCP Accept
+* Parameterized Connection Module
+* Max connections management
+* Allow/Deny by peer address
+* Keepalive Support
+* Rate Limit
 
 ## Benchmark
 
@@ -32,24 +31,24 @@ A Simple Echo Server:
 
 -export([start_link/1]).
 
-start_link(SockArgs) ->
-   {ok, spawn_link(?MODULE, init, [SockArgs])}.
+start_link(Conn) ->
+   {ok, spawn_link(?MODULE, init, [Conn])}.
       
-init(SockArgs = {Transport, _Sock, _SockFun}) ->
-    {ok, NewSock} = esockd_connection:accept(SockArgs),
-    loop(Transport, NewSock, state).
+init(Conn) ->
+    {ok, NewConn} = Conn:wait(),
+	loop(NewConn).
 
-loop(Transport, Sock, State) ->
-    case Transport:recv(Sock, 0) of
-        {ok, Data} ->
-            {ok, Name} = Transport:peername(Sock),
-            io:format("~p: ~s~n", [Name, Data]),
-            Transport:send(Sock, Data),
-            loop(Transport, Sock, State);
-        {error, Reason} ->
-            io:format("tcp ~s~n", [Reason]),
-            {stop, Reason}
-    end.
+loop(Conn) ->
+	case Conn:recv(0) of
+		{ok, Data} ->
+			{ok, PeerName} = Conn:peername(),
+			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
+			Conn:send(Data),
+			loop(Conn);
+		{error, Reason} ->
+			io:format("tcp ~s~n", [Reason]),
+			{stop, Reason}
+	end.
 ```
 
 Startup Echo Server:
@@ -81,7 +80,7 @@ examples/
 
 Example   | Description
 ----------|------
-async_recv| prim_net async recv
+async_recv| prim_net async recv/send
 gen_server| gen_server behaviour
 simple    | simple echo server
 ssl       | ssl echo server
@@ -122,6 +121,7 @@ Options:
         {access, [esockd_access:rule()]} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
+        {connopts, [{ratelimit, string()}]} |
         {sockopts, [gen_tcp:listen_option()]}.
 ```
 
@@ -218,5 +218,6 @@ The MIT License (MIT)
 
 ## Author
 
-feng@emqtt.io
+Feng Lee <feng@emqtt.io>
+
 
