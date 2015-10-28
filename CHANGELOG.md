@@ -2,13 +2,13 @@
 eSockd ChangeLog
 ==================
 
-3.0-beta (2015/10/27)
+3.0-beta (2015/10/30)
 ------------------------
 
 Parameterized Connection Module
 
 
-2.8.0-beta (2015/10/26)
+2.8.0-beta (2015/10/28)
 ------------------------
 
 issue #16 - Rate Limiting based on Token Bucket Algorithm
