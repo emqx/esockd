@@ -9,9 +9,9 @@ esockd_sup
 			-> esockd_acceptor
 			-> esockd_acceptor
 			-> ......
-		-> esockd_client_sup
-			-> esockd_client
-			-> esockd_client
+		-> esockd_connection_sup
+			-> esockd_connection
+			-> esockd_connection
 			-> ......
 
 ```
