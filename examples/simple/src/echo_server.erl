@@ -71,7 +71,7 @@ start_link(Conn) ->
 	{ok, spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
-    {ok, NewConn} = Conn:ack(),
+    {ok, NewConn} = Conn:wait(),
 	loop(NewConn, state).
 
 loop(Conn, State) ->

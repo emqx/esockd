@@ -53,8 +53,8 @@ start_link(Conn) ->
 	{ok, spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
-    {ok, NewConn} = Conn:ack(),
-	loop(NewConn).
+    {ok, NewConn} = Conn:wait(),
+    loop(NewConn).
 
 loop(Conn) ->
 	case Conn:recv(0) of
