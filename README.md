@@ -1,7 +1,6 @@
 
 # eSockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=master)](https://travis-ci.org/emqtt/esockd)
 
-
 Erlang General Non-blocking TCP/SSL Socket Server.
 
 ## Features
@@ -13,14 +12,6 @@ Erlang General Non-blocking TCP/SSL Socket Server.
 * Allow/Deny by peer address
 * Keepalive Support
 * Rate Limit
-
-## Benchmark
-
-Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server from qingcloud.com:
-
-```
-250K concurrent connections, 50K messages/sec, 40Mbps In/Out consumed 5G memory, 20% CPU/core
-```
 
 ## Usage
 
@@ -210,6 +201,14 @@ Logger option:
 
 ```
 esockd:open(echo, 5000, [{logger, {error_logger, info}}], {echo_server, start_link, []}).
+```
+
+## Benchmark
+
+Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server from qingcloud.com:
+
+```
+250K concurrent connections, 50K messages/sec, 40Mbps In/Out consumed 5G memory, 20% CPU/core
 ```
 
 ## License
