@@ -29,7 +29,7 @@
 -export([start/0, start/1]).
 
 %%callback 
--export([start_link/1, init/1, loop/2]).
+-export([start_link/1, init/1, loop/1]).
 
 -define(TCP_OPTIONS, [
 		binary,
@@ -72,15 +72,15 @@ start_link(Conn) ->
 
 init(Conn) ->
     {ok, NewConn} = Conn:wait(),
-	loop(NewConn, state).
+	loop(NewConn).
 
-loop(Conn, State) ->
+loop(Conn) ->
 	case Conn:recv(0) of
 		{ok, Data} ->
 			{ok, PeerName} = Conn:peername(),
 			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
 			Conn:send(Data),
-			loop(Conn, State);
+			loop(Conn);
 		{error, Reason} ->
 			io:format("tcp ~s~n", [Reason]),
 			{stop, Reason}
