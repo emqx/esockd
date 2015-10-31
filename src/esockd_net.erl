@@ -30,7 +30,7 @@
 
 -include_lib("kernel/include/inet.hrl").
 
--export([ntoab/1, tcp_host/1, hostname/0, format/2]).
+-export([ntoab/1, tcp_host/1, hostname/0, format/1, format/2]).
 
 tcp_host({0,0,0,0}) ->
     hostname();

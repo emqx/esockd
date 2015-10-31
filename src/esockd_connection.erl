@@ -32,7 +32,7 @@
 
 -export([new/3, start_link/2, go/2, wait/1, upgrade/1]).
 
--export([sock/1, opts/1, type/1, getopts/2, setopts/2, getstat/2,
+-export([transport/1, sock/1, opts/1, type/1, getopts/2, setopts/2, getstat/2,
          controlling_process/2, peername/1, sockname/1]).
 
 -export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
@@ -109,6 +109,14 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
         {error, Error} ->
             erlang:error(Error)
     end.
+
+%%------------------------------------------------------------------------------
+%% @doc Transport of the connection.
+%% @end
+%%------------------------------------------------------------------------------
+-spec transport(connection()) -> atom().
+transport({?MODULE, [_Sock, _SockFun, _Opts]}) ->
+    ?Transport.
 
 %%------------------------------------------------------------------------------
 %% @doc Socket of the connection. 
