@@ -112,7 +112,7 @@ Options:
         {access, [esockd_access:rule()]} |
         {logger, atom() | {atom(), atom()}} |
         {ssl, [ssl:ssloption()]} |
-        {connopts, [{ratelimit, string()}]} |
+        {connopts, [{rate_limit, string()}]} |
         {sockopts, [gen_tcp:listen_option()]}.
 ```
 
