@@ -46,7 +46,7 @@
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-	 terminate/2, code_change/3]).
+         terminate/2, code_change/3]).
 
 -define(DICT, dict).
 -define(SETS, sets).
@@ -54,8 +54,9 @@
 
 -record(state, {curr_clients = 0,
                 max_clients  = ?MAX_CLIENTS,
+                conn_opts    = [],
                 access_rules = [],
-                shutdown = brutal_kill,
+                shutdown     = brutal_kill,
                 mfargs,
                 logger}).
 
@@ -79,13 +80,12 @@ start_link(Options, MFArgs, Logger) ->
 %% @end
 %%------------------------------------------------------------------------------
 start_connection(Sup, Mod, Sock, SockFun) ->
-    SockArgs = {esockd_transport, Sock, SockFun},
-    case call(Sup, {start_connection, SockArgs}) of
-        {ok, ConnPid} ->
+    case call(Sup, {start_connection, Sock, SockFun}) of
+        {ok, Pid, Conn} ->
             % transfer controlling from acceptor to connection
-            Mod:controlling_process(Sock, ConnPid),
-            esockd_connection:ready(ConnPid, SockArgs),
-            {ok, ConnPid};
+            Mod:controlling_process(Sock, Pid),
+            Conn:go(Pid),
+            {ok, Pid};
         {error, Error} ->
             {error, Error}
     end.
@@ -120,31 +120,35 @@ call(Sup, Req) ->
 
 init([Options, MFArgs, Logger]) ->
 	process_flag(trap_exit, true),
-    Shutdown = proplists:get_value(shutdown, Options, brutal_kill),
-    MaxClients = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
-    AccessRules = [esockd_access:rule(Rule) || 
-            Rule <- proplists:get_value(access, Options, [{allow, all}])],
+    Shutdown    = proplists:get_value(shutdown, Options, brutal_kill),
+    MaxClients  = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
+    ConnOpts    = proplists:get_value(connopts, Options, []),
+    RawRules    = proplists:get_value(access, Options, [{allow, all}]),
+    AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
     {ok, #state{max_clients  = MaxClients,
+                conn_opts    = ConnOpts,
                 access_rules = AccessRules,
                 shutdown     = Shutdown,
                 mfargs       = MFArgs,
                 logger       = Logger}}.
 
-handle_call({start_connection, _SockArgs}, _From, State = #state{curr_clients = CurrClients,
-                                                                 max_clients = MaxClients})
+handle_call({start_connection, _Sock, _SockFun}, _From,
+            State = #state{curr_clients = CurrClients, max_clients = MaxClients})
         when CurrClients >= MaxClients ->
     {reply, {error, maxlimit}, State};
 
-handle_call({start_connection, SockArgs = {_, Sock, _SockFun}}, _From, 
-            State = #state{mfargs = MFArgs, curr_clients = Count, access_rules = Rules}) ->
+handle_call({start_connection, Sock, SockFun}, _From, 
+            State = #state{conn_opts = ConnOpts, mfargs = MFArgs,
+                           curr_clients = Count, access_rules = Rules}) ->
     case inet:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
                 true ->
-                    case catch esockd_connection:start_link(SockArgs, MFArgs) of
+                    Conn = esockd_connection:new(Sock, SockFun, ConnOpts),
+                    case catch Conn:start_link(MFArgs) of
                         {ok, Pid} when is_pid(Pid) ->
                             put(Pid, true),
-                            {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
+                            {reply, {ok, Pid, Conn}, State#state{curr_clients = Count+1}};
                         ignore ->
                             {reply, ignore, State};
                         {error, Reason} ->
@@ -175,7 +179,7 @@ handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
     {reply, [raw(Rule) || Rule <- Rules], State};
 
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
-    case catch esockd_access:rule(RawRule) of
+    case catch esockd_access:compile(RawRule) of
         {'EXIT', _Error} -> 
             {reply, {error, bad_access_rule}, State};
         Rule -> 

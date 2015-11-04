@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd connection api.
+%%% eSockd tcp/ssl connection that wraps transport and socket.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -30,62 +30,237 @@
 
 -include("esockd.hrl").
 
--export([start_link/2, ready/2, accept/1, transform/1]).
+-export([new/3, start_link/2, go/2, wait/1, upgrade/1]).
+
+-export([transport/1, sock/1, opts/1, type/1, getopts/2, setopts/2, getstat/2,
+         controlling_process/2, peername/1, sockname/1]).
+
+-export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
+         shutdown/2, close/1, fast_close/1]).
+
+-type parameter() :: any().
+
+-type connection() :: {?MODULE, list(parameter())}.
+
+-export_type([connection/0]).
+
+-define(CONN_MOD, {?MODULE, [_Sock, _SockFun, _Opts]}).
+
+-define(CONN_MOD(Sock), {?MODULE, [Sock, _SockFun, _Opts]}).
+
+-define(Transport, esockd_transport).
 
 %%------------------------------------------------------------------------------
-%% @doc Start a connection.
+%% @doc Create a connection
 %% @end
 %%------------------------------------------------------------------------------
--spec start_link(SockArgs, MFArgs) -> {ok, pid()} | {error, any()} | ignore when
-		SockArgs :: esockd:sock_args(),
-		MFArgs   :: esockd:mfargs(). 
-start_link(SockArgs, MFArgs) ->
-	case call(SockArgs, MFArgs) of
-        {ok, Pid}       -> {ok, Pid};
-        ignore          -> ignore;
-        {error, Error}  -> {error, Error}
-	end.
+-spec new(Sock, SockFun, Opts) -> connection() when
+    Sock    :: inet:socket(),
+    SockFun :: esockd:sock_fun(),
+    Opts    :: list(atom()|tuple()).
+new(Sock, SockFun, Opts) ->
+    {?MODULE, [Sock, SockFun, parse_opt(Opts)]}.
+
+parse_opt(Opts) ->
+    parse_opt(Opts, []).
+parse_opt([], Acc) ->
+    Acc;
+parse_opt([{rate_limit, Str} | Opts], Acc) ->
+    parse_opt(Opts, [{rate_limit, parse_rl(Str)}|Acc]);
+parse_opt([Opt | Opts], Acc) ->
+    parse_opt(Opts, [Opt | Acc]).
+parse_rl(Str) ->
+    Bps = fun(S) -> list_to_integer(string:strip(S)) * 1024 end,
+    [Burst, Rate] = [Bps(S) || S <- string:tokens(Str, ",")],
+    esockd_ratelimit:new(Burst, Rate).
 
 %%------------------------------------------------------------------------------
-%% @doc Tell the connection that socket is ready. Called by acceptor.
+%% @doc Start the connection process.
 %% @end
 %%------------------------------------------------------------------------------
--spec ready(Conn, SockArgs) -> any() when
-        Conn     :: pid(),
-        SockArgs :: esockd:sock_args().
-ready(Conn, SockArgs = {_Transport, _Sock, _SockFun}) ->
-	Conn ! {sock_ready, SockArgs}.
+-spec start_link(esockd:mfargs(), connection()) -> {ok, pid()}
+                                                 | {error, any()}
+                                                 | ignore.
+start_link(M, Conn = ?CONN_MOD) when is_atom(M) ->
+    M:start_link(Conn);
+
+start_link({M, F}, Conn = ?CONN_MOD) when is_atom(M), is_atom(F) ->
+    M:F(Conn);
+
+start_link({M, F, Args}, Conn = ?CONN_MOD)
+    when is_atom(M), is_atom(F), is_list(Args) ->
+    erlang:apply(M, F, [Conn|Args]).
 
 %%------------------------------------------------------------------------------
-%% @doc Connection accept the socket. Called by connection.
+%% @doc Tell the connection proccess that socket is ready.
+%%      Called by acceptor.
 %% @end
 %%------------------------------------------------------------------------------
--spec accept(SockArgs) -> {ok, NewSock} when
-    SockArgs    :: esockd:sock_args(),
-    NewSock     :: inet:socket() | esockd:ssl_socket().
-accept(SockArgs) ->
-	receive
-        {sock_ready, SockArgs} -> transform(SockArgs)
-    end.
+-spec go(pid(), connection()) -> any().
+go(Pid, Conn = ?CONN_MOD) ->
+    Pid ! {go, Conn}.
 
 %%------------------------------------------------------------------------------
-%% @doc Transform Socket. Callbed by connection proccess.
+%% @doc Connection process wait for 'go' and upgrade self.
+%%      Called by connection process.
 %% @end
 %%------------------------------------------------------------------------------
-transform({_Transport, Sock, SockFun}) ->
+-spec wait(connection()) -> {ok, connection()}.
+wait(Conn = ?CONN_MOD) ->
+	receive {go, Conn} -> upgrade(Conn) end.
+
+%%------------------------------------------------------------------------------
+%% @doc Upgrade Socket.
+%%      Called by connection proccess.
+%% @end
+%%------------------------------------------------------------------------------
+-spec upgrade(connection()) -> {ok, connection()}.
+upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
-            {ok, NewSock};
+            {ok, {?MODULE, [NewSock, SockFun, Opts]}};
         {error, Error} ->
-            exit({shutdown, Error})
+            erlang:error(Error)
     end.
 
-call(SockArgs, M) when is_atom(M) ->
-    M:start_link(SockArgs);
+%%------------------------------------------------------------------------------
+%% @doc Transport of the connection.
+%% @end
+%%------------------------------------------------------------------------------
+-spec transport(connection()) -> atom().
+transport({?MODULE, [_Sock, _SockFun, _Opts]}) ->
+    ?Transport.
 
-call(SockArgs, {M, F}) when is_atom(M), is_atom(F) ->
-    M:F(SockArgs);
+%%------------------------------------------------------------------------------
+%% @doc Socket of the connection. 
+%% @end
+%%------------------------------------------------------------------------------
+-spec sock(connection()) -> inet:socket() | esockd:ssl_socket().
+sock({?MODULE, [Sock, _SockFun, _Opts]}) ->
+    Sock.
 
-call(SockArgs, {M, F, Args}) when is_atom(M), is_atom(F) ->
-    erlang:apply(M, F, [SockArgs|Args]).
+%%------------------------------------------------------------------------------
+%% @doc Connection options
+%% @end
+%%------------------------------------------------------------------------------
+-spec opts(connection()) -> list(atom() | tuple()).
+opts({?MODULE, [_Sock, _SockFun, Opts]}) ->
+    Opts.
+
+%%------------------------------------------------------------------------------
+%% @doc Socket type of the connection.
+%% @end
+%%------------------------------------------------------------------------------
+-spec type(connection()) -> tcp | ssl.
+type(?CONN_MOD(Sock)) ->
+    ?Transport:type(Sock).
+
+%%------------------------------------------------------------------------------
+%% @doc Sockname of the connection.
+%% @end
+%%------------------------------------------------------------------------------
+-spec sockname(connection()) -> {ok, {Address, Port}} | {error, any()} when
+    Address :: inet:ip_address(),
+    Port    :: inet:port_number().
+sockname(?CONN_MOD(Sock)) ->
+    ?Transport:sockname(Sock).
+
+%%------------------------------------------------------------------------------
+%% @doc Peername of the connection.
+%% @end
+%%------------------------------------------------------------------------------
+-spec peername(connection()) -> {ok, {Address, Port}} | {error, any()} when
+    Address :: inet:ip_address(),
+    Port    :: inet:port_number().
+peername(?CONN_MOD(Sock)) ->
+    ?Transport:peername(Sock).
+
+%%------------------------------------------------------------------------------
+%% @doc Get socket options
+%% @end
+%%------------------------------------------------------------------------------
+getopts(Keys, ?CONN_MOD(Sock)) ->
+    ?Transport:getopts(Sock, Keys).
+
+%%------------------------------------------------------------------------------
+%% @doc Set socket options
+%% @end
+%%------------------------------------------------------------------------------
+setopts(Options, ?CONN_MOD(Sock)) ->
+    ?Transport:setopts(Sock, Options).
+
+%%------------------------------------------------------------------------------
+%% @doc Get socket stats
+%% @end
+%%------------------------------------------------------------------------------
+getstat(Stats, ?CONN_MOD(Sock)) ->
+    ?Transport:getstat(Sock, Stats).
+
+%%------------------------------------------------------------------------------
+%% @doc Controlling Process of Connection
+%% @end
+%%------------------------------------------------------------------------------
+-spec controlling_process(pid(), connection()) -> any().
+controlling_process(Owner, ?CONN_MOD(Sock)) ->
+    ?Transport:controlling_process(Sock, Owner).
+
+%%------------------------------------------------------------------------------
+%% @doc Send data
+%% @end
+%%------------------------------------------------------------------------------
+-spec send(iolist(), connection()) -> ok.
+send(Data, ?CONN_MOD(Sock)) ->
+    ?Transport:send(Sock, Data).
+
+%%------------------------------------------------------------------------------
+%% @doc Send data asynchronously by port_command/2
+%% @end
+%%------------------------------------------------------------------------------
+async_send(Data, ?CONN_MOD(Sock)) ->
+    ?Transport:port_command(Sock, Data).
+
+%%------------------------------------------------------------------------------
+%% @doc Receive data
+%% @end
+%%------------------------------------------------------------------------------
+recv(Length, ?CONN_MOD(Sock)) ->
+    ?Transport:recv(Sock, Length).
+
+recv(Length, Timeout, ?CONN_MOD(Sock)) ->
+    ?Transport:recv(Sock, Length, Timeout).
+
+%%------------------------------------------------------------------------------
+%% @doc Receive data asynchronously
+%% @end
+%%------------------------------------------------------------------------------
+async_recv(Length, ?CONN_MOD(Sock)) ->
+    ?Transport:async_recv(Sock, Length, infinity).
+
+async_recv(Length, Timeout, ?CONN_MOD(Sock)) ->
+    ?Transport:async_recv(Sock, Length, Timeout).
+
+%%------------------------------------------------------------------------------
+%% @doc Shutdown connection
+%% @end
+%%------------------------------------------------------------------------------
+-spec shutdown(How, connection()) -> ok | {error, Reason :: any()} when
+    How :: read | write | read_write.
+shutdown(How, ?CONN_MOD(Sock)) ->
+    ?Transport:shutdown(Sock, How).
+
+%%------------------------------------------------------------------------------
+%% @doc Close socket
+%% @end
+%%------------------------------------------------------------------------------
+-spec close(connection()) -> ok.
+close(?CONN_MOD(Sock)) ->
+    ?Transport:close(Sock).
+
+%%------------------------------------------------------------------------------
+%% @doc Close socket by port_close
+%% @end
+%%------------------------------------------------------------------------------
+-spec fast_close(connection()) -> ok.
+fast_close(?CONN_MOD(Sock)) ->
+    ?Transport:fast_close(Sock).
 

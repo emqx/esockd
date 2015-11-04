@@ -46,23 +46,23 @@
                       {deny,  all} |
                       {deny,  range()}.
 
--export([rule/1, match/2, range/1,  mask/1, atoi/1, itoa/1]).
+-export([compile/1, match/2, range/1,  mask/1, atoi/1, itoa/1]).
 
 %%------------------------------------------------------------------------------
-%% @doc Build CIDR, Make rule.
+%% @doc Build CIDR, Compile rule.
 %% @end
 %%------------------------------------------------------------------------------
--spec rule(rule()) -> range_rule().
-rule({allow, all}) ->
+-spec compile(rule()) -> range_rule().
+compile({allow, all}) ->
     {allow, all};
-rule({allow, CIDR}) when is_list(CIDR) ->
-    rule(allow, CIDR);
-rule({deny, CIDR}) when is_list(CIDR) ->
-    rule(deny, CIDR);
-rule({deny, all}) ->
+compile({allow, CIDR}) when is_list(CIDR) ->
+    compile(allow, CIDR);
+compile({deny, CIDR}) when is_list(CIDR) ->
+    compile(deny, CIDR);
+compile({deny, all}) ->
     {deny, all}.
 
-rule(Type, CIDR) when is_list(CIDR) ->
+compile(Type, CIDR) when is_list(CIDR) ->
     {Start, End} = range(CIDR), {Type, {CIDR, Start, End}}.
 
 %%------------------------------------------------------------------------------

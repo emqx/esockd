@@ -29,7 +29,7 @@
 -export([start/0, start/1]).
 
 %%callback 
--export([start_link/1, init/1, loop/3]).
+-export([start_link/1, init/1, loop/1]).
 
 -define(TCP_OPTIONS, [
 		binary,
@@ -67,20 +67,20 @@ start(Port) when is_integer(Port) ->
 %%
 %% @end
 %%------------------------------------------------------------------------------
-start_link(SockArgs) ->
-	{ok, spawn_link(?MODULE, init, [SockArgs])}.
+start_link(Conn) ->
+	{ok, spawn_link(?MODULE, init, [Conn])}.
 
-init(SockArgs = {Transport, _Sock, _SockFun}) ->
-    {ok, NewSock} = esockd_connection:accept(SockArgs),
-	loop(Transport, NewSock, state).
+init(Conn) ->
+    {ok, NewConn} = Conn:wait(),
+	loop(NewConn).
 
-loop(Transport, Sock, State) ->
-	case Transport:recv(Sock, 0) of
+loop(Conn) ->
+	case Conn:recv(0) of
 		{ok, Data} ->
-			{ok, PeerName} = Transport:peername(Sock),
+			{ok, PeerName} = Conn:peername(),
 			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-			Transport:send(Sock, Data),
-			loop(Transport, Sock, State);
+			Conn:send(Data),
+			loop(Conn);
 		{error, Reason} ->
 			io:format("tcp ~s~n", [Reason]),
 			{stop, Reason}

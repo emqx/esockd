@@ -26,6 +26,8 @@
 %%%-----------------------------------------------------------------------------
 -module(async_recv_echo_server).
 
+-include("../../../include/esockd.hrl").
+
 -behaviour(gen_server).
 
 %% start
@@ -37,7 +39,7 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {transport, sock}).
+-record(state, {conn}).
 
 -define(TCP_OPTIONS, [
 		binary,
@@ -52,22 +54,26 @@ start() ->
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    application:start(sasl),
+    [ok = application:start(App) ||
+        App <- [sasl, syntax_tools, asn1, crypto, public_key, ssl]],
     ok = esockd:start(),
+    SslOpts = [{certfile, "./crt/demo.crt"},
+               {keyfile,  "./crt/demo.key"}],
     SockOpts = [{acceptors, 10},
                 {max_clients, 100000},
+                {ssl, SslOpts},
                 {sockopts, ?TCP_OPTIONS}],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
 %% eSockd Callbacks
-start_link(SockArgs) ->
-	{ok, proc_lib:spawn_link(?MODULE, init, [SockArgs])}.
+start_link(Conn) ->
+	{ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
 
-init(SockArgs = {Transport, _Sock, _SockFun}) ->
-    {ok, NewSock} = esockd_connection:accept(SockArgs),
-    Transport:async_recv(NewSock, 0, infinity),
-    gen_server:enter_loop(?MODULE, [], #state{transport = Transport, sock = NewSock}).
+init(Conn) ->
+    {ok, Conn1} = Conn:wait(),
+    Conn1:async_recv(0, infinity),
+    gen_server:enter_loop(?MODULE, [], #state{conn = Conn1}).
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -75,17 +81,26 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({inet_async, Sock, _Ref, {ok, Data}}, State = #state{transport = Transport, sock = Sock}) ->
-	{ok, PeerName} = Transport:peername(Sock),
+handle_info({inet_async, Sock, _Ref, {ok, Data}}, State = #state{conn = ?ESOCK(Sock) = Conn}) ->
+	{ok, PeerName} = Conn:peername(),
     io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-	Transport:send(Sock, Data),
-    Transport:async_recv(Sock, 0, infinity),
+	Conn:async_send(Data),
+    Conn:async_recv(0, infinity),
     {noreply, State};
 
-handle_info({inet_async, _Sock, _Ref, {error, Reason}}, State) ->
-    {stop, {shutdown, {inet_async_error, Reason}}, State};
+handle_info({inet_async, Sock, _Ref, {error, Reason}}, State = #state{conn = ?ESOCK(Sock)}) ->
+    io:format("shutdown for ~p~n", [Reason]),
+    shutdown(Reason, State);
 
-handle_info(_Info, State) ->
+handle_info({inet_reply, Sock ,ok}, State = #state{conn = ?ESOCK(Sock)}) ->
+    {noreply, State};
+
+handle_info({inet_reply, Sock, {error, Reason}}, State = #state{conn = ?ESOCK(Sock)}) ->
+    io:format("shutdown for ~p~n", [Reason]),
+    shutdown(Reason, State);
+
+handle_info(Info, State) ->
+    io:format("~p~n", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
@@ -93,4 +108,7 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
+shutdown(Reason, State) ->
+    {stop, {shutdown, Reason}, State}.
 
