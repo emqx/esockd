@@ -9,6 +9,8 @@ Parameterized Connection Module
 
 Rate Limit
 
+Add esockd_gen.erl
+
 
 2.8.0-beta (2015/10/28)
 ------------------------

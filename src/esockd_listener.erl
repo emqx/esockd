@@ -68,8 +68,8 @@ init({Protocol, Port, Options, AcceptorSup, Logger}) ->
 				{ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock, SockFun)
 			end, lists:seq(1, AcceptorNum)),
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
-            Logger:info("~s listen on ~s:~p with ~p acceptors.", 
-                        [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
+            io:format("~s listen on ~s:~p with ~p acceptors.",
+                      [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
             {ok, #state{protocol = Protocol, lsock = LSock, logger = Logger}};
         {error, Reason} ->
             Logger:info("~s failed to listen on ~p - ~p (~s)~n",
