@@ -7,6 +7,8 @@ eSockd ChangeLog
 
 Parameterized Connection Module
 
+Rate Limit
+
 Add esockd_gen.erl
 
 

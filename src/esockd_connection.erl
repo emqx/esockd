@@ -40,7 +40,7 @@
 
 -type parameter() :: any().
 
--type connection() :: {atom(), list(parameter())}.
+-type connection() :: {?MODULE, list(parameter())}.
 
 -export_type([connection/0]).
 
@@ -59,7 +59,20 @@
     SockFun :: esockd:sock_fun(),
     Opts    :: list(atom()|tuple()).
 new(Sock, SockFun, Opts) ->
-    {?MODULE, [Sock, SockFun, Opts]}.
+    {?MODULE, [Sock, SockFun, parse_opt(Opts)]}.
+
+parse_opt(Opts) ->
+    parse_opt(Opts, []).
+parse_opt([], Acc) ->
+    Acc;
+parse_opt([{rate_limit, Str} | Opts], Acc) ->
+    parse_opt(Opts, [{rate_limit, parse_rl(Str)}|Acc]);
+parse_opt([Opt | Opts], Acc) ->
+    parse_opt(Opts, [Opt | Acc]).
+parse_rl(Str) ->
+    Bps = fun(S) -> list_to_integer(string:strip(S)) * 1024 end,
+    [Burst, Rate] = [Bps(S) || S <- string:tokens(Str, ",")],
+    esockd_ratelimit:new(Burst, Rate).
 
 %%------------------------------------------------------------------------------
 %% @doc Start the connection process.
