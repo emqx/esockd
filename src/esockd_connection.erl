@@ -208,7 +208,7 @@ controlling_process(Owner, ?CONN_MOD(Sock)) ->
 %% @doc Send data
 %% @end
 %%------------------------------------------------------------------------------
--spec send(iolist(), connection()) -> ok.
+-spec send(iodata(), connection()) -> ok.
 send(Data, ?CONN_MOD(Sock)) ->
     ?Transport:send(Sock, Data).
 
@@ -216,6 +216,7 @@ send(Data, ?CONN_MOD(Sock)) ->
 %% @doc Send data asynchronously by port_command/2
 %% @end
 %%------------------------------------------------------------------------------
+-spec async_send(iodata(), connection()) -> ok.
 async_send(Data, ?CONN_MOD(Sock)) ->
     ?Transport:port_command(Sock, Data).
 
