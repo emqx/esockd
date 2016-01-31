@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2015 eMQTT.IO, All Rights Reserved.
+%%% Copyright (c) 2014-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -61,15 +61,14 @@
 
 -type mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}.
 
--type option() ::
-		{acceptors, pos_integer()} |
-		{max_clients, pos_integer()} |
-        {access, [esockd_access:rule()]} |
-        {shutdown, brutal_kill | infinity | pos_integer()} |
-        {tune_buffer, false | true} |
-        {logger, atom() | {atom(), atom()}} |
-        {ssl, list()} | %%TODO: [ssl:ssloption()]
-        {sockopts, [gen_tcp:listen_option()]}.
+-type option() :: {acceptors, pos_integer()}
+                | {max_clients, pos_integer()}
+                | {access, [esockd_access:rule()]}
+                | {shutdown, brutal_kill | infinity | pos_integer()}
+                | {tune_buffer, false | true}
+                | {logger, gen_logger:logcfg()}
+                | {ssl, list()} %%TODO: [ssl:ssloption()]
+                | {sockopts, [gen_tcp:listen_option()]}.
 
 -export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0]).
 
