@@ -127,13 +127,21 @@ handle_info({inet_async, LSock, Ref, {error, closed}},
     %% know this will fail.
     {stop, normal, State};
 
+%% {error, econnaborted} -> accept
+handle_info({inet_async, LSock, Ref, {error, econnaborted}},
+            State=#state{lsock = LSock, ref = Ref}) ->
+    accept(State);
+
+%% {error, esslaccept} -> accept
+handle_info({inet_async, LSock, Ref, {error, esslaccept}},
+            State=#state{lsock = LSock, ref = Ref}) ->
+    accept(State);
+
 %% async accept errors...
 %% {error, timeout} ->
-%% {error, econnaborted} -> ??continue?
-%% {error, esslaccept} ->
 %% {error, e{n,m}file} -> suspend 100??
 handle_info({inet_async, LSock, Ref, {error, Error}}, 
-            State=#state{lsock=LSock, ref=Ref}) ->
+            State=#state{lsock = LSock, ref = Ref}) ->
 	sockerr(Error, State);
 
 handle_info(resume, State) ->
@@ -151,6 +159,7 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% accept...
 %%--------------------------------------------------------------------
+
 accept(State = #state{lsock = LSock}) ->
     case prim_inet:async_accept(LSock, -1) of
         {ok, Ref} -> 
