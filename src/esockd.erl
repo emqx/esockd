@@ -78,7 +78,7 @@
 %%------------------------------------------------------------------------------
 -spec start() -> ok.
 start() ->
-    application:start(esockd).
+    {ok, _} = application:ensure_all_started(esockd), ok.
 
 %%------------------------------------------------------------------------------
 %% @doc Open a listener.
