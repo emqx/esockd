@@ -58,7 +58,7 @@ connect(Parent, Host, Port, N) ->
 	case gen_tcp:connect(Host, Port, ?TCP_OPTIONS, 60000) of
     {ok, Sock} -> 
         Parent ! {connected, Sock},
-        random:seed(now()),
+        random:seed(erlang:timestamp()),
         loop(N, Sock);
     {error, Error} ->
         io:format("client ~p connect error: ~p~n", [N, Error])
