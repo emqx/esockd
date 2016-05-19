@@ -47,23 +47,20 @@
                 ref         :: reference(),
                 emfile_count = 0}).
 
-%%------------------------------------------------------------------------------
 %% @doc Start Acceptor
-%% @end
-%%------------------------------------------------------------------------------
--spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
-    ConnSup        :: pid(),
-    AcceptStatsFun :: fun(),
-    BufferTuneFun  :: esockd:tune_fun(),
-    Logger         :: gen_logger:logmod(),
-    LSock          :: inet:socket(),
-    SockFun        :: esockd:sock_fun().
+-spec(start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+      ConnSup        :: pid(),
+      AcceptStatsFun :: fun(),
+      BufferTuneFun  :: esockd:tune_fun(),
+      Logger         :: gen_logger:logmod(),
+      LSock          :: inet:socket(),
+      SockFun        :: esockd:sock_fun()).
 start_link(ConnSup, AcceptStatsFun, BufTuneFun, Logger, LSock, SockFun) ->
     gen_server:start_link(?MODULE, {ConnSup, AcceptStatsFun, BufTuneFun, Logger, LSock, SockFun}, []).
 
-%%%=============================================================================
+%%%-----------------------------------------------------------------------------
 %%% gen_server callbacks
-%%%=============================================================================
+%%%-----------------------------------------------------------------------------
 
 init({ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun}) ->
     {ok, SockName} = inet:sockname(LSock),

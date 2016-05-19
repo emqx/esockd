@@ -51,185 +51,135 @@
 %% Utility functions...
 -export([ulimit/0]).
 
--type ssl_socket() :: #ssl_socket{}.
-
--type tune_fun() :: fun((inet:socket()) -> ok | {error, any()}).
-
--type sock_fun() :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()}).
-
--type sock_args()  :: {atom(), inet:socket(), sock_fun()}.
-
--type mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}.
-
--type option() :: {acceptors, pos_integer()}
-                | {max_clients, pos_integer()}
-                | {access, [esockd_access:rule()]}
-                | {shutdown, brutal_kill | infinity | pos_integer()}
-                | {tune_buffer, false | true}
-                | {logger, gen_logger:logcfg()}
-                | {ssl, list()} %%TODO: [ssl:ssloption()]
-                | {sockopts, [gen_tcp:listen_option()]}.
+-type(ssl_socket() :: #ssl_socket{}).
+-type(tune_fun()   :: fun((inet:socket()) -> ok | {error, any()})).
+-type(sock_fun()   :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()})).
+-type(sock_args()  :: {atom(), inet:socket(), sock_fun()}).
+-type(mfargs()     :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
+-type(option()     :: {acceptors, pos_integer()}
+                    | {max_clients, pos_integer()}
+                    | {access, [esockd_access:rule()]}
+                    | {shutdown, brutal_kill | infinity | pos_integer()}
+                    | {tune_buffer, false | true}
+                    | {logger, gen_logger:logcfg()}
+                    | {ssl, list()} %%TODO: [ssl:ssloption()]
+                    | {sockopts, [gen_tcp:listen_option()]}).
 
 -export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0]).
 
 %%------------------------------------------------------------------------------
-%% @doc Start esockd application.
-%% @end
+%% API
 %%------------------------------------------------------------------------------
--spec start() -> ok.
-start() ->
-    application:start(esockd).
 
-%%------------------------------------------------------------------------------
+%% @doc Start esockd application.
+-spec(start() -> ok).
+start() -> application:start(esockd).
+
 %% @doc Open a listener.
-%% @end
-%%------------------------------------------------------------------------------
--spec open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
-    Protocol     :: atom(),
-    Port         :: inet:port_number(),
-    Options		 :: [option()], 
-    MFArgs       :: mfargs().
+-spec(open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
+      Protocol :: atom(),
+      Port     :: inet:port_number(),
+      Options  :: [option()],
+      MFArgs   :: mfargs()).
 open(Protocol, Port, Options, MFArgs) ->
 	esockd_sup:start_listener(Protocol, Port, Options, MFArgs).
 
-%%------------------------------------------------------------------------------
 %% @doc Close the listener
-%% @end
-%%------------------------------------------------------------------------------
--spec close({Protocol, Port}) -> ok when
-    Protocol    :: atom(),
-    Port        :: inet:port_number().
+-spec(close({Protocol, Port}) -> ok when
+      Protocol :: atom(),
+      Port     :: inet:port_number()).
 close({Protocol, Port}) when is_atom(Protocol) and is_integer(Port) ->
     close(Protocol, Port).
 
--spec close(Protocol, Port) -> ok when 
-    Protocol    :: atom(),
-    Port        :: inet:port_number().
+-spec(close(Protocol, Port) -> ok when
+      Protocol :: atom(),
+      Port     :: inet:port_number()).
 close(Protocol, Port) when is_atom(Protocol) and is_integer(Port) ->
 	esockd_sup:stop_listener(Protocol, Port).
 
-%%------------------------------------------------------------------------------
-%% @doc Get listeners
-%% @end
-%%------------------------------------------------------------------------------
+%% @doc Get listeners.
 -spec listeners() -> [{{atom(), inet:port_number()}, pid()}].
-listeners() ->
-    esockd_sup:listeners().
+listeners() -> esockd_sup:listeners().
 
-%%------------------------------------------------------------------------------
-%% @doc Get one listener
-%% @end
-%%------------------------------------------------------------------------------
--spec listener({atom(), inet:port_number()}) -> pid() | undefined.
+%% @doc Get one listener.
+-spec(listener({atom(), inet:port_number()}) -> pid() | undefined).
 listener({Protocol, Port}) ->
     esockd_sup:listener({Protocol, Port}).
 
-%%------------------------------------------------------------------------------
 %% @doc Get stats
-%% @end
-%%------------------------------------------------------------------------------
--spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
+-spec(get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}]).
 get_stats({Protocol, Port}) ->
     esockd_server:get_stats({Protocol, Port}).
 
-%%------------------------------------------------------------------------------
 %% @doc Get acceptors number
-%% @end
-%%------------------------------------------------------------------------------
--spec get_acceptors({atom(), inet:port_number()}) -> undefined | pos_integer().
+-spec(get_acceptors({atom(), inet:port_number()}) -> undefined | pos_integer()).
 get_acceptors({Protocol, Port}) ->
     with_listener({Protocol, Port}, fun get_acceptors/1);
 get_acceptors(LSup) when is_pid(LSup) ->
     AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
     esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
-%%------------------------------------------------------------------------------
 %% @doc Get max clients
-%% @end
-%%------------------------------------------------------------------------------
--spec get_max_clients({atom(), inet:port_number()} | pid()) -> undefined | pos_integer().
+-spec(get_max_clients({atom(), inet:port_number()} | pid()) -> undefined | pos_integer()).
 get_max_clients({Protocol, Port}) ->
     with_listener({Protocol, Port}, fun get_max_clients/1);
 get_max_clients(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:get_max_clients(ConnSup).
 
-%%------------------------------------------------------------------------------
 %% @doc Set max clients
-%% @end
-%%------------------------------------------------------------------------------
--spec set_max_clients({atom(), inet:port_number()} | pid(), pos_integer()) -> undefined | pos_integer().
+-spec(set_max_clients({atom(), inet:port_number()} | pid(), pos_integer()) -> undefined | pos_integer()).
 set_max_clients({Protocol, Port}, MaxClients) ->
     with_listener({Protocol, Port}, fun set_max_clients/2, [MaxClients]);
 set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:set_max_clients(ConnSup, MaxClients).
 
-%%------------------------------------------------------------------------------
 %% @doc Get current clients
-%% @end
-%%------------------------------------------------------------------------------
--spec get_current_clients({atom(), inet:port_number()}) -> undefined | pos_integer().
+-spec(get_current_clients({atom(), inet:port_number()}) -> undefined | pos_integer()).
 get_current_clients({Protocol, Port}) ->
     with_listener({Protocol, Port}, fun get_current_clients/1);
 get_current_clients(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:count_connections(ConnSup).
 
-%%------------------------------------------------------------------------------
 %% @doc Get shutdown count
-%% @end
-%%------------------------------------------------------------------------------
--spec get_shutdown_count({atom(), inet:port_number()}) -> undefined | pos_integer().
+-spec(get_shutdown_count({atom(), inet:port_number()}) -> undefined | pos_integer()).
 get_shutdown_count({Protocol, Port}) ->
     with_listener({Protocol, Port}, fun get_shutdown_count/1);
 get_shutdown_count(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:get_shutdown_count(ConnSup).
 
-%%------------------------------------------------------------------------------
 %% @doc Get access rules
-%% @end
-%%------------------------------------------------------------------------------
--spec get_access_rules({atom(), inet:port_number()}) -> [esockd_access:rule()] | undefined.
+-spec(get_access_rules({atom(), inet:port_number()}) -> [esockd_access:rule()] | undefined).
 get_access_rules({Protocol, Port}) ->
     with_listener({Protocol, Port}, fun get_access_rules/1);
 get_access_rules(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:access_rules(ConnSup).
 
-%%------------------------------------------------------------------------------
 %% @doc Allow access address
-%% @end
-%%------------------------------------------------------------------------------
--spec allow({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
+-spec(allow({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}).
 allow({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:allow(ConnSup, CIDR).
 
-%%------------------------------------------------------------------------------
 %% @doc Deny access address
-%% @end
-%%------------------------------------------------------------------------------
--spec deny({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}.
+-spec(deny({atom(), inet:port_number()}, all | esockd_access:cidr()) -> ok | {error, any()}).
 deny({Protocol, Port}, CIDR) ->
     LSup = listener({Protocol, Port}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:deny(ConnSup, CIDR).
 
-%%------------------------------------------------------------------------------
 %% @doc System 'ulimit -n'
-%% @end
-%%------------------------------------------------------------------------------
--spec ulimit() -> pos_integer().
+-spec(ulimit() -> pos_integer()).
 ulimit() ->
     proplists:get_value(max_fds, erlang:system_info(check_io)).
 
-%%------------------------------------------------------------------------------
 %% @doc With Listener.
-%% @end
-%%------------------------------------------------------------------------------
+%% @private
 with_listener({Protocol, Port}, Fun) ->
     with_listener({Protocol, Port}, Fun, []).
 

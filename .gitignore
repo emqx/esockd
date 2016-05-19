@@ -13,3 +13,5 @@ examples/*/ebin
 .idea/
 .erlang.mk/
 esockd.d
+test/ct.cover.spec
+examples/simple/simple.d

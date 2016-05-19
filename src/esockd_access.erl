@@ -20,39 +20,38 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% esockd access control.
+%%% eSockd Access Control.
 %%%
 %%% CIDR: Classless Inter-Domain Routing
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(esockd_access).
 
 -author("Feng Lee <feng@emqtt.io>").
 
--type cidr() :: string().
+-type(cidr_string() :: string()).
 
--type rule() :: {allow, all} |
-                {allow, cidr()} |
-                {deny,  all} |
-                {deny,  cidr()}.
+-type(raw_rule()  :: {allow, all}
+                   | {allow, cidr_string()}
+                   | {deny,  all}
+                   | {deny,  cidr_string()}).
 
--type range() :: {cidr(), pos_integer(), pos_integer()}.
+-type(cidr_rule() :: {allow, all}
+                   | {allow, esockd_cidr:cidr()}
+                   | {deny,  all}
+                   | {deny,  esockd_cidr:cidr()}).
 
--export_type([cidr/0, range/0, rule/0]).
+-export_type([raw_rule/0, cidr_rule/0]).
 
--type range_rule() :: {allow, all} |
-                      {allow, range()} |
-                      {deny,  all} |
-                      {deny,  range()}.
-
--export([compile/1, match/2, range/1,  mask/1, atoi/1, itoa/1]).
+-export([compile/1, match/2]).
 
 %%------------------------------------------------------------------------------
-%% @doc Build CIDR, Compile rule.
+%% @doc Build CIDR, Compile Rule.
 %% @end
 %%------------------------------------------------------------------------------
--spec compile(rule()) -> range_rule().
+-spec(compile(raw_rule()) -> cidr_rule()).
 compile({allow, all}) ->
     {allow, all};
 compile({allow, CIDR}) when is_list(CIDR) ->
@@ -61,82 +60,27 @@ compile({deny, CIDR}) when is_list(CIDR) ->
     compile(deny, CIDR);
 compile({deny, all}) ->
     {deny, all}.
-
 compile(Type, CIDR) when is_list(CIDR) ->
-    {Start, End} = range(CIDR), {Type, {CIDR, Start, End}}.
+    {Type, esockd_cidr:parse(CIDR)}.
 
 %%------------------------------------------------------------------------------
 %% @doc Match Addr with Access Rules.
 %% @end
 %%------------------------------------------------------------------------------
--spec match(inet:ip_address(), [range_rule()]) -> {matched, allow} | {matched, deny} | nomatch.
+-spec(match(inet:ip_address(), [cidr_rule()]) -> {matched, allow} | {matched, deny} | nomatch).
 match(Addr, Rules) when is_tuple(Addr) ->
-    match2(atoi(Addr), Rules).
+    match2(Addr, Rules).
 
-match2(_I, []) ->
+match2(_Addr, []) ->
     nomatch;
-match2(_I, [{allow, all}|_]) ->
+match2(_Addr, [{allow, all} | _]) ->
     {matched, allow};
-match2(I, [{allow, {_, Start, End}}|_]) when I >= Start, I =< End ->
-    {matched, allow};
-match2(I, [{allow, {_, _Start, _End}}|Rules]) ->
-    match2(I, Rules);
-match2(I, [{deny, {_, Start, End}}|_]) when I >= Start, I =< End ->
+match2(_Addr, [{deny, all} | _]) ->
     {matched, deny};
-match2(I, [{deny, {_, _Start, _End}}|Rules]) ->
-    match2(I, Rules);
-match2(_I, [{deny, all}|_]) ->
-    {matched, deny}.
-
-%%------------------------------------------------------------------------------
-%% @doc CIDR range
-%% @end
-%%------------------------------------------------------------------------------
--spec range(cidr()) -> {pos_integer(), pos_integer()}.
-range(CIDR) ->
-    case string:tokens(CIDR, "/") of
-        [Addr] ->
-            {ok, IP} = inet:getaddr(Addr, inet),
-            {atoi(IP), atoi(IP)};
-        [Addr, Mask] ->
-            {ok, IP} = inet:getaddr(Addr, inet),
-            {Start, End} = subnet(IP, mask(list_to_integer(Mask))),
-            {Start, End}
+match2(Addr, [{Access, CIDR = {_StartAddr, _EndAddr, _Len}}|Rules])
+        when Access == allow orelse Access == deny->
+    case esockd_cidr:match(Addr, CIDR) of
+        true  -> {matched, Access};
+        false -> match2(Addr, Rules)
     end.
-
-subnet(IP, Mask) ->
-    Start = atoi(IP) band Mask,
-    End = Start bor (Mask bxor 16#FFFFFFFF),
-    {Start, End}.
-
-%%------------------------------------------------------------------------------
-%% @doc Mask Int
-%% @end
-%%------------------------------------------------------------------------------
--spec mask(0..32) -> 0..16#FFFFFFFF.
-mask(0) ->
-    16#00000000;
-mask(32) ->
-    16#FFFFFFFF;
-mask(N) when N >= 1, N =< 31 ->
-    lists:foldl(fun(I, Mask) -> (1 bsl I) bor Mask end, 0, lists:seq(32 - N, 31)).
-
-%%------------------------------------------------------------------------------
-%% @doc Addr to Integer.
-%% @end
-%%------------------------------------------------------------------------------
-atoi({A, B, C, D}) ->
-    A bsl 8 bor B bsl 8 bor C bsl 8 bor D.
-
-%%------------------------------------------------------------------------------
-%% @doc Integer to Addr.
-%% TODO: rewrite later.
-%% @end
-%%------------------------------------------------------------------------------
-itoa(I) ->
-    A = (I bsr 24) band 16#FF,
-    B = (I bsr 16) band 16#FF,
-    C = (I bsr 8)  band 16#FF,
-    D = I band 16#FF,
-    {A, B, C, D}.
 

@@ -30,26 +30,7 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
--import(esockd_access, [atoi/1, itoa/1, compile/1, range/1, match/2, mask/1]).
-
-atoi_test() ->
-    IpList = [{192,168,1,1}, {10,10,10,10}, {8, 8, 8,8}, {255,255,255,0}],
-    [?assertEqual(Ip, itoa(atoi(Ip))) || Ip <- IpList].
-
-mask_test() ->
-    ?assertEqual(16#FF000000, mask(8)),
-    ?assertEqual(16#FFFF0000, mask(16)),
-    ?assertEqual(16#FFFFFF00, mask(24)),
-    ?assertEqual(16#FFFF8000, mask(17)),
-    ?assertEqual(16#FFFFFF80, mask(25)).
-
-range_test() ->
-    {Start, End} = range("192.168.1.0/24"),
-    ?assertEqual({192,168,1,0}, itoa(Start)),
-    ?assertEqual({192,168,1,255}, itoa(End)),
-    {Start1, End1} = range("10.10.0.0/16"),
-    ?assertEqual({10,10,0,0}, itoa(Start1)),
-    ?assertEqual({10,10,255,255}, itoa(End1)).
+-import(esockd_access, [compile/1, match/2]).
 
 match_test() ->
     Rules = [compile({deny,  "192.168.1.1"}),
@@ -71,6 +52,12 @@ match_allow_test() ->
     ?assertEqual({matched, allow}, match({127,0,0,1}, Rules)),
     ?assertEqual({matched, allow}, match({192,168,0,1}, Rules)).
 
--endif.
+ipv6_match_test() ->
+    Rules = [compile({deny, "2001:abcd::/64"}), compile({allow, all})],
+    {ok, Addr1} = inet:parse_address("2001:abcd::10"),
+    {ok, Addr2} = inet:parse_address("2001::10"),
+    ?assertEqual({matched, deny}, match(Addr1, Rules)),
+    ?assertEqual({matched, allow}, match(Addr2, Rules)).
 
+-endif.
 
