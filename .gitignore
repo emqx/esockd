@@ -14,4 +14,5 @@ examples/*/ebin
 .erlang.mk/
 esockd.d
 test/ct.cover.spec
-examples/simple/simple.d
+examples/*/*.d
+docs/_build/

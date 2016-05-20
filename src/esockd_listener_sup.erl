@@ -24,30 +24,29 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(esockd_listener_sup).
 
 -author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(supervisor).
 
--export([start_link/4, connection_sup/1, acceptor_sup/1]).
+-export([start_link/5, connection_sup/1, acceptor_sup/1]).
 
 -export([init/1]).
 
-%%%=============================================================================
-%%% API
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% API
+%%------------------------------------------------------------------------------
 
-%%------------------------------------------------------------------------------
-%% @doc Start listener supervisor
-%% @end
-%%------------------------------------------------------------------------------
--spec start_link(Protocol, Port, Options, MFArgs) -> {ok, pid()} when
+%% @doc Start Listener Supervisor
+-spec start_link(Protocol, Address, Port, Options, MFArgs) -> {ok, pid()} when
     Protocol  :: atom(),
+    Address   :: inet:ip_address(),
     Port      :: inet:port_number(),
     Options	  :: [esockd:option()],
     MFArgs    :: esockd:mfargs().
-start_link(Protocol, Port, Options, MFArgs) ->
+start_link(Protocol, Address, Port, Options, MFArgs) ->
     Logger = logger(Options),
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ConnSup} = supervisor:start_child(Sup,
@@ -63,43 +62,35 @@ start_link(Protocol, Port, Options, MFArgs) ->
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup,
 		{listener,
-			{esockd_listener, start_link, [Protocol, Port, Options, AcceptorSup, Logger]},
+			{esockd_listener, start_link, [Protocol, Address, Port, Options, AcceptorSup, Logger]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
 	{ok, Sup}.
 
-%%------------------------------------------------------------------------------
 %% @doc Get connection supervisor.
-%% @end
-%%------------------------------------------------------------------------------
 connection_sup(Sup) ->
     child_pid(Sup, connection_sup).
 
-%%------------------------------------------------------------------------------
 %% @doc Get acceptor supervisor.
-%% @end
-%%------------------------------------------------------------------------------
 acceptor_sup(Sup) ->
     child_pid(Sup, acceptor_sup).
 
-%%------------------------------------------------------------------------------
 %% @doc Get child pid with id.
 %% @private
-%% @end
-%%------------------------------------------------------------------------------
 child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _} <- supervisor:which_children(Sup), Id =:= ChildId]).
     
-%%%=============================================================================
-%%% Supervisor callbacks
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% Supervisor callbacks
+%%------------------------------------------------------------------------------
+
 init([]) ->
     {ok, {{rest_for_one, 10, 100}, []}}.
 
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% Internal functions
+%%------------------------------------------------------------------------------
 
-%% when 'buffer' is undefined, and 'tune_buffer' is true... 
+%% when 'buffer' is undefined, and 'tune_buffer' is true...
 buffer_tune_fun(undefined, true) ->
     fun(Sock) -> 
         case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of

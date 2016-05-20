@@ -7,7 +7,7 @@
 Welcome to eSockd's documentation!
 ==================================
 
-eSockd is the Erlang General Non-blocking TCP/SSL Socket Server.
+Erlang General Non-blocking TCP/SSL Socket Server.
 
 Contents:
 

@@ -11,3 +11,5 @@ CT_SUITES = esockd
 COVER = true
 
 include erlang.mk
+
+app:: rebar.config
