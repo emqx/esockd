@@ -22,10 +22,24 @@
 -compile(export_all).
 
 all() ->
-    [{group, acceptor}].
+    [{group, api}].
 
 groups() ->
-    [{acceptor, [sequence], [t_accept]}].
+    [{api, [sequence], [t_open_close]}].
 
-t_accept(_) -> ok.
+init_per_suite(Config) ->
+    application:start(lager),
+    application:start(gen_logger),
+    esockd:start(),
+    Config.
 
+end_per_suite(_Config) ->
+    application:stop(esockd).
+
+t_open_close(_) ->
+    MFA = {echo_server, start_link, []},
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 5000}, [binary, {packet, raw}], MFA),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", 5000, []),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    esockd:close(echo, {"127.0.0.1", 5000}).
+ 

@@ -60,25 +60,19 @@
                 mfargs,
                 logger}).
 
-%%%=============================================================================
-%%% API
-%%%=============================================================================
-
 %%------------------------------------------------------------------------------
+%% API
+%%------------------------------------------------------------------------------
+
 %% @doc Start connection supervisor.
-%% @end
-%%------------------------------------------------------------------------------
 -spec start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
-    Options  :: [esockd:option()],
-    MFArgs   :: esockd:mfargs(),
-    Logger   :: gen_logger:logmod().
+    Options :: [esockd:option()],
+    MFArgs  :: esockd:mfargs(),
+    Logger  :: gen_logger:logmod().
 start_link(Options, MFArgs, Logger) ->
-	gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
+    gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
 
-%%------------------------------------------------------------------------------
 %% @doc Start connection.
-%% @end
-%%------------------------------------------------------------------------------
 start_connection(Sup, Mod, Sock, SockFun) ->
     case call(Sup, {start_connection, Sock, SockFun}) of
         {ok, Pid, Conn} ->
@@ -91,7 +85,7 @@ start_connection(Sup, Mod, Sock, SockFun) ->
     end.
 
 count_connections(Sup) ->
-	call(Sup, count_connections).
+    call(Sup, count_connections).
 
 get_max_clients(Sup) when is_pid(Sup) ->
     call(Sup, get_max_clients).
@@ -114,12 +108,12 @@ deny(Sup, CIDR) ->
 call(Sup, Req) ->
     gen_server:call(Sup, Req, infinity).
 
-%%%=============================================================================
-%%% gen_server callbacks
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% gen_server callbacks
+%%------------------------------------------------------------------------------
 
 init([Options, MFArgs, Logger]) ->
-	process_flag(trap_exit, true),
+    process_flag(trap_exit, true),
     Shutdown    = proplists:get_value(shutdown, Options, brutal_kill),
     MaxClients  = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
     ConnOpts    = proplists:get_value(connopts, Options, []),

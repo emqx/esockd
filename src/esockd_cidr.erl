@@ -24,18 +24,20 @@
 %%%
 %%% CIDR Wiki: https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing
 %%%
-%%% This module is copied from inet_cidr.erl to avoid project depencency.
+%%% The module is copied from inet_cidr.erl to avoid one file depencency.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
 
 -module(esockd_cidr).
 
--export([parse/1, parse/2, match/2, count/1, to_string/1]).
+-export([parse/1, parse/2, match/2, count/1, to_string/1, is_ipv4/1, is_ipv6/1]).
+
+-type(cidr_string() :: string()).
 
 -type(cidr() :: {inet:ip_address(), inet:ip_address(), 0..128}).
 
--export_type([cidr/0]).
+-export_type([cidr_string/0, cidr/0]).
 
 %%%-----------------------------------------------------------------------------
 %%% API
@@ -96,6 +98,28 @@ count({{_, _, _, _, _, _, _, _}, _EndAddr, Len}) ->
 
 to_string({StartAddr, _EndAddr, Len}) ->
     inet:ntoa(StartAddr) ++ "/" ++ integer_to_list(Len).
+
+%% @doc Return true if the value is an ipv4 address
+is_ipv4({A, B, C, D}) ->
+    ((A >= 0) and (A =< 255)) and
+    ((B >= 0) and (B =< 255)) and
+    ((C >= 0) and (C =< 255)) and
+    ((D >= 0) and (D =< 255));
+is_ipv4(_) ->
+    false.
+
+%% @doc Return true if the value is an ipv6 address
+is_ipv6({A, B, C, D, E, F, G, H}) ->
+    ((A >= 0) and (A =< 65535)) and
+    ((B >= 0) and (B =< 65535)) and
+    ((C >= 0) and (C =< 65535)) and
+    ((D >= 0) and (D =< 65535)) and
+    ((E >= 0) and (E =< 65535)) and
+    ((F >= 0) and (F =< 65535)) and
+    ((G >= 0) and (G =< 65535)) and
+    ((H >= 0) and (H =< 65535));
+is_ipv6(_) ->
+    false.
 
 %%%-----------------------------------------------------------------------------
 %%% Internal Functions
