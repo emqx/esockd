@@ -49,96 +49,72 @@
 
 -define(STATS_TAB, esockd_stats).
 
-%%%=============================================================================
-%%% API
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% API
+%%------------------------------------------------------------------------------
 
-%%------------------------------------------------------------------------------
 %% @doc Start esockd server.
-%% @end
-%%------------------------------------------------------------------------------
 -spec start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}.
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
-%%------------------------------------------------------------------------------
 %% @doc New Stats Fun.
-%% @end
-%%------------------------------------------------------------------------------
--spec stats_fun({atom(), inet:port_number()}, atom()) -> fun().
-stats_fun({Protocol, Port}, Metric) ->
-    init_stats({Protocol, Port}, Metric),
-    fun({inc, Num}) -> esockd_server:inc_stats({Protocol, Port}, Metric, Num);
-       ({dec, Num}) -> esockd_server:dec_stats({Protocol, Port}, Metric, Num)
+-spec stats_fun({atom(), esockd:listen_on()}, atom()) -> fun().
+stats_fun({Protocol, ListenOn}, Metric) ->
+    init_stats({Protocol, ListenOn}, Metric),
+    fun({inc, Num}) -> esockd_server:inc_stats({Protocol, ListenOn}, Metric, Num);
+       ({dec, Num}) -> esockd_server:dec_stats({Protocol, ListenOn}, Metric, Num)
     end.
 
-%%------------------------------------------------------------------------------
 %% @doc Get Stats.
-%% @end
-%%------------------------------------------------------------------------------
--spec get_stats({atom(), inet:port_number()}) -> [{atom(), non_neg_integer()}].
-get_stats({Protocol, Port}) ->
+-spec get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}].
+get_stats({Protocol, ListenOn}) ->
     [{Metric, Val} || [Metric, Val]
-                      <- ets:match(?STATS_TAB, {{{Protocol, Port}, '$1'}, '$2'})].
+                      <- ets:match(?STATS_TAB, {{{Protocol, ListenOn}, '$1'}, '$2'})].
 
-%%------------------------------------------------------------------------------
 %% @doc Inc Stats.
-%% @end
-%%------------------------------------------------------------------------------
--spec inc_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
-inc_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
-    update_counter({{Protocol, Port}, Metric}, Num).
+-spec inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any().
+inc_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
+    update_counter({{Protocol, ListenOn}, Metric}, Num).
     
-%%------------------------------------------------------------------------------
 %% @doc Dec Stats.
-%% @end
-%%------------------------------------------------------------------------------
--spec dec_stats({atom(), inet:port_number()}, atom(), pos_integer()) -> any().
-dec_stats({Protocol, Port}, Metric, Num) when is_integer(Num) ->
-    update_counter({{Protocol, Port}, Metric}, -Num).
+-spec dec_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any().
+dec_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
+    update_counter({{Protocol, ListenOn}, Metric}, -Num).
 
-%%------------------------------------------------------------------------------
-%% @private
 %% @doc Update stats counter.
-%% @end
-%%------------------------------------------------------------------------------
+%% @private
 update_counter(Key, Num) ->
     ets:update_counter(?STATS_TAB, Key, {2, Num}).
 
-%%------------------------------------------------------------------------------
 %% @doc Init Stats.
-%% @end
-%%------------------------------------------------------------------------------
--spec init_stats({atom(), inet:port_number()}, atom()) -> ok.
-init_stats({Protocol, Port}, Metric) ->
-    gen_server:call(?SERVER, {init, {Protocol, Port}, Metric}).
+-spec init_stats({atom(), esockd:listen_on()}, atom()) -> ok.
+init_stats({Protocol, ListenOn}, Metric) ->
+    gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
 
-%%------------------------------------------------------------------------------
 %% @doc Del Stats.
-%% @end
-%%------------------------------------------------------------------------------
--spec del_stats({atom(), inet:port_number()}) -> ok.
-del_stats({Protocol, Port}) ->
-    gen_server:cast(?SERVER, {del, {Protocol, Port}}).
+-spec del_stats({atom(), esockd:listen_on()}) -> ok.
+del_stats({Protocol, ListenOn}) ->
+    gen_server:cast(?SERVER, {del, {Protocol, ListenOn}}).
 
-%%%=============================================================================
-%%% gen_server callbacks
-%%%=============================================================================
+%%------------------------------------------------------------------------------
+%% gen_server callbacks
+%%------------------------------------------------------------------------------
 
 init([]) ->
     ets:new(?STATS_TAB, [set, public, named_table, {write_concurrency, true}]),
     {ok, #state{}}.
 
-handle_call({init, {Protocol, Port}, Metric}, _From, State) ->
-    Key = {{Protocol, Port}, Metric},
+handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
+    Key = {{Protocol, ListenOn}, Metric},
     ets:insert(?STATS_TAB, {Key, 0}),
     {reply, ok, State};
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
 
-handle_cast({del, {Protocol, Port}}, State) ->
-    ets:match_delete(?STATS_TAB, {{{Protocol, Port}, '_'}, '_'}),
+handle_cast({del, {Protocol, ListenOn}}, State) ->
+    ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
     {noreply, State};
 
 handle_cast(_Request, State) ->

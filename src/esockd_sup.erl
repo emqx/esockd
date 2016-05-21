@@ -53,34 +53,34 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 %% @doc Child Spec
--spec(child_spec(Protocol, PortOrPair, Options, MFArgs) -> supervisor:child_spec() when
-      Protocol   :: atom(),
-      PortOrPair :: esockd:port_or_pair(),
-      Options    :: [esockd:option()],
-      MFArgs     :: esockd:mfargs()).
-child_spec(Protocol, PortOrPair, Options, MFArgs) ->
-	{child_id(Protocol, PortOrPair),
+-spec(child_spec(Protocol, ListenOn, Options, MFArgs) -> supervisor:child_spec() when
+      Protocol :: atom(),
+      ListenOn :: esockd:listen_on(),
+      Options  :: [esockd:option()],
+      MFArgs   :: esockd:mfargs()).
+child_spec(Protocol, ListenOn, Options, MFArgs) ->
+	{child_id(Protocol, ListenOn),
         {esockd_listener_sup, start_link,
-            [Protocol, PortOrPair, Options, MFArgs]},
+            [Protocol, ListenOn, Options, MFArgs]},
                 transient, infinity, supervisor, [esockd_listener_sup]}.
 
 %% @doc Start a Listener.
--spec(start_listener(Protocol, PortOrPair, Options, MFArgs) -> {ok, pid()} | {error, any()} when
-      Protocol   :: atom(),
-      PortOrPair :: esockd:port_or_pair(),
-      Options    :: [esockd:option()],
-      MFArgs     :: esockd:mfargs()).
-start_listener(Protocol, PortOrPair, Options, MFArgs) ->
-    start_child(child_spec(Protocol, PortOrPair, Options, MFArgs)).
+-spec(start_listener(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, any()} when
+      Protocol :: atom(),
+      ListenOn :: esockd:listen_on(),
+      Options  :: [esockd:option()],
+      MFArgs   :: esockd:mfargs()).
+start_listener(Protocol, ListenOn, Options, MFArgs) ->
+    start_child(child_spec(Protocol, ListenOn, Options, MFArgs)).
 
 -spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, any()}).
 start_child(ChildSpec) ->
 	supervisor:start_child(?MODULE, ChildSpec).
 
 %% @doc Stop the listener.
--spec(stop_listener(atom(), esockd:port_or_pair()) -> ok | {error, any()}).
-stop_listener(Protocol, PortOrPair) ->
-    ChildId = child_id(Protocol, PortOrPair),
+-spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, any()}).
+stop_listener(Protocol, ListenOn) ->
+    ChildId = child_id(Protocol, ListenOn),
 	case supervisor:terminate_child(?MODULE, ChildId) of
     ok ->
         supervisor:delete_child(?MODULE, ChildId);
@@ -94,9 +94,9 @@ listeners() ->
     [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _} <- supervisor:which_children(?MODULE)].
 
 %% @doc Get Listener Pid.
--spec(listener({atom(), esockd:port_or_pair()}) -> undefined | pid()).
-listener({Protocol, PortOrPair}) ->
-    ChildId = child_id(Protocol, PortOrPair),
+-spec(listener({atom(), esockd:listen_on()}) -> undefined | pid()).
+listener({Protocol, ListenOn}) ->
+    ChildId = child_id(Protocol, ListenOn),
     case [Pid || {Id, Pid, supervisor, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
@@ -107,7 +107,7 @@ listener({Protocol, PortOrPair}) ->
 %%------------------------------------------------------------------------------
 
 init([]) ->
-    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]} }.
+    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]}}.
 
 %%------------------------------------------------------------------------------
 %% Internal functions
@@ -115,6 +115,6 @@ init([]) ->
 
 %% @doc Listener ChildId.
 %% @private
-child_id(Protocol, PortOrPair) ->
-    {listener_sup, {Protocol, PortOrPair}}.
+child_id(Protocol, ListenOn) ->
+    {listener_sup, {Protocol, ListenOn}}.
 

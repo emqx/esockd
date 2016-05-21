@@ -16,3 +16,6 @@ esockd.d
 test/ct.cover.spec
 examples/*/*.d
 docs/_build/
+ct.coverdata
+eunit.coverdata
+logs/

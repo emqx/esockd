@@ -31,7 +31,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/5, connection_sup/1, acceptor_sup/1]).
+-export([start_link/4, connection_sup/1, acceptor_sup/1]).
 
 -export([init/1]).
 
@@ -40,20 +40,19 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start Listener Supervisor
--spec start_link(Protocol, Address, Port, Options, MFArgs) -> {ok, pid()} when
+-spec start_link(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} when
     Protocol  :: atom(),
-    Address   :: inet:ip_address(),
-    Port      :: inet:port_number(),
+    ListenOn  :: esockd:listen_on(),
     Options	  :: [esockd:option()],
     MFArgs    :: esockd:mfargs().
-start_link(Protocol, Address, Port, Options, MFArgs) ->
+start_link(Protocol, ListenOn, Options, MFArgs) ->
     Logger = logger(Options),
     {ok, Sup} = supervisor:start_link(?MODULE, []),
 	{ok, ConnSup} = supervisor:start_child(Sup,
 		{connection_sup,
 			{esockd_connection_sup, start_link, [Options, MFArgs, Logger]},
 				transient, infinity, supervisor, [esockd_connection_sup]}),
-    AcceptStatsFun = esockd_server:stats_fun({Protocol, Port}, accepted),
+    AcceptStatsFun = esockd_server:stats_fun({Protocol, ListenOn}, accepted),
     BufferTuneFun = buffer_tune_fun(proplists:get_value(buffer, Options),
                               proplists:get_value(tune_buffer, Options, false)),
 	{ok, AcceptorSup} = supervisor:start_child(Sup,
@@ -62,7 +61,7 @@ start_link(Protocol, Address, Port, Options, MFArgs) ->
 				transient, infinity, supervisor, [esockd_acceptor_sup]}),
 	{ok, _Listener} = supervisor:start_child(Sup,
 		{listener,
-			{esockd_listener, start_link, [Protocol, Address, Port, Options, AcceptorSup, Logger]},
+			{esockd_listener, start_link, [Protocol, ListenOn, Options, AcceptorSup, Logger]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
 	{ok, Sup}.
 

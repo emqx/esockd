@@ -29,6 +29,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(esockd_ratelimit).
 
 -export([new/2, check/2]).
@@ -45,20 +46,14 @@
 
 -export_type([ratelimit/0]).
 
-%%------------------------------------------------------------------------------
 %% @doc Create rate limiter bucket.
-%% @end
-%%------------------------------------------------------------------------------
 -spec new(pos_integer(), pos_integer()) -> ratelimit().
 new(Capacity, Rate) when Capacity > Rate andalso Rate > 0 ->
     Bucket = #bucket{capacity = Capacity, remaining = Capacity,
                      limitrate = Rate/1000, lastime = now_ms()},
     {?MODULE, [Bucket]}.
 
-%%------------------------------------------------------------------------------
 %% @doc Check inflow bytes.
-%% @end
-%%------------------------------------------------------------------------------
 -spec check(bucket(), pos_integer()) -> {non_neg_integer(), ratelimit()}.
 check(Bytes, {?MODULE, [Bucket = #bucket{capacity = Capacity, remaining = Remaining,
                                          limitrate = Rate, lastime = Lastime}]}) ->

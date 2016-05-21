@@ -38,12 +38,9 @@
 
 -type keepalive() :: #keepalive{}.
 
-%%------------------------------------------------------------------------------
 %% @doc Start keepalive
-%% @end
-%%------------------------------------------------------------------------------
 -spec start(esockd_connection:connection(), pos_integer(), any()) ->
-    {ok, keepalive()} | {error, any()}.
+        {ok, keepalive()} | {error, any()}.
 start(Connection, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
     with_sock_stats(Connection, fun(RecvOct) ->
         Ms = timer:seconds(TimeoutSec),
@@ -55,10 +52,7 @@ start(Connection, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
                          timer_ref    = Ref}}
     end).
 
-%%------------------------------------------------------------------------------
 %% @doc Try to resume keepalive, called when timeout
-%% @end
-%%------------------------------------------------------------------------------
 -spec resume(keepalive()) -> timeout | {resumed, keepalive()}.
 resume(KeepAlive = #keepalive {connection   = Connection,
                                recv_oct     = RecvOct,
@@ -76,10 +70,7 @@ resume(KeepAlive = #keepalive {connection   = Connection,
         end
     end).
 
-%%------------------------------------------------------------------------------
 %% @doc Cancel Keepalive
-%% @end
-%%------------------------------------------------------------------------------
 -spec cancel(keepalive()) -> any().
 cancel(#keepalive{timer_ref = Ref}) ->
     cancel(Ref);

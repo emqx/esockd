@@ -35,7 +35,7 @@
 -export([start/0]).
 
 %% Core API
--export([open/4, close/2, close/1]).
+-export([open/4, child_spec/4, close/2, close/1]).
 
 %% Management API
 -export([listeners/0, listener/1,
@@ -65,10 +65,9 @@
                     | {logger, gen_logger:logcfg()}
                     | {ssl, list()} %%TODO: [ssl:ssloption()]
                     | {sockopts, [gen_tcp:listen_option()]}).
+-type(listen_on() :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}).
 
--type(port_or_pair() :: inet:port_number() | {inet:ip_address(), inet:port_number()}).
-
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0, port_or_pair/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0, listen_on/0]).
 
 %%------------------------------------------------------------------------------
 %% API
@@ -79,118 +78,106 @@
 start() -> application:start(esockd).
 
 %% @doc Open a Listener.
--spec(open(Protocol, Port | {Address, Port}, Options, MFArgs) -> {ok, pid()} | {error, any()} when
-      Protocol :: atom(),
-      Address  :: string() | inet:ip_address(),
-      Port     :: inet:port_number(),
-      Options  :: [option()],
-      MFArgs   :: mfargs()).
-open(Protocol, Port, Options, MFArgs) when is_atom(Protocol) andalso is_integer(Port) ->
+-spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, any()}).
+open(Protocol, Port, Options, MFArgs) when is_integer(Port) ->
 	esockd_sup:start_listener(Protocol, Port, Options, MFArgs);
 
-open(Protocol, {Address, Port}, Options, MFArgs) when is_atom(Protocol) andalso is_integer(Port) ->
+open(Protocol, {Address, Port}, Options, MFArgs) when is_integer(Port) ->
     {IPAddr, _Port}  = fixaddr({Address, Port}),
-    OptAddr = addr_opt(Options),
+    OptAddr = proplists:get_value(ip, proplists:get_value(sockopts, Options, [])),
     if
-        (OptAddr == undefined) or (OptAddr == IPAddr) ->
-            ok;
-        true ->
-            error(badmatch_ipaddress)
+        (OptAddr == undefined) or (OptAddr == IPAddr) -> ok;
+        true -> error(badmatch_ipaddress)
     end,
 	esockd_sup:start_listener(Protocol, {IPAddr, Port}, Options, MFArgs).
 
-%% @private
-addr_opt(Options) ->
-    proplists:get_value(ip, proplists:get_value(sockopts, Options, [])).
+%% @doc Child Spec for a Listener.
+-spec(child_spec(atom(), listen_on(), [option()], mfargs()) -> supervisor:child_spec()).
+child_spec(Protocol, ListenOn, Options, MFArgs) ->
+    esockd_sup:child_spec(Protocol, fixaddr(ListenOn), Options, MFArgs).
 
 %% @doc Close the Listener
--spec(close({atom(), port_or_pair()}) -> ok).
-close({Protocol, PortOrPair}) when is_atom(Protocol) ->
-    close(Protocol, PortOrPair).
+-spec(close({atom(), listen_on()}) -> ok).
+close({Protocol, ListenOn}) when is_atom(Protocol) ->
+    close(Protocol, ListenOn).
 
--spec(close(atom(), port_or_pair()) -> ok).
-close(Protocol, PortOrPair) when is_atom(Protocol) ->
-	esockd_sup:stop_listener(listener_id(Protocol, PortOrPair)).
+-spec(close(atom(), listen_on()) -> ok).
+close(Protocol, ListenOn) when is_atom(Protocol) ->
+	esockd_sup:stop_listener(Protocol, fixaddr(ListenOn)).
 
 %% @doc Get listeners.
--spec listeners() -> [{{atom(), port_or_pair()}, pid()}].
+-spec listeners() -> [{{atom(), listen_on()}, pid()}].
 listeners() -> esockd_sup:listeners().
 
 %% @doc Get one listener.
--spec(listener({atom(), port_or_pair()}) -> pid() | undefined).
-listener({Protocol, PortOrPair}) ->
-    esockd_sup:listener(listener_id(Protocol, PortOrPair)).
-
-listener_id(Protocol, Port) when is_integer(Port) ->
-    {Protocol, Port};
-
-listener_id(Protocol, {Address, Port}) when is_integer(Port) ->
-    {Protocol, {parse_addr(Address), Port}}.
+-spec(listener({atom(), listen_on()}) -> pid() | undefined).
+listener({Protocol, ListenOn}) ->
+    esockd_sup:listener({Protocol, fixaddr(ListenOn)}).
 
 %% @doc Get stats
--spec(get_stats({atom(), port_or_pair()}) -> [{atom(), non_neg_integer()}]).
-get_stats({Protocol, PortOrPair}) ->
-    esockd_server:get_stats(listener_id(Protocol, PortOrPair)).
+-spec(get_stats({atom(), listen_on()}) -> [{atom(), non_neg_integer()}]).
+get_stats({Protocol, ListenOn}) ->
+    esockd_server:get_stats({Protocol, fixaddr(ListenOn)}).
 
 %% @doc Get Acceptors Number
--spec(get_acceptors({atom(), port_or_pair()}) -> undefined | pos_integer()).
-get_acceptors({Protocol, PortOrPair}) ->
-    with_listener(listener_id(Protocol, PortOrPair), fun get_acceptors/1);
+-spec(get_acceptors({atom(), listen_on()}) -> undefined | pos_integer()).
+get_acceptors({Protocol, ListenOn}) ->
+    with_listener({Protocol, ListenOn}, fun get_acceptors/1);
 get_acceptors(LSup) when is_pid(LSup) ->
     AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
     esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
 %% @doc Get max clients
--spec(get_max_clients({atom(), port_or_pair()} | pid()) -> undefined | pos_integer()).
-get_max_clients({Protocol, PortOrPair}) ->
-    with_listener(listener_id(Protocol, PortOrPair), fun get_max_clients/1);
+-spec(get_max_clients({atom(), listen_on()} | pid()) -> undefined | pos_integer()).
+get_max_clients({Protocol, ListenOn}) ->
+    with_listener({Protocol, ListenOn}, fun get_max_clients/1);
 get_max_clients(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:get_max_clients(ConnSup).
 
 %% @doc Set max clients
--spec(set_max_clients({atom(), port_or_pair()} | pid(), pos_integer()) -> undefined | pos_integer()).
-set_max_clients({Protocol, PortOrPair}, MaxClients) ->
-    with_listener(listener_id(Protocol, PortOrPair), fun set_max_clients/2, [MaxClients]);
+-spec(set_max_clients({atom(), listen_on()} | pid(), pos_integer()) -> undefined | pos_integer()).
+set_max_clients({Protocol, ListenOn}, MaxClients) ->
+    with_listener({Protocol, ListenOn}, fun set_max_clients/2, [MaxClients]);
 set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:set_max_clients(ConnSup, MaxClients).
 
 %% @doc Get current clients
--spec(get_current_clients({atom(), port_or_pair()}) -> undefined | pos_integer()).
-get_current_clients({Protocol, PortOrPair}) ->
-    with_listener(listener_id(Protocol, PortOrPair), fun get_current_clients/1);
+-spec(get_current_clients({atom(), listen_on()}) -> undefined | pos_integer()).
+get_current_clients({Protocol, ListenOn}) ->
+    with_listener({Protocol, ListenOn}, fun get_current_clients/1);
 get_current_clients(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:count_connections(ConnSup).
 
 %% @doc Get shutdown count
--spec(get_shutdown_count({atom(), port_or_pair()}) -> undefined | pos_integer()).
-get_shutdown_count({Protocol, PortOrPair}) ->
-    with_listener(listener_id(Protocol, PortOrPair), fun get_shutdown_count/1);
+-spec(get_shutdown_count({atom(), listen_on()}) -> undefined | pos_integer()).
+get_shutdown_count({Protocol, ListenOn}) ->
+    with_listener({Protocol, ListenOn}, fun get_shutdown_count/1);
 get_shutdown_count(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:get_shutdown_count(ConnSup).
 
 %% @doc Get access rules
--spec(get_access_rules({atom(), port_or_pair()}) -> [esockd_access:rule()] | undefined).
-get_access_rules({Protocol, PortOrPair}) ->
-    with_listener(listener_id(Protocol, PortOrPair), fun get_access_rules/1);
+-spec(get_access_rules({atom(), listen_on()}) -> [esockd_access:rule()] | undefined).
+get_access_rules({Protocol, ListenOn}) ->
+    with_listener({Protocol, ListenOn}, fun get_access_rules/1);
 get_access_rules(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:access_rules(ConnSup).
 
 %% @doc Allow access address
--spec(allow({atom(), port_or_pair()}, all | esockd_cidr:cidr_string()) -> ok | {error, any()}).
-allow({Protocol, Port}, CIDR) ->
-    LSup = listener({Protocol, Port}),
+-spec(allow({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok | {error, any()}).
+allow({Protocol, ListenOn}, CIDR) ->
+    LSup = listener({Protocol, ListenOn}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:allow(ConnSup, CIDR).
 
 %% @doc Deny access address
--spec(deny({atom(), inet:port_number()}, all | esockd_cidr:cidr_string()) -> ok | {error, any()}).
-deny({Protocol, Port}, CIDR) ->
-    LSup = listener({Protocol, Port}),
+-spec(deny({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok | {error, any()}).
+deny({Protocol, ListenOn}, CIDR) ->
+    LSup = listener({Protocol, ListenOn}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:deny(ConnSup, CIDR).
 
@@ -201,35 +188,23 @@ ulimit() ->
 
 %% @doc With Listener.
 %% @private
-with_listener({Protocol, Port}, Fun) ->
-    with_listener({Protocol, Port}, Fun, []).
+with_listener({Protocol, ListenOn}, Fun) ->
+    with_listener({Protocol, ListenOn}, Fun, []).
 
-with_listener({Protocol, Port}, Fun, Args) ->
-    LSup = listener({Protocol, Port}),
+with_listener({Protocol, ListenOn}, Fun, Args) ->
+    LSup = listener({Protocol, ListenOn}),
     with_listener(LSup, Fun, Args);
 with_listener(undefined, _Fun, _Args) ->
     undefined;
 with_listener(LSup, Fun, Args) when is_pid(LSup) ->
     apply(Fun, [LSup|Args]).
 
-%% @doc Merge Options
-merge_opts(Defaults, Options) ->
-    lists:foldl(
-        fun({Opt, Val}, Acc) ->
-                case lists:keymember(Opt, 1, Acc) of
-                    true  -> lists:keyreplace(Opt, 1, Acc, {Opt, Val});
-                    false -> [{Opt, Val}|Acc]
-                end;
-            (Opt, Acc) ->
-                case lists:member(Opt, Acc) of
-                    true  -> Acc;
-                    false -> [Opt | Acc]
-                end
-        end, Defaults, Options).
-
+%% @doc Parse Address
+%% @private
 fixaddr(Port) when is_integer(Port) ->
     Port;
 fixaddr({Addr, Port}) when is_list(Addr) and is_integer(Port) ->
+    io:format("~p~n", [Addr]),
     {ok, IPAddr} = inet:parse_address(Addr), {IPAddr, Port};
 fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
     case esockd_cidr:is_ipv6(Addr) or esockd_cidr:is_ipv4(Addr) of
