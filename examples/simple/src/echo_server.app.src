@@ -2,6 +2,7 @@
  [
   {description, "Simple Echo Server"},
   {vsn, "1"},
+  {modules, []},
   {registered, []},
   {applications, [
                   kernel,
