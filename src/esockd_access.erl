@@ -53,7 +53,7 @@ compile({deny, CIDR}) when is_list(CIDR) ->
 compile({deny, all}) ->
     {deny, all}.
 compile(Type, CIDR) when is_list(CIDR) ->
-    {Type, esockd_cidr:parse(CIDR)}.
+    {Type, esockd_cidr:parse(CIDR, true)}. %% Adjust???
 
 %% @doc Match Addr with Access Rules.
 -spec(match(inet:ip_address(), [compiled_rule()]) -> {matched, allow} | {matched, deny} | nomatch).
