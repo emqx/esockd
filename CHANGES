@@ -7,6 +7,9 @@ eSockd ChangeLog
 
 IPv6 Support
 
+Listen on specific IP Address
+
+
 3.1-beta (2016/01/31)
 ------------------------
 

@@ -19,6 +19,6 @@ loop(Conn) ->
             loop(Conn);
         {error, Reason} ->
             io:format("tcp ~s~n", [Reason]),
-            {stop, Reason}
+            exit({shutdown, Reason})
 	end.
 

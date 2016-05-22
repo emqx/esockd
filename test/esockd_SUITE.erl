@@ -26,7 +26,14 @@ all() ->
 
 groups() ->
     [{esockd, [sequence],
-      [open_close]},
+      [esockd_child_spec,
+       esockd_open_close,
+       esockd_listeners,
+       esockd_get_stats,
+       esockd_get_acceptors,
+       esockd_getset_max_clients,
+       esockd_get_shutdown_count
+      ]},
      {cidr, [],
       [parse_ipv4_cidr,
        parse_ipv6_cidr,
@@ -54,12 +61,57 @@ end_per_suite(_Config) ->
 %% eSockd
 %%------------------------------------------------------------------------------
 
-open_close(_) ->
-    MFA = {echo_server, start_link, []},
-    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 5000}, [binary, {packet, raw}], MFA),
+esockd_child_spec(_) ->
+    Spec = esockd:child_spec(echo, 5000, [binary, {packet, raw}], echo_mfa()),
+    ?assertEqual({listener_sup, {echo, 5000}}, element(1, Spec)).
+
+esockd_open_close(_) ->
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 5000}, [binary, {packet, raw}], echo_mfa()),
     {ok, Sock} = gen_tcp:connect("127.0.0.1", 5000, []),
     ok = gen_tcp:send(Sock, <<"Hello">>),
     esockd:close(echo, {"127.0.0.1", 5000}).
+
+esockd_listeners(_) ->
+    {ok, LSup} = esockd:open(echo, 6000, [], echo_mfa()),
+    [{{echo, 6000}, LSup}] = esockd:listeners(),
+    ?assertEqual(LSup, esockd:listener({echo, 6000})),
+    esockd:close(echo, 6000),
+    [] = esockd:listeners(),
+    ?assertEqual(undefined, esockd:listener({echo, 6000})).
+
+esockd_get_stats(_) ->
+    {ok, _LSup} = esockd:open(echo, 6000, [], echo_mfa()),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, []),
+    {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6000, []),
+    timer:sleep(10),
+    [{accepted, 2}] = esockd:get_stats({echo, 6000}),
+    gen_tcp:close(Sock1),
+    gen_tcp:close(Sock2),
+    esockd:close(echo, 6000).
+
+esockd_get_acceptors(_) ->
+    {ok, _LSup} = esockd:open(echo, {{127,0,0,1}, 6000}, [{acceptors, 4}], echo_mfa()),
+    ?assertEqual(4, esockd:get_acceptors({echo, {{127,0,0,1}, 6000}})),
+    esockd:close(echo, 6000).
+
+esockd_getset_max_clients(_) ->
+    {ok, _LSup} = esockd:open(echo, 7000, [{max_clients, 4}], echo_mfa()),
+    ?assertEqual(4, esockd:get_max_clients({echo, 7000})),
+    esockd:set_max_clients({echo, 7000}, 16),
+    ?assertEqual(16, esockd:get_max_clients({echo, 7000})),
+    esockd:close(echo, 7000).
+
+esockd_get_shutdown_count(_) ->
+    {ok, _LSup} = esockd:open(echo, 7000, [], echo_mfa()),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7000, []),
+    {ok, Sock2} = gen_tcp:connect("127.0.0.1", 7000, []),
+    gen_tcp:close(Sock1),
+    gen_tcp:close(Sock2),
+    timer:sleep(10),
+    ?assertEqual([{closed, 2}], esockd:get_shutdown_count({echo, 7000})),
+    esockd:close(echo, 7000).
+
+echo_mfa() -> {echo_server, start_link, []}.
  
 %%------------------------------------------------------------------------------
 %% CIDR
