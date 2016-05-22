@@ -32,7 +32,8 @@ groups() ->
        esockd_get_stats,
        esockd_get_acceptors,
        esockd_getset_max_clients,
-       esockd_get_shutdown_count
+       esockd_get_shutdown_count,
+       esockd_get_access_rules
       ]},
      {cidr, [],
       [parse_ipv4_cidr,
@@ -109,6 +110,20 @@ esockd_get_shutdown_count(_) ->
     gen_tcp:close(Sock2),
     timer:sleep(10),
     ?assertEqual([{closed, 2}], esockd:get_shutdown_count({echo, 7000})),
+    esockd:close(echo, 7000).
+
+esockd_get_access_rules(_) ->
+    {ok, _LSup} = esockd:open(echo, 7000, [{access, [{allow, "192.168.1.0/24"}]}], echo_mfa()),
+    ?assertEqual([{allow, "192.168.1.0/24"}], esockd:get_access_rules({echo, 7000})),
+    ok = esockd:allow({echo, 7000}, "10.10.0.0/16"),
+    ?assertEqual([{allow, "10.10.0.0/16"},
+                 {allow, "192.168.1.0/24"}],
+                 esockd:get_access_rules({echo, 7000})),
+    ok = esockd:deny({echo, 7000}, "172.16.1.1/16"),
+    ?assertEqual([{deny,  "172.16.0.0/16"},
+                  {allow, "10.10.0.0/16"},
+                  {allow, "192.168.1.0/24"}],
+                 esockd:get_access_rules({echo, 7000})),
     esockd:close(echo, 7000).
 
 echo_mfa() -> {echo_server, start_link, []}.
