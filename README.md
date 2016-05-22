@@ -90,16 +90,18 @@ application:start(esockd).
 
 ```
 esockd:open(echo, 5000, [{sockopts, [binary, {reuseaddr, true}]}], {echo_server, start_link, []}).
+
+esockd:open(echo, {"127.0.0.1", 6000}, [{sockopts, [binary, {reuseaddr, true}]}], {echo_server, start_link, []}).
 ```
 
 Spec:
 
 ```
--spec open(Protocol, Port, Options, MFArgs) -> {ok, pid()} | {error, any()} when
-    Protocol     :: atom(),
-    Port         :: inet:port_number(),
-    Options		 :: [option()], 
-    MFArgs       :: esockd:mfargs().
+-spec open(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, any()} when
+    Protocol  :: atom(),
+    ListenOn  :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}),
+    Options	  :: [option()],
+    MFArgs    :: esockd:mfargs().
 ```
 
 Options:
@@ -180,9 +182,9 @@ esockd:close(echo, 5000).
 ```
 
 ```
--spec close(Protocol, Port) -> ok when 
-    Protocol    :: atom(),
-    Port        :: inet:port_number().
+-spec close(Protocol, ListenOn) -> ok when
+    Protocol :: atom(),
+    ListenOn :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}.
 ```
 
 ## Logger
@@ -218,5 +220,4 @@ The MIT License (MIT)
 ## Author
 
 Feng Lee <feng@emqtt.io>
-
 
