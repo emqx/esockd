@@ -12,6 +12,7 @@ Erlang General Non-blocking TCP/SSL Socket Server.
 * Allow/Deny by peer address
 * Keepalive Support
 * Rate Limit
+* IPv6 Support
 
 ## Usage
 
