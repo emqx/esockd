@@ -13,7 +13,6 @@ examples/*/ebin
 .idea/
 .erlang.mk/
 esockd.d
-<<<<<<< HEAD
 test/ct.cover.spec
 examples/*/*.d
 docs/_build/
