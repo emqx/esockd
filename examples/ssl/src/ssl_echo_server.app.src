@@ -1,7 +1,8 @@
 {application, ssl_echo_server,
  [
   {description, ""},
-  {vsn, "1"},
+  {vsn, "1.0"},
+  {modules, []},
   {registered, []},
   {applications, [
                   kernel,

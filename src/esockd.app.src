@@ -1,5 +1,4 @@
-{application, esockd,
- [
+{application, esockd, [
   {id, "esockd"},
   {vsn, "4.0"},
   {description, "Erlang General Non-blocking TCP/SSL Server"},
@@ -7,8 +6,9 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  gen_logger
                  ]},
   {mod, {esockd_app, []}},
   {env, [{logger, {error_logger, info}}]}
- ]}.
+]}.

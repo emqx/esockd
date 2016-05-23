@@ -24,7 +24,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(echo_server).
+-module(simple_echo_server).
 
 -export([start/0, start/1]).
 

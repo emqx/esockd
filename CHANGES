@@ -9,9 +9,17 @@ IPv6 Support
 
 Listen on specific IP Address
 
+3.2-beta (2016/05/23)
+---------------------
+
+Issue #25 - {accept_error,econnaborted} crash report
+
+Issue #27 - acceptor crasher: {accept_error,econnaborted}
+
+Issue #26 - acceptor - system_limit error
 
 3.1-beta (2016/01/31)
-------------------------
+----------------------
 
 Replace rebar with erlang.mk
 

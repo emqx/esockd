@@ -1,11 +1,4 @@
-.PHONY: test
 
-REBAR=../../rebar
+PROJECT = echo_server
 
-all: compile
-
-compile:
-	@$(REBAR) compile
-
-clean:
-	@$(REBAR) clean
+include ../../erlang.mk

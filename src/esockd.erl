@@ -75,7 +75,8 @@
 
 %% @doc Start eSockd Application.
 -spec(start() -> ok).
-start() -> application:start(esockd).
+start() ->
+    {ok, _} = application:ensure_all_started(esockd), ok.
 
 %% @doc Open a Listener.
 -spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, any()}).

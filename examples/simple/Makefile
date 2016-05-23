@@ -1,4 +1,4 @@
 
-PROJECT = echo_server
+PROJECT = simple_echo_server
 
 include ../../erlang.mk
