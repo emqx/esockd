@@ -2,6 +2,13 @@
 eSockd ChangeLog
 ================
 
+4.0-beta (2016/05/24)
+---------------------
+
+IPv6 Support
+
+Listen on specific IP Address
+
 3.2-beta (2016/05/23)
 ---------------------
 
@@ -11,12 +18,10 @@ Issue #27 - acceptor crasher: {accept_error,econnaborted}
 
 Issue #26 - acceptor - system_limit error
 
-
 3.1-beta (2016/01/31)
 ----------------------
 
 Replace rebar with erlang.mk
-
 
 3.0-beta (2015/10/30)
 ------------------------
