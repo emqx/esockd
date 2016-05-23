@@ -226,10 +226,10 @@ allowed(Addr, Rules) ->
         {matched, deny}  -> false
     end.
 
-raw({allow, {CIDR, _, _}}) ->
-     {allow, CIDR};
-raw({deny, {CIDR, _, _}}) ->
-     {deny, CIDR};
+raw({allow, CIDR = {_Start, _End, _Len}}) ->
+     {allow, esockd_cidr:to_string(CIDR)};
+raw({deny, CIDR = {_Start, _End, _Len}}) ->
+     {deny, esockd_cidr:to_string(CIDR)};
 raw(Rule) ->
      Rule.
 
