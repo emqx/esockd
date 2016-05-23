@@ -137,7 +137,7 @@ esockd:get_stats({echo, 5000}).
 Get acceptors:
 
 ```
-esockd:get_acceptors({echo, 5000}).
+esockd:get_acceptors({echo, {"127.0.0.1", 6000}}).
 ```
 
 Get/Set max clients:
@@ -180,6 +180,7 @@ esockd:deny({echo, 5000}, "10.10.0.0/16").
 
 ```
 esockd:close(echo, 5000).
+esockd:close(echo, {"127.0.0.1", 6000}).
 ```
 
 ```
