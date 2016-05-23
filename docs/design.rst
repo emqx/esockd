@@ -1,3 +1,48 @@
+
+.. _design:
+
+======
+Design
+======
+
+---------------
+Supervisor Tree
+---------------
+
+esockd_sup 
+	-> esockd_listener_sup 
+		-> esockd_listener
+		-> esockd_acceptor_sup 
+			-> esockd_acceptor
+			-> esockd_acceptor
+			-> ......
+		-> esockd_connection_sup
+			-> esockd_connection
+			-> esockd_connection
+			-> ......
+
+--------------
+esockd_manager
+--------------
+
+1. control max_clients
+
+case count_children(CSup) of
+    Count when Count =< Max ->
+     {{ok, accept}, State};
+    {{reject, busy}, State}
+
+2.  block, unblock
+
+
+----
+CIDR
+----
+
+`CIDR`_ Wiki
+
+.. _CIDR: https://en.wikipedia.org/wiki/Classless_Inter-Domain_Routing
+
 ## Erlang TCP Server??
 
 ## Why?
@@ -118,3 +163,5 @@ esockd_client_sup respond for:
 2. control max connections
 
 3. count active socks...
+
+ 

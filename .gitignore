@@ -13,6 +13,12 @@ examples/*/ebin
 .idea/
 .erlang.mk/
 esockd.d
+test/ct.cover.spec
+examples/*/*.d
+docs/_build/
+ct.coverdata
+eunit.coverdata
+logs/
 examples/async_recv/async_recv_echo_server.d
 examples/client/echo_client.d
 examples/gen_server/gen_echo_server.d

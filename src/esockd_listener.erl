@@ -24,6 +24,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(esockd_listener).
 
 -author("Feng Lee <feng@emqtt.io>").
@@ -38,28 +39,27 @@
          terminate/2, code_change/3]).
 
 -record(state, {protocol  :: atom(),
+                listen_on :: esockd:listen_on(),
                 lsock     :: inet:socket(),
                 logger    :: gen_logger:logmod()}).
 
 -define(ACCEPTOR_POOL, 16).
 
-%%------------------------------------------------------------------------------
 %% @doc Start Listener
-%% @end
-%%------------------------------------------------------------------------------
--spec start_link(Protocol, Port, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
+-spec start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
     Protocol    :: atom(),
-    Port        :: inet:port_number(),
+    ListenOn    :: esockd:listen_on(),
     Options	    :: [esockd:option()],
     AcceptorSup :: pid(),
     Logger      :: gen_logger:logmod().
-start_link(Protocol, Port, Options, AcceptorSup, Logger) ->
-    gen_server:start_link(?MODULE, {Protocol, Port, Options, AcceptorSup, Logger}, []).
+start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
+    gen_server:start_link(?MODULE, {Protocol, ListenOn, Options, AcceptorSup, Logger}, []).
 
-init({Protocol, Port, Options, AcceptorSup, Logger}) ->
+init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
+    Port = port(ListenOn),
     process_flag(trap_exit, true),
-    %%don't active the socket...
-    SockOpts = proplists:get_value(sockopts, Options, [{reuseaddr, true}]),
+    %%Don't active the socket...
+    SockOpts = merge_addr(ListenOn, proplists:get_value(sockopts, Options, [{reuseaddr, true}])),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
@@ -70,12 +70,20 @@ init({Protocol, Port, Options, AcceptorSup, Logger}) ->
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
             io:format("~s listen on ~s:~p with ~p acceptors.~n",
                       [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
-            {ok, #state{protocol = Protocol, lsock = LSock, logger = Logger}};
+            {ok, #state{protocol = Protocol, listen_on = ListenOn, lsock = LSock, logger = Logger}};
         {error, Reason} ->
-            Logger:info("~s failed to listen on ~p - ~p (~s)~n",
-                        [Protocol, Port, Reason, inet:format_error(Reason)]),
+            Logger:error("~s failed to listen on ~p - ~p (~s)~n",
+                         [Protocol, Port, Reason, inet:format_error(Reason)]),
             {stop, {cannot_listen, Port, Reason}}
     end.
+
+port(Port) when is_integer(Port) -> Port;
+port({_Addr, Port}) -> Port.
+
+merge_addr(Port, SockOpts) when is_integer(Port) ->
+    SockOpts;
+merge_addr({Addr, _Port}, SockOpts) ->
+    lists:keystore(ip, 1, SockOpts, {ip, Addr}).
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
@@ -86,14 +94,14 @@ handle_cast(_Msg, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, #state{lsock = LSock, protocol = Protocol}) ->
+terminate(_Reason, #state{protocol = Protocol, listen_on = ListenOn, lsock = LSock}) ->
     {ok, {IPAddress, Port}} = esockd_transport:sockname(LSock),
     esockd_transport:close(LSock),
     %% Print on console
     io:format("stopped ~s on ~s:~p~n",
               [Protocol, esockd_net:ntoab(IPAddress), Port]),
     %%TODO: depend on esockd_server?
-    esockd_server:del_stats({Protocol, Port}),
+    esockd_server:del_stats({Protocol, ListenOn}),
 	ok.
 
 code_change(_OldVsn, State, _Extra) ->

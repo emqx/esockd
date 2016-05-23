@@ -32,6 +32,7 @@
 -export([start_link/1, init/1, loop/1]).
 
 -define(TCP_OPTIONS, [
+        %%{ip, {0,0,0,0,0,0,0,1}},
 		binary,
 		{packet, raw},
 		%{buffer, 1024},

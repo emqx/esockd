@@ -34,39 +34,35 @@
 
 -export([init/1]).
 
-%%------------------------------------------------------------------------------
+%%%-----------------------------------------------------------------------------
+%%% API
+%%%-----------------------------------------------------------------------------
+
 %% @doc Start Acceptor Supervisor.
-%% @end
-%%------------------------------------------------------------------------------
--spec start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) -> {ok, pid()} when
-    ConnSup        :: pid(),
-    AcceptStatsFun :: fun(),
-    BufferTuneFun  :: esockd:tune_fun(),
-    Logger         :: gen_logger:logmod().
+-spec(start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) -> {ok, pid()} when
+      ConnSup        :: pid(),
+      AcceptStatsFun :: fun(),
+      BufferTuneFun  :: esockd:tune_fun(),
+      Logger         :: gen_logger:logmod()).
 start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) ->
     supervisor:start_link(?MODULE, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]).
 
-%%------------------------------------------------------------------------------
 %% @doc Start a acceptor.
-%% @end
-%%------------------------------------------------------------------------------
--spec start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, any()} | ignore when
-    AcceptorSup :: pid(),
-    LSock       :: inet:socket(),
-    SockFun     :: esockd:sock_fun().
+-spec(start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, any()} | ignore when
+      AcceptorSup :: pid(),
+      LSock       :: inet:socket(),
+      SockFun     :: esockd:sock_fun()).
 start_acceptor(AcceptorSup, LSock, SockFun) ->
     supervisor:start_child(AcceptorSup, [LSock, SockFun]).
 
-%%------------------------------------------------------------------------------
 %% @doc Count Acceptors.
-%%------------------------------------------------------------------------------
 -spec count_acceptors(AcceptorSup :: pid()) -> pos_integer().
 count_acceptors(AcceptorSup) ->
     length(supervisor:which_children(AcceptorSup)).
 
-%%%=============================================================================
-%% Supervisor callbacks
-%%%=============================================================================
+%%%-----------------------------------------------------------------------------
+%%% Supervisor callbacks
+%%%-----------------------------------------------------------------------------
 
 init([ConnSup, AcceptStatsFun, BufferTuneFun, Logger]) ->
     {ok, {{simple_one_for_one, 1000, 3600},
