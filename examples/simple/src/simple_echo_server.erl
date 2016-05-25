@@ -52,7 +52,7 @@ start() ->
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    [ok = application:start(App) || App <- [sasl, esockd]],
+    [ok = application:start(App) || App <- [sasl, gen_logger, esockd]],
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access, Access},
                 {acceptors, 32}, 
