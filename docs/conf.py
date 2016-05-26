@@ -45,7 +45,7 @@ source_suffix = '.rst'
 #source_encoding = 'utf-8-sig'
 
 # The master toctree document.
-master_doc = 'esockd'
+master_doc = 'index'
 
 # General information about the project.
 project = u'eSockd'
@@ -201,7 +201,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('esockd', 'eSockd.tex', u'eSockd 4.0 Documentation',
+  ('index', 'eSockd.tex', u'eSockd 4.0 Documentation',
    u'Feng Lee', 'manual'),
 ]
 
@@ -231,7 +231,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('esockd', 'esockd', u'eSockd Documentation',
+    ('index', 'esockd', u'eSockd Documentation',
      [u'Feng Lee'], 1)
 ]
 
@@ -245,7 +245,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('esockd', 'eSockd', u'eSockd Documentation',
+  ('index', 'eSockd', u'eSockd Documentation',
    u'Feng Lee', 'eSockd', 'Erlang General Non-blocking TCP/SSL Socket Server.',
    'Miscellaneous'),
 ]
