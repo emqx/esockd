@@ -5,7 +5,7 @@ Erlang General Non-blocking TCP/SSL Socket Server.
 
 ## Docs
 
-[eSockd Documentation](docs/esockd.rst)
+[eSockd Documentation](docs/index.rst)
 
 ## License
 
