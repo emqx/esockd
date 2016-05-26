@@ -158,10 +158,10 @@ Same to Allow/Deny Syntax of nginx::
 
 allow/deny by options::
 
-esockd:open(echo, 5000, [
-    {access, [{deny, "192.168.1.1"},
-              {allow, "192.168.1.0/24"},
-              {deny, all}]}], MFArgs).
+    esockd:open(echo, 5000, [
+        {access, [{deny, "192.168.1.1"},
+                  {allow, "192.168.1.0/24"},
+                  {deny, all}]}], MFArgs).
 
 allow/deny by API::
 
@@ -236,10 +236,13 @@ Supervisor Tree
 Listener
 --------
 
+
 Acceptor
 --------
 
-1. Sleep for a while when e{n, m}file errors happened
+1. Acceptor Pool
+
+2. Sleep for a while when e{n, m}file errors happened
 
 Connection Sup
 --------------
@@ -271,29 +274,4 @@ Benchmark
 Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server from qingcloud.com::
 
     250K concurrent connections, 50K messages/sec, 40Mbps In/Out consumed 5G memory, 20% CPU/core
-
-----------
-Referrence
-----------
-
-1. http://20bits.com/article/erlang-a-generalized-tcp-server
-
-Network servers come in two parts: connection handling and business logic. As I described above the connection handling is basically the same for every network server. Ideally we'd be able to do something like
-
-2. http://erlangcentral.org/wiki/index.php/Building_a_Non-blocking_TCP_server_using_OTP_principles
-
-3. http://www.erlang-factory.com/static/upload/media/1394461730695138benoitchesneau.pdf
-
-    How to handle massive http connections?
-
-4. how to handle e{n, m}file error?
-
- [EMFILE]  The per-process descriptor table is full.
- [ENFILE]  The system file table is full.
-
-5. http://erlang.2086793.n4.nabble.com/Q-prim-inet-async-accept-and-gen-tcp-send-td2097350.html
-
-6. https://github.com/kevsmith/gen_nb_server
-
-7. https://github.com/oscarh/gen_tcpd
 
