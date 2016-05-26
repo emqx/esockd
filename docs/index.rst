@@ -1,7 +1,7 @@
 
-==================================
-Welcome to eSockd's Documentation!
-==================================
+======
+eSockd
+======
 
 eSockd - Erlang General Non-blocking TCP/SSL Socket Server.
 
@@ -271,7 +271,7 @@ CIDR
 Benchmark
 ---------
 
-Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server from qingcloud.com::
+Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server::
 
     250K concurrent connections, 50K messages/sec, 40Mbps In/Out consumed 5G memory, 20% CPU/core
 
