@@ -201,7 +201,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-  ('index', 'eSockd.tex', u'eSockd 4.0 Documentation',
+  ('esockd', 'eSockd.tex', u'eSockd 4.0 Documentation',
    u'Feng Lee', 'manual'),
 ]
 
@@ -231,7 +231,7 @@ latex_documents = [
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
 man_pages = [
-    ('index', 'esockd', u'eSockd Documentation',
+    ('esockd', 'esockd', u'eSockd Documentation',
      [u'Feng Lee'], 1)
 ]
 
@@ -245,7 +245,7 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-  ('index', 'eSockd', u'eSockd Documentation',
+  ('esockd', 'eSockd', u'eSockd Documentation',
    u'Feng Lee', 'eSockd', 'Erlang General Non-blocking TCP/SSL Socket Server.',
    'Miscellaneous'),
 ]

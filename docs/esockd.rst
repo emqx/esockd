@@ -69,26 +69,17 @@ Setup Echo Server:
 Examples
 --------
 
-.. code::
-
-    examples/
-        async_recv/
-        gen_server/
-        simple/
-        ssl/
-
-
-+============+============================+
-| Example    | Description                |
-+============+============================+
-| async_recv | prim_net async recv/send   |
-+------------+----------------------------+
-| gen_server| gen_server behaviour        |
-+------------+----------------------------+
-| simple     | simple echo server         |
-+------------+----------------------------+
-| ssl        | ssl echo server            |
-+------------+----------------------------+
++---------------------+----------------------------+
+| Example             | Description                |
++---------------------+----------------------------+
+| examples/async_recv | prim_net async recv/send   |
++---------------------+----------------------------+
+| examples/gen_server | gen_server behaviour       |
++---------------------+----------------------------+
+| examples/simple     | simple echo server         |
++---------------------+----------------------------+
+| examples/ssl        | ssl echo server            |
++---------------------+----------------------------+
 
 ---
 API
