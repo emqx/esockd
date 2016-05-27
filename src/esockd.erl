@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd main api.
+%%% eSockd Main API.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -50,7 +50,7 @@
 -export([get_access_rules/1, allow/2, deny/2]).
 
 %% Utility functions...
--export([ulimit/0]).
+-export([ulimit/0, fixaddr/1, to_string/1]).
 
 -type(ssl_socket() :: #ssl_socket{}).
 -type(tune_fun()   :: fun((inet:socket()) -> ok | {error, any()})).
@@ -67,7 +67,8 @@
                     | {sockopts, [gen_tcp:listen_option()]}).
 -type(listen_on() :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}).
 
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0, listen_on/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0,
+              listen_on/0]).
 
 %%------------------------------------------------------------------------------
 %% API
@@ -198,14 +199,20 @@ with_listener({Protocol, ListenOn}, Fun, Args) ->
 with_listener(undefined, _Fun, _Args) ->
     undefined;
 with_listener(LSup, Fun, Args) when is_pid(LSup) ->
-    apply(Fun, [LSup|Args]).
+    apply(Fun, [LSup | Args]).
+
+-spec(to_string(listen_on()) -> string()).
+to_string(Port) when is_integer(Port) ->
+    integer_to_list(Port);
+to_string({Addr, Port}) ->
+    {IPAddr, Port} = fixaddr({Addr, Port}),
+    inet:ntoa(IPAddr) ++ ":" ++ integer_to_list(Port).
 
 %% @doc Parse Address
 %% @private
 fixaddr(Port) when is_integer(Port) ->
     Port;
 fixaddr({Addr, Port}) when is_list(Addr) and is_integer(Port) ->
-    io:format("~p~n", [Addr]),
     {ok, IPAddr} = inet:parse_address(Addr), {IPAddr, Port};
 fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
     case esockd_cidr:is_ipv6(Addr) or esockd_cidr:is_ipv4(Addr) of

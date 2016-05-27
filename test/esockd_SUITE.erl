@@ -33,7 +33,9 @@ groups() ->
        esockd_get_acceptors,
        esockd_getset_max_clients,
        esockd_get_shutdown_count,
-       esockd_get_access_rules
+       esockd_get_access_rules,
+       esockd_fixaddr,
+       esockd_to_string
       ]},
      {cidr, [],
       [parse_ipv4_cidr,
@@ -125,6 +127,17 @@ esockd_get_access_rules(_) ->
                   {allow, "192.168.1.0/24"}],
                  esockd:get_access_rules({echo, 7000})),
     esockd:close(echo, 7000).
+
+esockd_fixaddr(_) ->
+    ?assertEqual({{127,0,0,1}, 9000}, esockd:fixaddr({"127.0.0.1", 9000})),
+    ?assertEqual({{10,10,10,10}, 9000}, esockd:fixaddr({{10,10,10,10}, 9000})),
+    ?assertEqual({{0,0,0,0,0,0,0,1}, 9000}, esockd:fixaddr({"::1", 9000})).
+
+esockd_to_string(_) ->
+    ?assertEqual("9000", esockd:to_string(9000)),
+    ?assertEqual("127.0.0.1:9000", esockd:to_string({"127.0.0.1", 9000})),
+    ?assertEqual("192.168.1.10:9000", esockd:to_string({{192,168,1,10}, 9000})),
+    ?assertEqual("::1:9000", esockd:to_string({{0,0,0,0,0,0,0,1}, 9000})).
 
 echo_mfa() -> {echo_server, start_link, []}.
  
