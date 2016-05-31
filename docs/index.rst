@@ -3,7 +3,7 @@
 eSockd
 ======
 
-eSockd - Erlang General Non-blocking TCP/SSL Socket Server.
+Erlang General Non-blocking TCP/SSL Socket Server.
 
 --------
 Features
@@ -233,10 +233,6 @@ Supervisor Tree
                 -> esockd_connection
                 -> ......
 
-Listener
---------
-
-
 Acceptor
 --------
 
@@ -254,10 +250,6 @@ Connection Sup
 3. Count active connections
 
 4. Count shutdown reasons
-
-Server
-------
-
 
 ----
 CIDR
