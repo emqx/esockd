@@ -22,7 +22,7 @@
 -compile(export_all).
 
 all() ->
-    [{group, esockd}, {group, cidr}, {group, access}].
+    [{group, esockd}, {group, cidr}, {group, access}, {group, udp}].
 
 groups() ->
     [{esockd, [sequence],
@@ -49,7 +49,9 @@ groups() ->
       [access_match,
        access_match_localhost,
        access_match_allow,
-       access_ipv6_match]}].
+       access_ipv6_match]},
+     {udp, [sequence],
+      [esockd_udp_server]}].
 
 init_per_suite(Config) ->
     application:start(lager),
@@ -241,4 +243,29 @@ access_ipv6_match(_) ->
     {ok, Addr2} = inet:parse_address("2001::10"),
     ?assertEqual({matched, deny}, esockd_access:match(Addr1, Rules)),
     ?assertEqual({matched, allow}, esockd_access:match(Addr2, Rules)).
+
+%%--------------------------------------------------------------------
+%% UDP Server
+%%--------------------------------------------------------------------
+
+esockd_udp_server(_) ->
+    {ok, Srv} = esockd_udp:server(test, 9876, [], {?MODULE, udp_echo_server, []}),
+    {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+    ok = gen_udp:send(Sock, {127,0,0,1}, 9876, <<"hello">>),
+    {ok, {_Addr, _Port, <<"hello">>}} = gen_udp:recv(Sock, 5, 3000),
+    ok = gen_udp:send(Sock, {127,0,0,1}, 9876, <<"world">>),
+    {ok, {_Addr, _Port, <<"world">>}} = gen_udp:recv(Sock, 5, 3000),
+    ok = esockd_udp:stop(Srv).
+
+udp_echo_server(Socket, Peer) ->
+    {ok, spawn(fun() -> udp_echo_loop(Socket, Peer) end)}.
+
+udp_echo_loop(Socket, {Address, Port} = Peer) ->
+    receive
+        {datagram, Packet} ->
+            ok = gen_udp:send(Socket, Address, Port, Packet),
+            udp_echo_loop(Socket, Peer);
+         _Any ->
+            ok
+    end.
 
