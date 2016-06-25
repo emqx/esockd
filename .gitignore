@@ -24,3 +24,4 @@ examples/client/echo_client.d
 examples/gen_server/gen_echo_server.d
 examples/plain/echo_server.d
 examples/ssl/ssl_echo_server.d
+cover/
