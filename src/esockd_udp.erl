@@ -112,8 +112,8 @@ handle_info({'EXIT', Pid, _Reason}, State) ->
 handle_info(_Info, State) ->
 	{noreply, State}.
 
-terminate(_Reason, _State) ->
-	ok.
+terminate(_Reason, State = #state{sock = Sock}) ->
+    gen_udp:close(Sock).
 
 code_change(_OldVsn, State, _Extra) ->
 	{ok, State}.
