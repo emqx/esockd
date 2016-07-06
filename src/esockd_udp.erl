@@ -88,13 +88,13 @@ handle_info({udp, Socket, IP, InPortNo, Packet},
     inet:setopts(Socket, [{active, once}]),
     case dict:find(Peer, Peers) of
         {ok, Pid} ->
-            Pid ! {datagram, Packet},
+            Pid ! {datagram, self(), Packet},
             noreply(State);
         error ->
             case catch apply(M, F, [Socket, Peer | Args]) of
                 {ok, Pid} ->
                     link(Pid), put(Pid, Peer),
-                    Pid ! {datagram, Packet},
+                    Pid ! {datagram, self(),Packet},
                     noreply(store_peer(Peer, Pid, State));
                 {Err, Reason} when Err == error orelse Err == 'EXIT' ->
                     log_error(Logger, Peer, Reason), 
@@ -112,7 +112,7 @@ handle_info({'EXIT', Pid, _Reason}, State) ->
 handle_info(_Info, State) ->
 	{noreply, State}.
 
-terminate(_Reason, State = #state{sock = Sock}) ->
+terminate(_Reason, #state{sock = Sock}) ->
     gen_udp:close(Sock).
 
 code_change(_OldVsn, State, _Extra) ->

@@ -262,7 +262,7 @@ udp_echo_server(Socket, Peer) ->
 
 udp_echo_loop(Socket, {Address, Port} = Peer) ->
     receive
-        {datagram, Packet} ->
+        {datagram, _Server, Packet} ->
             ok = gen_udp:send(Socket, Address, Port, Packet),
             udp_echo_loop(Socket, Peer);
          _Any ->
