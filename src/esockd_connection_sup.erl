@@ -151,7 +151,7 @@ handle_call({start_connection, Sock, SockFun}, _From,
                             {reply, {error, What}, State}
                     end;
                 false ->
-                    {reply, {error, fobidden}, State}
+                    {reply, {error, forbidden}, State}
             end;
         {error, Reason} ->
             {reply, {error, Reason}, State}
