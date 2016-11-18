@@ -2,6 +2,11 @@
 eSockd ChangeLog
 ================
 
+5.0-beta (2016/11/20)
+---------------------
+
+Proxy Protocol(http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt)
+
 4.0-beta (2016/05/24)
 ---------------------
 

@@ -36,11 +36,11 @@
                     timeout_msg,
                     timer_ref}).
 
--type keepalive() :: #keepalive{}.
+-type(keepalive() :: #keepalive{}).
 
 %% @doc Start keepalive
--spec start(esockd_connection:connection(), pos_integer(), any()) ->
-        {ok, keepalive()} | {error, any()}.
+-spec(start(esockd_connection:connection(), pos_integer(), any()) ->
+        {ok, keepalive()} | {error, any()}).
 start(Connection, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
     with_sock_stats(Connection, fun(RecvOct) ->
         Ms = timer:seconds(TimeoutSec),
