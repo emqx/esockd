@@ -67,7 +67,7 @@ start_link(Conn) ->
 	{ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
-    {ok, Conn1} = esockd_connection:ack(Conn),
+    {ok, Conn1} = Conn:wait(),
     Conn1:setopts([{active, once}]),
     gen_server:enter_loop(?MODULE, [], #state{conn = Conn1}).
 
