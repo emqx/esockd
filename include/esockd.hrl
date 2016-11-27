@@ -40,10 +40,10 @@
 %% Proxy-Protocol Sock Wrapper
 %%------------------------------------------------------------------------------
 
--record(proxy_socket, {inet      :: inet4 | inet6,
-                       socket    :: inet:socket() | ssl_socket(),
-                       peer_addr :: inet:ip_address(),
-                       peer_port :: inet:port_number(),
-                       dest_addr :: inet:ip_address(),
-                       dest_port :: inet:port_number()}).
+-record(proxy_socket, {inet     :: inet4 | inet6,
+                       socket   :: inet:socket() | #ssl_socket{},
+                       src_addr :: inet:ip_address(),
+                       dst_addr :: inet:ip_address(),
+                       src_port :: inet:port_number(),
+                       dst_port :: inet:port_number()}).
 
