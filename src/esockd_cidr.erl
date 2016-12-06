@@ -76,7 +76,7 @@ match({W, X, Y, Z}, {{A, B, C, D}, {E, F, G, H}, _Len}) when
     ((W >= A) andalso (W =< E)),
     ((X >= B) andalso (X =< F)),
     ((Y >= C) andalso (Y =< G)),
-    ((A >= D) andalso (Z =< H)) ->
+    ((Z >= D) andalso (Z =< H)) ->
     true;
 match({R, S, T, U, V, W, X, Y}, {{A, B, C, D, E, F, G, H}, {I, J, K, L, M, N, O, P}, _Len}) when
     ((R >= A) andalso (R =< I)),
