@@ -69,6 +69,7 @@ parse(?PROXY_PROTO_V1, Sock, Timeout) ->
     end;
 
 parse(?PROXY_PROTO_V2, _Sock, _Timeout) ->
+    %% TODO::
     {error, proxy_proto_v2_unsupported}.
 
 parse_inet($4) -> inet4;
