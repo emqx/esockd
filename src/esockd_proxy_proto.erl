@@ -70,6 +70,7 @@ parse(?PROXY_PROTO_V1, Sock, Timeout) ->
 
 parse(?PROXY_PROTO_V2, _Sock, _Timeout) ->
     %% TODO::
+    %% added somthing by xinyu
     {error, proxy_proto_v2_unsupported}.
 
 parse_inet($4) -> inet4;
