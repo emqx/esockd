@@ -17,12 +17,13 @@
 -module(esockd_SUITE).
 
 -include_lib("eunit/include/eunit.hrl").
+-include_lib("common_test/include/ct.hrl").
 
 %% Common Test
 -compile(export_all).
 
 all() ->
-    [{group, esockd}, {group, cidr}, {group, access}].
+    [{group, esockd}, {group, cidr}, {group, access}, {group, proxy_protocol_v2}].
 
 groups() ->
     [{esockd, [sequence],
@@ -49,9 +50,19 @@ groups() ->
       [access_match,
        access_match_localhost,
        access_match_allow,
-       access_ipv6_match]}].
+       access_ipv6_match]},
+     {proxy_protocol_v2, [],
+      [ ppv2_invalid_proxy_msg,
+        ppv2_cmd_local,
+        ppv2_cmd_proxy_proto_type_unspec,
+        ppv2_cmd_proxy_tcp_over_ipv4,
+        ppv2_cmd_proxy_tcp_over_ipv6,
+        ppv2_cmd_proxy_additional_tlvs,
+        ppv2_cmd_unsupported]}
+      ].
 
 init_per_suite(Config) ->
+    application:start(sasl),
     application:start(lager),
     application:start(gen_logger),
     esockd:start(),
@@ -59,6 +70,13 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(esockd).
+
+init_per_group(proxy_protocol_v2, Config) ->
+    [ {ipaddr, "127.0.0.1"}, {port, 9002}
+      | Config].
+
+end_per_group(proxy_protocol_v2, _Config) ->
+    ok.
 
 %%------------------------------------------------------------------------------
 %% eSockd
@@ -241,4 +259,148 @@ access_ipv6_match(_) ->
     {ok, Addr2} = inet:parse_address("2001::10"),
     ?assertEqual({matched, deny}, esockd_access:match(Addr1, Rules)),
     ?assertEqual({matched, allow}, esockd_access:match(Addr2, Rules)).
+
+%%--------------------------------------------------------------------
+%% proxy protocol
+%%--------------------------------------------------------------------
+
+%% If an invalid Proxy-Protocol-Msg is Given
+%% Then the the connection will be rejected by the proxy server.
+ppv2_invalid_proxy_msg(Config) ->
+  {ok, _LSup} = proxy_protocol_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+
+  InvalidProxyProtoMsg = <<"Incorrect Format Msg">>,
+  ok = gen_tcp:send(Sock, InvalidProxyProtoMsg),
+  receive
+    {tcp_closed, Sock} ->
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
+
+%% CMD == LOCAL
+ppv2_cmd_local(Config) ->
+  {ok, _LSup} = pp_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+  Prefix = <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>,
+  ProxyProtoMsg = <<Prefix:12/binary, 16#2:4, 16#0:4, 16#0:4, 16#0:4, 0:16>>,
+  ok = gen_tcp:send(Sock, ProxyProtoMsg),
+  ok = gen_tcp:send(Sock, <<"Hello?">>),
+  receive
+    {tcp,Sock, "Hello?"} ->
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
+
+%% CMD == PROXY, proto type unspecified
+ppv2_cmd_proxy_proto_type_unspec(Config) ->
+  {ok, _LSup} = pp_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+  Prefix = <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>,
+  ProxyProtoMsg = <<Prefix:12/binary, 16#2:4, 16#1:4, 16#0:4, 16#0:4, 0:16>>,
+  ok = gen_tcp:send(Sock, ProxyProtoMsg),
+  ok = gen_tcp:send(Sock, <<"Hello?">>),
+  receive
+    {tcp,Sock, "Hello?"} ->
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
+
+%% CMD == PROXY, TCP over IPv4
+ppv2_cmd_proxy_tcp_over_ipv4(Config) ->
+  {ok, _LSup} = pp_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+  Prefix = <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>,
+  ProxyProtoMsg = <<Prefix:12/binary, 16#2:4, 16#1:4, 16#1:4, 16#1:4, 12:16, 2130706434:32, 2130706435:32, 6500:16, 6501:16>>,
+  ok = gen_tcp:send(Sock, ProxyProtoMsg),
+  ok = gen_tcp:send(Sock, <<"Hello?">>),
+  receive
+    {tcp,Sock, "Hello?"} ->
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
+
+%% CMD == PROXY, TCP over IPv6
+ppv2_cmd_proxy_tcp_over_ipv6(Config) ->
+  {ok, _LSup} = pp_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+  Prefix = <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>,
+  ProxyProtoMsg = <<Prefix:12/binary, 16#2:4, 16#1:4, 16#2:4, 16#1:4, 36:16, 1:128, 2:128, 6502:16, 6503:16>>,
+  ok = gen_tcp:send(Sock, ProxyProtoMsg),
+  ok = gen_tcp:send(Sock, <<"Hello?">>),
+  receive
+    {tcp,Sock, "Hello?"} ->
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
+
+%% CMD == PROXY, TCP over IPv4 with additional TLVs at the end of the packet
+%% These TLVs will be disregarded by the receiver, as it doesn't support this feature.
+ppv2_cmd_proxy_additional_tlvs(Config) ->
+  {ok, _LSup} = pp_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+  Prefix = <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>,
+  Type = 3,
+  Length = 39,
+  ProxyProtoMsg = <<Prefix:12/binary, 16#2:4, 16#1:4, 16#1:4, 16#1:4, 12:16, 2130706434:32, 2130706435:32,
+    6500:16, 6501:16, Type:8, Length:16, "I am the value at the end of the packet">>,
+  ok = gen_tcp:send(Sock, ProxyProtoMsg),
+  ok = gen_tcp:send(Sock, <<"Hello?">>),
+  receive
+    {tcp,Sock, [3,0,39,73,32,97,109,32,116,104,101,32,118,97,
+      108,117,101,32,97,116,32,116,104,101,32,101,110,
+      100,32,111,102,32,116,104,101,32,112,97,99,107,
+      101,116,72,101,108,108,111,63]} -> %% All the TLVs are disregards by the proxy server.
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
+
+%% Unsupported CMD, will be rejected by proxy server
+ppv2_cmd_unsupported(Config) ->
+  {ok, _LSup} = pp_server:start(?config(port, Config), v2),
+  {ok, Sock} = gen_tcp:connect(?config(ipaddr, Config), ?config(port, Config), []),
+  Prefix = <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>,
+  UnsupportedCMD = 3,
+  ProxyProtoMsg = <<Prefix:12/binary, 16#2:4, UnsupportedCMD:4, 16#0:4, 16#0:4, 0:16>>,
+  ok = gen_tcp:send(Sock, ProxyProtoMsg),
+  receive
+    {tcp_closed, Sock} ->
+      ok;
+    Msg ->
+      throw({wrong_msg, Msg})
+  after
+    3000 ->
+      throw({timeout, 3000})
+  end,
+  esockd:close(echo, ?config(port, Config)).
 
