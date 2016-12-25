@@ -47,3 +47,23 @@
                        src_port :: inet:port_number(),
                        dst_port :: inet:port_number()}).
 
+%%------------------------------------------------------------------------------
+%% Macro definitions for Proxy-Protocol V2
+%%------------------------------------------------------------------------------
+%% Protocol signature
+-define(PROXY_PROTO_V2_SIG, <<16#0D, 16#0A, 16#0D, 16#0A, 16#00, 16#0D, 16#0A, 16#51, 16#55, 16#49, 16#54, 16#0A>>).
+
+%% Protocol Command
+-define(PC_LOCAL, 16#0).
+-define(PC_PROXY, 16#1).
+
+%% Address families
+-define(AF_UNSPEC, 16#0).
+-define(AF_INET, 16#1).
+-define(AF_INET6, 16#2).
+-define(AF_UNIX, 16#3).
+
+%% Transport protocols
+-define(TP_UNSPEC, 16#0).
+-define(TP_STREAM, 16#1).
+-define(TP_DGRAM, 16#2).
