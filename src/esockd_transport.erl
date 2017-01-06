@@ -48,7 +48,7 @@
 
 -define(SSL_CLOSE_TIMEOUT, 5000).
 
--define(SSL_HANDSHAKE_TIMEOUT, 10000).
+-define(SSL_HANDSHAKE_TIMEOUT, 15000).
 
 %%------------------------------------------------------------------------------
 %% API
