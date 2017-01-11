@@ -121,8 +121,12 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
                 false ->
                     {ok, {?MODULE, [NewSock, SockFun, Opts]}}
             end;
-        {error, Error} ->
-            erlang:error(Error)
+        {error, closed} ->
+            exit(normal);
+        {error, timeout} ->
+            exit(normal);
+        {error, Reason} ->
+            error(Reason)
     end.
 
 %% @doc Transport of the connection.

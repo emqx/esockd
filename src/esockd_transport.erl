@@ -48,7 +48,7 @@
 
 -define(SSL_CLOSE_TIMEOUT, 5000).
 
--define(SSL_HANDSHAKE_TIMEOUT, 5000).
+-define(SSL_HANDSHAKE_TIMEOUT, 15000).
 
 -compile({no_auto_import,[port_command/2]}).
 
@@ -262,9 +262,14 @@ ssl_upgrade_fun(SslOpts) ->
         case catch ssl:ssl_accept(Sock, SslOpts1, Timeout) of
             {ok, SslSock} ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+            {error, Reason} when Reason == closed; Reason == timeout ->
+                fast_close(Sock),
+                {error, Reason};
             {error, Reason} ->
+                fast_close(Sock),
                 {error, {ssl_error, Reason}};
             {'EXIT', Reason} -> 
+                fast_close(Sock),
                 {error, {ssl_failure, Reason}}
         end
     end.
