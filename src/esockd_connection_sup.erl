@@ -65,10 +65,10 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start connection supervisor.
--spec start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
+-spec(start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
     Options :: [esockd:option()],
     MFArgs  :: esockd:mfargs(),
-    Logger  :: gen_logger:logmod().
+    Logger  :: gen_logger:logmod()).
 start_link(Options, MFArgs, Logger) ->
     gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
 
@@ -206,9 +206,6 @@ handle_info(Info, State = #state{logger = Logger}) ->
     Logger:error("Bad INFO: ~p", [Info]),
     {noreply, State}.
 
--spec terminate(Reason, State) -> any() when
-    Reason  :: normal | shutdown | {shutdown, term()} | term(),
-    State   :: #state{}.
 terminate(_Reason, State) ->
     terminate_children(State).
 

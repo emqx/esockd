@@ -46,12 +46,12 @@
 -define(ACCEPTOR_POOL, 16).
 
 %% @doc Start Listener
--spec start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
+-spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
     Protocol    :: atom(),
     ListenOn    :: esockd:listen_on(),
     Options	    :: [esockd:option()],
     AcceptorSup :: pid(),
-    Logger      :: gen_logger:logmod().
+    Logger      :: gen_logger:logmod()).
 start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
     gen_server:start_link(?MODULE, {Protocol, ListenOn, Options, AcceptorSup, Logger}, []).
 

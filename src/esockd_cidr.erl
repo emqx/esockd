@@ -31,6 +31,8 @@
 
 -module(esockd_cidr).
 
+-author("Feng Lee <feng@emqtt.io>").
+
 -export([parse/1, parse/2, match/2, count/1, to_string/1, is_ipv4/1, is_ipv6/1]).
 
 -type(cidr_string() :: string()).

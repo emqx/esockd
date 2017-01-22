@@ -27,13 +27,15 @@
 
 -module(esockd_gen).
 
+-author("Feng Lee <feng@emqtt.io>").
+
 -export([send_fun/1, async_send_fun/1]).
 
--spec send_fun(esockd_connection:connection()) -> fun().
+-spec(send_fun(esockd_connection:connection()) -> fun()).
 send_fun(Connection) ->
      fun(Data) -> Connection:send(Data) end.
 
--spec async_send_fun(esockd_connection:connection()) -> fun().
+-spec(async_send_fun(esockd_connection:connection()) -> fun()).
 async_send_fun(Connection) ->
     fun(Data) ->
         try Connection:async_send(Data) of

@@ -40,11 +40,11 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start Listener Supervisor
--spec start_link(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} when
-    Protocol  :: atom(),
-    ListenOn  :: esockd:listen_on(),
-    Options	  :: [esockd:option()],
-    MFArgs    :: esockd:mfargs().
+-spec(start_link(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} when
+    Protocol :: atom(),
+    ListenOn :: esockd:listen_on(),
+    Options	 :: [esockd:option()],
+    MFArgs   :: esockd:mfargs()).
 start_link(Protocol, ListenOn, Options, MFArgs) ->
     Logger = logger(Options),
     {ok, Sup} = supervisor:start_link(?MODULE, []),

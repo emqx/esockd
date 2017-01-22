@@ -46,6 +46,8 @@
 %% tcp -> sslsocket
 -export([ssl_upgrade_fun/1]).
 
+-type(sock() :: inet:socket() | esockd:ssl_socket()).
+
 -define(SSL_CLOSE_TIMEOUT, 5000).
 
 -define(SSL_HANDSHAKE_TIMEOUT, 15000).
@@ -55,31 +57,31 @@
 %%------------------------------------------------------------------------------
 
 %% @doc socket type: tcp | ssl
--spec type(inet:socket() | esockd:ssl_socket()) -> tcp | ssl.
+-spec(type(inet:socket() | esockd:ssl_socket()) -> tcp | ssl).
 type(Sock) when is_port(Sock) ->
     tcp;
 type(#ssl_socket{ssl = _SslSock})  ->
     ssl.
 
 %% @doc Listen
--spec listen(Port, SockOpts) -> {ok, Sock} | {error, Reason :: any()} when
-    Port      :: inet:port_number(),
-    SockOpts  :: [gen_tcp:listen_option()],
-    Sock      :: inet:socket().
+-spec(listen(Port, SockOpts) -> {ok, Sock} | {error, Reason :: any()} when
+    Port     :: inet:port_number(),
+    SockOpts :: [gen_tcp:listen_option()],
+    Sock     :: inet:socket()).
 listen(Port, SockOpts) ->
     gen_tcp:listen(Port, SockOpts).
 
 %% @doc Set Controlling Process of Socket
--spec controlling_process(Sock, NewOwener) -> ok | {error, Reason :: any()} when
-    Sock      :: inet:socket() | esockd:ssl_socket(),
-    NewOwener :: pid().
+-spec(controlling_process(Sock, NewOwener) -> ok | {error, Reason :: any()} when
+    Sock      :: sock(),
+    NewOwener :: pid()).
 controlling_process(Sock, NewOwner) when is_port(Sock) ->
     inet:tcp_controlling_process(Sock, NewOwner);
 controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
     ssl:controlling_process(SslSock, NewOwner).
 
 %% @doc Close Sock
--spec close(Sock :: inet:socket() | esockd:ssl_socket()) -> ok.
+-spec(close(Sock :: sock()) -> ok).
 close(Sock) when is_port(Sock) ->
     gen_tcp:close(Sock);
 close(#ssl_socket{ssl = SslSock}) ->
@@ -112,9 +114,9 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
     catch port_close(Sock), ok.
 
 %% @doc Send data
--spec send(Sock, Data) -> ok when
-    Sock :: inet:socket() | esockd:ssl_socket(),
-    Data :: iolist().
+-spec(send(Sock, Data) -> ok when
+    Sock :: sock(),
+    Data :: iolist()).
 send(Sock, Data) when is_port(Sock) ->
     gen_tcp:send(Sock, Data);
 send(#ssl_socket{ssl = SslSock}, Data) ->
@@ -130,38 +132,38 @@ port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
     end.
 
 %% @doc Receive Data
--spec recv(Sock, Length) -> {ok, Data} | {error, Reason :: any()} when
-    Sock   :: inet:socket() | esockd:ssl_socket(),
+-spec(recv(Sock, Length) -> {ok, Data} | {error, Reason :: any()} when
+    Sock   :: sock(),
     Length :: non_neg_integer(),
-    Data   :: [char()] | binary().
+    Data   :: [char()] | binary()).
 recv(Sock, Length) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length);
 recv(#ssl_socket{ssl = SslSock}, Length)  ->
     ssl:recv(SslSock, Length).
 
--spec recv(Sock, Length, Timout) -> {ok, Data} | {error, closed | atom()} when
-    Sock    :: inet:socket() | esockd:ssl_socket(),
-    Length  :: non_neg_integer(),
-    Timout  :: timeout(),
-    Data    :: [char()] | binary().
+-spec(recv(Sock, Length, Timout) -> {ok, Data} | {error, closed | atom()} when
+    Sock   :: sock(),
+    Length :: non_neg_integer(),
+    Timout :: timeout(),
+    Data   :: [char()] | binary()).
 recv(Sock, Length, Timeout) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length, Timeout);
 recv(#ssl_socket{ssl = SslSock}, Length, Timeout)  ->
     ssl:recv(SslSock, Length, Timeout).
 
 %% @doc Async Receive data
--spec async_recv(Sock, Length) -> {ok, Ref} when
-    Sock    :: inet:socket() | esockd:ssl_socket(),
-    Length  :: non_neg_integer(),
-    Ref     :: reference().
+-spec(async_recv(Sock, Length) -> {ok, Ref} when
+    Sock   :: sock(),
+    Length :: non_neg_integer(),
+    Ref    :: reference()).
 async_recv(Sock, Length) ->
     async_recv(Sock, Length, infinity).
 
--spec async_recv(Sock, Length, Timeout) -> {ok, Ref} when
-    Sock    :: inet:socket() | esockd:ssl_socket(),
+-spec(async_recv(Sock, Length, Timeout) -> {ok, Ref} when
+    Sock    :: sock(),
     Length  :: non_neg_integer(),
     Timeout :: non_neg_integer() | infinity,
-    Ref     :: reference().
+    Ref     :: reference()).
 async_recv(Sock = #ssl_socket{ssl = SslSock}, Length, Timeout) ->
     Self = self(),
     Ref = make_ref(),
@@ -187,39 +189,39 @@ setopts(#ssl_socket{ssl = SslSock}, Options) ->
     ssl:setopts(SslSock, Options).
 
 %% @doc Get socket stats
--spec getstat(Sock, Stats) -> {ok, Values} | {error, any()} when
-    Sock   :: inet:socket() | esockd:ssl_socket(),
+-spec(getstat(Sock, Stats) -> {ok, Values} | {error, any()} when
+    Sock   :: sock(),
     Stats  :: list(),
-    Values :: list().
+    Values :: list()).
 getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
 getstat(#ssl_socket{tcp = Sock}, Stats) ->
     inet:getstat(Sock, Stats).
 
 %% @doc Sock name
--spec sockname(Sock) -> {ok, {Address, Port}} | {error, any()} when
-    Sock    :: inet:socket() | esockd:ssl_socket(),
+-spec(sockname(Sock) -> {ok, {Address, Port}} | {error, any()} when
+    Sock    :: sock(),
     Address :: inet:ip_address(),
-    Port    :: inet:port_number().
+    Port    :: inet:port_number()).
 sockname(Sock) when is_port(Sock) ->
     inet:sockname(Sock);
 sockname(#ssl_socket{ssl = SslSock}) ->
     ssl:sockname(SslSock).
 
 %% @doc Socket peername
--spec peername(Sock) -> {ok, {Address, Port}} | {error, any()} when
-    Sock  :: inet:socket() | esockd:ssl_socket(),
+-spec(peername(Sock) -> {ok, {Address, Port}} | {error, any()} when
+    Sock    :: sock(),
     Address :: inet:ip_address(),
-    Port    :: inet:port_number().
+    Port    :: inet:port_number()).
 peername(Sock) when is_port(Sock) ->
     inet:peername(Sock);
 peername(#ssl_socket{ssl = SslSock}) ->
     ssl:peername(SslSock).
 
 %% @doc Shutdown socket
--spec shutdown(Sock, How) -> ok | {error, Reason :: any()} when
-    Sock :: inet:socket() | esockd:ssl_socket(),
-    How  :: read | write | read_write.
+-spec(shutdown(Sock, How) -> ok | {error, Reason :: any()} when
+    Sock :: sock(),
+    How  :: read | write | read_write).
 shutdown(Sock, How) when is_port(Sock) ->
     gen_tcp:shutdown(Sock, How);
 shutdown(#ssl_socket{ssl = SslSock}, How) ->
