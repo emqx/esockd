@@ -9,6 +9,7 @@ EUNIT_OPTS = verbose
 
 CT_SUITES = esockd
 
+ERLC_OPTS += +debug_info
 ERLC_OPTS += +'{parse_transform, lager_transform}'
 
 #COVER = true
