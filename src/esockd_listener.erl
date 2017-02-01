@@ -62,7 +62,7 @@ init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
     SockOpts = merge_addr(ListenOn, proplists:get_value(sockopts, Options, [{reuseaddr, true}])),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
-            SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
+            SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(sslopts, Options)),
 			AcceptorNum = proplists:get_value(acceptors, Options, ?ACCEPTOR_POOL),
 			lists:foreach(fun (_) ->
 				{ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock, SockFun)
