@@ -34,7 +34,8 @@
 -export([new/3, start_link/2, go/2, wait/1, upgrade/1]).
 
 -export([transport/1, sock/1, opts/1, type/1, getopts/2, setopts/2,
-         getstat/2, controlling_process/2, peername/1, sockname/1]).
+         getstat/2, controlling_process/2, peername/1, sockname/1,
+         peercert/1]).
 
 -export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
          shutdown/2, close/1, fast_close/1]).
@@ -151,6 +152,10 @@ sockname(?CONN_MOD(Sock)) ->
     Port    :: inet:port_number()).
 peername(?CONN_MOD(Sock)) ->
     ?Transport:peername(Sock).
+
+-spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+peercert(?CONN_MOD(Sock)) ->
+    ?Transport:peercert(Sock).
 
 %% @doc Get socket options
 getopts(Keys, ?CONN_MOD(Sock)) ->

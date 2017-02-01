@@ -41,7 +41,7 @@
 
 -export([getopts/2, setopts/2, getstat/2]).
 
--export([sockname/1, peername/1, shutdown/2]).
+-export([sockname/1, peername/1, peercert/1, shutdown/2]).
 
 %% tcp -> sslsocket
 -export([ssl_upgrade_fun/1]).
@@ -217,6 +217,13 @@ peername(Sock) when is_port(Sock) ->
     inet:peername(Sock);
 peername(#ssl_socket{ssl = SslSock}) ->
     ssl:peername(SslSock).
+
+%% @doc Socket peercert
+-spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+peercert(Sock) when is_port(Sock) ->
+    nossl;
+peercert(#ssl_socket{ssl = SslSock}) ->
+    ssl:peercert(SslSock).
 
 %% @doc Shutdown socket
 -spec(shutdown(Sock, How) -> ok | {error, Reason :: any()} when
