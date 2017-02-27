@@ -248,6 +248,10 @@ ssl_upgrade_fun(SslOpts) ->
             {error, Reason} when Reason == closed; Reason == timeout ->
                 fast_close(Sock),
                 {error, Reason};
+            %%FIXME: ignore tls_alert?
+            {error, {tls_alert, _}} ->
+                fast_close(Sock),
+                {error, tls_alert};
             {error, Reason} ->
                 fast_close(Sock),
                 {error, {ssl_error, Reason}};

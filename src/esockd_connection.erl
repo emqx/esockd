@@ -111,6 +111,8 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
             {ok, {?MODULE, [NewSock, SockFun, Opts]}};
+        {error, tls_alert} ->
+            exit(normal);
         {error, closed} ->
             exit(normal);
         {error, timeout} ->
