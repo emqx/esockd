@@ -63,12 +63,11 @@
                     | {shutdown, brutal_kill | infinity | pos_integer()}
                     | {tune_buffer, false | true}
                     | {logger, gen_logger:logcfg()}
-                    | {ssl, list()} %%TODO: [ssl:ssloption()]
+                    | {sslopts, [ssl:ssl_option()]}
                     | {sockopts, [gen_tcp:listen_option()]}).
 -type(listen_on() :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}).
 
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0,
-              listen_on/0]).
+-export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0, listen_on/0]).
 
 %%------------------------------------------------------------------------------
 %% API
