@@ -2,6 +2,18 @@
 eSockd ChangeLog
 ================
 
+4.2    (2017/02/06)
+-------------------
+
+API Breaking Change '{ssl, list()}' to '{sslopts, [ssl:ssl_option()]}'
+
+Add esockd_connection:peercert/1, esockd_transport:peercert/1 functions
+
+4.1.1    (2017/01/06)
+---------------------
+
+Fast close the TCP socket if ssl:ssl_accept failed (#41)
+
 4.1-beta (2016/06/30)
 ---------------------
 

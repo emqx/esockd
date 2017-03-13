@@ -36,11 +36,12 @@
                     timeout_msg,
                     timer_ref}).
 
--type keepalive() :: #keepalive{}.
+-type(keepalive() :: #keepalive{}).
 
 %% @doc Start keepalive
--spec start(esockd_connection:connection(), pos_integer(), any()) ->
-        {ok, keepalive()} | {error, any()}.
+-spec(start(esockd_connection:connection(), pos_integer(), any()) ->
+        {ok, keepalive()}
+      | {error, any()}).
 start(Connection, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
     with_sock_stats(Connection, fun(RecvOct) ->
         Ms = timer:seconds(TimeoutSec),
@@ -53,7 +54,7 @@ start(Connection, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
     end).
 
 %% @doc Try to resume keepalive, called when timeout
--spec resume(keepalive()) -> timeout | {resumed, keepalive()}.
+-spec(resume(keepalive()) -> timeout | {resumed, keepalive()}).
 resume(KeepAlive = #keepalive {connection   = Connection,
                                recv_oct     = RecvOct,
                                timeout_msec = Ms,
@@ -71,7 +72,7 @@ resume(KeepAlive = #keepalive {connection   = Connection,
     end).
 
 %% @doc Cancel Keepalive
--spec cancel(keepalive()) -> any().
+-spec(cancel(keepalive()) -> any()).
 cancel(#keepalive{timer_ref = Ref}) ->
     cancel(Ref);
 cancel(undefined) -> 

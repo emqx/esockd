@@ -24,6 +24,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(esockd_connection).
 
 -author("Feng Lee <feng@emqtt.io>").
@@ -32,15 +33,16 @@
 
 -export([new/3, start_link/2, go/2, wait/1, upgrade/1]).
 
--export([transport/1, sock/1, opts/1, type/1, getopts/2, setopts/2, getstat/2,
-         controlling_process/2, peername/1, sockname/1]).
+-export([transport/1, sock/1, opts/1, type/1, getopts/2, setopts/2,
+         getstat/2, controlling_process/2, peername/1, sockname/1,
+         peercert/1]).
 
 -export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
          shutdown/2, close/1, fast_close/1]).
 
--type parameter() :: any().
+-type(parameter() :: any()).
 
--type connection() :: {?MODULE, list(parameter())}.
+-type(connection() :: {?MODULE, list(parameter())}).
 
 -export_type([connection/0]).
 
@@ -55,10 +57,10 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Create a connection
--spec new(Sock, SockFun, Opts) -> connection() when
+-spec(new(Sock, SockFun, Opts) -> connection() when
     Sock    :: inet:socket(),
     SockFun :: esockd:sock_fun(),
-    Opts    :: list(atom()|tuple()).
+    Opts    :: list(atom()|tuple())).
 new(Sock, SockFun, Opts) ->
     {?MODULE, [Sock, SockFun, parse_opt(Opts)]}.
 
@@ -76,9 +78,9 @@ parse_rl(Str) ->
     esockd_ratelimit:new(Burst, Rate).
 
 %% @doc Start the connection process.
--spec start_link(esockd:mfargs(), connection()) -> {ok, pid()}
+-spec(start_link(esockd:mfargs(), connection()) -> {ok, pid()}
                                                  | {error, any()}
-                                                 | ignore.
+                                                 | ignore).
 start_link(M, Conn = ?CONN_MOD) when is_atom(M) ->
     M:start_link(Conn);
 
@@ -90,25 +92,27 @@ start_link({M, F, Args}, Conn = ?CONN_MOD)
     erlang:apply(M, F, [Conn|Args]).
 
 %% @doc Tell the connection proccess that socket is ready. Called by acceptor.
--spec go(pid(), connection()) -> any().
+-spec(go(pid(), connection()) -> any()).
 go(Pid, Conn = ?CONN_MOD) ->
     Pid ! {go, Conn}.
 
 %% @doc Connection process wait for 'go' and upgrade self.
 %%      Called by connection process.
 %% @end
--spec wait(connection()) -> {ok, connection()}.
+-spec(wait(connection()) -> {ok, connection()}).
 wait(Conn = ?CONN_MOD) ->
 	receive {go, Conn} -> upgrade(Conn) end.
 
 %% @doc Upgrade Socket.
 %%      Called by connection proccess.
 %% @end
--spec upgrade(connection()) -> {ok, connection()}.
+-spec(upgrade(connection()) -> {ok, connection()}).
 upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
             {ok, {?MODULE, [NewSock, SockFun, Opts]}};
+        {error, tls_alert} ->
+            exit(normal);
         {error, closed} ->
             exit(normal);
         {error, timeout} ->
@@ -118,38 +122,42 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     end.
 
 %% @doc Transport of the connection.
--spec transport(connection()) -> atom().
+-spec(transport(connection()) -> atom()).
 transport({?MODULE, [_Sock, _SockFun, _Opts]}) ->
     ?Transport.
 
 %% @doc Socket of the connection. 
--spec sock(connection()) -> inet:socket() | esockd:ssl_socket().
+-spec(sock(connection()) -> inet:socket() | esockd:ssl_socket()).
 sock({?MODULE, [Sock, _SockFun, _Opts]}) ->
     Sock.
 
 %% @doc Connection options
--spec opts(connection()) -> list(atom() | tuple()).
+-spec(opts(connection()) -> list(atom() | tuple())).
 opts({?MODULE, [_Sock, _SockFun, Opts]}) ->
     Opts.
 
 %% @doc Socket type of the connection.
--spec type(connection()) -> tcp | ssl.
+-spec(type(connection()) -> tcp | ssl).
 type(?CONN_MOD(Sock)) ->
     ?Transport:type(Sock).
 
 %% @doc Sockname of the connection.
--spec sockname(connection()) -> {ok, {Address, Port}} | {error, any()} when
+-spec(sockname(connection()) -> {ok, {Address, Port}} | {error, any()} when
     Address :: inet:ip_address(),
-    Port    :: inet:port_number().
+    Port    :: inet:port_number()).
 sockname(?CONN_MOD(Sock)) ->
     ?Transport:sockname(Sock).
 
 %% @doc Peername of the connection.
--spec peername(connection()) -> {ok, {Address, Port}} | {error, any()} when
+-spec(peername(connection()) -> {ok, {Address, Port}} | {error, any()} when
     Address :: inet:ip_address(),
-    Port    :: inet:port_number().
+    Port    :: inet:port_number()).
 peername(?CONN_MOD(Sock)) ->
     ?Transport:peername(Sock).
+
+-spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+peercert(?CONN_MOD(Sock)) ->
+    ?Transport:peercert(Sock).
 
 %% @doc Get socket options
 getopts(Keys, ?CONN_MOD(Sock)) ->
@@ -164,17 +172,17 @@ getstat(Stats, ?CONN_MOD(Sock)) ->
     ?Transport:getstat(Sock, Stats).
 
 %% @doc Controlling Process of Connection
--spec controlling_process(pid(), connection()) -> any().
+-spec(controlling_process(pid(), connection()) -> any()).
 controlling_process(Owner, ?CONN_MOD(Sock)) ->
     ?Transport:controlling_process(Sock, Owner).
 
 %% @doc Send data
--spec send(iodata(), connection()) -> ok.
+-spec(send(iodata(), connection()) -> ok).
 send(Data, ?CONN_MOD(Sock)) ->
     ?Transport:send(Sock, Data).
 
 %% @doc Send data asynchronously by port_command/2
--spec async_send(iodata(), connection()) -> ok.
+-spec(async_send(iodata(), connection()) -> ok).
 async_send(Data, ?CONN_MOD(Sock)) ->
     ?Transport:port_command(Sock, Data).
 
@@ -193,18 +201,18 @@ async_recv(Length, Timeout, ?CONN_MOD(Sock)) ->
     ?Transport:async_recv(Sock, Length, Timeout).
 
 %% @doc Shutdown connection
--spec shutdown(How, connection()) -> ok | {error, Reason :: any()} when
-    How :: read | write | read_write.
+-spec(shutdown(How, connection()) -> ok | {error, Reason :: any()} when
+    How :: read | write | read_write).
 shutdown(How, ?CONN_MOD(Sock)) ->
     ?Transport:shutdown(Sock, How).
 
 %% @doc Close socket
--spec close(connection()) -> ok.
+-spec(close(connection()) -> ok).
 close(?CONN_MOD(Sock)) ->
     ?Transport:close(Sock).
 
 %% @doc Close socket by port_close
--spec fast_close(connection()) -> ok.
+-spec(fast_close(connection()) -> ok).
 fast_close(?CONN_MOD(Sock)) ->
     ?Transport:fast_close(Sock).
 

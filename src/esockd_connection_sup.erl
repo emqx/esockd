@@ -28,9 +28,11 @@
 
 -module(esockd_connection_sup).
 
+-behaviour(gen_server).
+
 -author("Feng Lee <feng@emqtt.io>").
 
--behaviour(gen_server).
+-import(proplists, [get_value/3]).
 
 %% API Exports
 -export([start_link/3, start_connection/4, count_connections/1]).
@@ -52,23 +54,25 @@
 -define(SETS, sets).
 -define(MAX_CLIENTS, 1024).
 
--record(state, {curr_clients = 0,
-                max_clients  = ?MAX_CLIENTS,
-                conn_opts    = [],
-                access_rules = [],
-                shutdown     = brutal_kill,
-                mfargs,
-                logger}).
+-record(state,
+        { curr_clients = 0,
+          max_clients  = ?MAX_CLIENTS,
+          conn_opts    = [],
+          access_rules = [],
+          shutdown     = brutal_kill,
+          mfargs,
+          logger
+        }).
 
 %%------------------------------------------------------------------------------
 %% API
 %%------------------------------------------------------------------------------
 
 %% @doc Start connection supervisor.
--spec start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
+-spec(start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
     Options :: [esockd:option()],
     MFArgs  :: esockd:mfargs(),
-    Logger  :: gen_logger:logmod().
+    Logger  :: gen_logger:logmod()).
 start_link(Options, MFArgs, Logger) ->
     gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
 
@@ -114,10 +118,10 @@ call(Sup, Req) ->
 
 init([Options, MFArgs, Logger]) ->
     process_flag(trap_exit, true),
-    Shutdown    = proplists:get_value(shutdown, Options, brutal_kill),
-    MaxClients  = proplists:get_value(max_clients, Options, ?MAX_CLIENTS),
-    ConnOpts    = proplists:get_value(connopts, Options, []),
-    RawRules    = proplists:get_value(access, Options, [{allow, all}]),
+    Shutdown    = get_value(shutdown, Options, brutal_kill),
+    MaxClients  = get_value(max_clients, Options, ?MAX_CLIENTS),
+    ConnOpts    = get_value(connopts, Options, []),
+    RawRules    = get_value(access, Options, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
     {ok, #state{max_clients  = MaxClients,
                 conn_opts    = ConnOpts,
@@ -206,9 +210,6 @@ handle_info(Info, State = #state{logger = Logger}) ->
     Logger:error("Bad INFO: ~p", [Info]),
     {noreply, State}.
 
--spec terminate(Reason, State) -> any() when
-    Reason  :: normal | shutdown | {shutdown, term()} | term(),
-    State   :: #state{}.
 terminate(_Reason, State) ->
     terminate_children(State).
 
