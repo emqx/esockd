@@ -51,22 +51,22 @@ start(Port) ->
     {ok, _} = esockd:open('echo/ssl', Port, Opts, ssl_echo_server).
 
 start_link(Conn) ->
-	{ok, spawn_link(?MODULE, init, [Conn])}.
+    {ok, spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
     {ok, NewConn} = Conn:wait(),
     loop(NewConn).
 
 loop(Conn) ->
-	case Conn:recv(0) of
-		{ok, Data} ->
-			{ok, PeerName} = Conn:peername(),
+    case Conn:recv(0) of
+        {ok, Data} ->
+            {ok, PeerName} = Conn:peername(),
             io:format("~s - ~p~n", [esockd_net:format(peername, PeerName), Data]),
-			Conn:send(Data),
+            Conn:send(Data),
             Conn:gc(), %% Try GC?
-			loop(Conn);
-		{error, Reason} ->
-			io:format("tcp ~s~n", [Reason]),
-			{stop, Reason}
-	end. 
+            loop(Conn);
+        {error, Reason} ->
+            io:format("tcp ~s~n", [Reason]),
+            {stop, Reason}
+    end.
 
