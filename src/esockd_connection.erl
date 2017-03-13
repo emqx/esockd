@@ -40,6 +40,8 @@
 -export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
          shutdown/2, close/1, fast_close/1]).
 
+-export([gc/1]).
+
 -type(parameter() :: any()).
 
 -type(connection() :: {?MODULE, list(parameter())}).
@@ -215,4 +217,8 @@ close(?CONN_MOD(Sock)) ->
 -spec(fast_close(connection()) -> ok).
 fast_close(?CONN_MOD(Sock)) ->
     ?Transport:fast_close(Sock).
+
+%% @doc GC the SSL Connection.
+gc(?CONN_MOD(Sock)) ->
+    ?Transport:gc(Sock).
 

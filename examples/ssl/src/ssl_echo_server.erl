@@ -24,6 +24,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(ssl_echo_server).
 
 % start
@@ -62,6 +63,7 @@ loop(Conn) ->
 			{ok, PeerName} = Conn:peername(),
             io:format("~s - ~p~n", [esockd_net:format(peername, PeerName), Data]),
 			Conn:send(Data),
+            Conn:gc(), %% Try GC?
 			loop(Conn);
 		{error, Reason} ->
 			io:format("tcp ~s~n", [Reason]),

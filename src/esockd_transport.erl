@@ -33,15 +33,14 @@
 
 -export([type/1]).
 
--export([listen/2, send/2, port_command/2,
-         recv/2, recv/3,
-         async_recv/2, async_recv/3,
-         controlling_process/2,
-         close/1, fast_close/1]).
+-export([listen/2, send/2, port_command/2, recv/2, recv/3, async_recv/2, async_recv/3,
+         controlling_process/2, close/1, fast_close/1]).
 
 -export([getopts/2, setopts/2, getstat/2]).
 
 -export([sockname/1, peername/1, peercert/1, shutdown/2]).
+
+-export([gc/1]).
 
 %% tcp -> sslsocket
 -export([ssl_upgrade_fun/1]).
@@ -260,4 +259,13 @@ ssl_upgrade_fun(SslOpts) ->
                 {error, {ssl_failure, Reason}}
         end
     end.
+
+gc(Sock) when is_port(Sock) ->
+    ok;
+%% Defined in ssl/src/ssl_api.hrl:
+%% -record(sslsocket, {fd = nil, pid = nil}).
+gc(#ssl_socket{ssl = {sslsocket, _, Pid}}) when is_pid(Pid) ->
+    erlang:garbage_collect(Pid);
+gc(_Sock) ->
+    ok.
 
