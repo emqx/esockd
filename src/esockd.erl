@@ -53,21 +53,30 @@
 -export([ulimit/0, fixaddr/1, to_string/1]).
 
 -type(ssl_socket() :: #ssl_socket{}).
--type(tune_fun()   :: fun((inet:socket()) -> ok | {error, any()})).
--type(sock_fun()   :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()})).
--type(sock_args()  :: {atom(), inet:socket(), sock_fun()}).
--type(mfargs()     :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
--type(option()     :: {acceptors, pos_integer()}
-                    | {max_clients, pos_integer()}
-                    | {access, [esockd_access:rule()]}
-                    | {shutdown, brutal_kill | infinity | pos_integer()}
-                    | {tune_buffer, false | true}
-                    | {logger, gen_logger:logcfg()}
-                    | {sslopts, [ssl:ssl_option()]}
-                    | {sockopts, [gen_tcp:listen_option()]}).
+
+-type(proxy_socket() :: #proxy_socket{}).
+
+-type(tune_fun() :: fun((inet:socket()) -> ok | {error, any()})).
+
+-type(sock_fun() :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()})).
+
+-type(sock_args() :: {atom(), inet:socket(), sock_fun()}).
+
+-type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
+
+-type(option() :: {acceptors, pos_integer()}
+                | {max_clients, pos_integer()}
+                | {access, [esockd_access:rule()]}
+                | {shutdown, brutal_kill | infinity | pos_integer()}
+                | {tune_buffer, false | true}
+                | {logger, gen_logger:logcfg()}
+                | {sslopts, [ssl:ssl_option()]}
+                | {sockopts, [gen_tcp:listen_option()]}).
+
 -type(listen_on() :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}).
 
--export_type([ssl_socket/0, sock_fun/0, sock_args/0, tune_fun/0, mfargs/0, option/0, listen_on/0]).
+-export_type([ssl_socket/0, proxy_socket/0, sock_fun/0, sock_args/0, tune_fun/0,
+              mfargs/0, option/0, listen_on/0]).
 
 %%------------------------------------------------------------------------------
 %% API

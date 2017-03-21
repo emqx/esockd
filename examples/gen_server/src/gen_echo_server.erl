@@ -43,11 +43,11 @@
 -record(state, {conn}).
 
 -define(TCP_OPTIONS, [
-		binary,
+        binary,
         %{buffer, 1024},
-		{reuseaddr, true},
-		{backlog, 512},
-		{nodelay, false}]).
+        {reuseaddr, true},
+        {backlog, 512},
+        {nodelay, false}]).
 
 start() ->
     start(5000).
@@ -64,7 +64,7 @@ start(Port) when is_integer(Port) ->
     esockd:open(echo, Port, SockOpts, MFArgs).
 
 start_link(Conn) ->
-	{ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
+    {ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
     {ok, Conn1} = Conn:wait(),
@@ -78,19 +78,21 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({tcp, Sock, Data}, State=#state{conn = ?ESOCK(Sock) = Conn}) ->
-	{ok, PeerName} = Conn:peername(),
-	io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-	Conn:send(Data),
-	Conn:setopts([{active, once}]),
+    io:format("Data from: ~p~n", [Sock]),
+    {ok, PeerName} = Conn:peername(),
+    io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
+    Conn:send(Data),
+    Conn:setopts([{active, once}]),
     {noreply, State};
 
 handle_info({tcp_error, Sock, Reason}, State=#state{conn = ?ESOCK(Sock)}) ->
-	io:format("tcp_error: ~s~n", [Reason]),
+    io:format("Error from: ~p~n", [Sock]),
+    io:format("tcp_error: ~s~n", [Reason]),
     {stop, {shutdown, {tcp_error, Reason}}, State};
 
 handle_info({tcp_closed, Sock}, State=#state{conn = ?ESOCK(Sock)}) ->
-	io:format("tcp_closed~n"),
-	{stop, normal, State};
+    io:format("tcp_closed~n"),
+    {stop, normal, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.

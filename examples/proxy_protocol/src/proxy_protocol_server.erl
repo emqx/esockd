@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
+%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(proxy_protocol_server).
 
 -include("../../../include/esockd.hrl").
@@ -42,25 +43,14 @@
 
 -record(state, {conn}).
 
--define(TCP_OPTIONS, [
-		binary,
-        %{buffer, 1024},
-		{reuseaddr, true},
-		{backlog, 512},
-		{nodelay, false}]).
-
-start() ->
-    start(5000).
+start() -> start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
     application:start(sasl),
     ok = esockd:start(),
-    SockOpts = [{acceptors, 32},
-                {max_clients, 1000000},
-                {sockopts, ?TCP_OPTIONS},
-                {connopts, [{proxy_protocol, 1}]}],
+    SockOpts = [{sockopts, [binary]}, {connopts, [{proxy_protocol, 2}]}],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
@@ -81,6 +71,8 @@ handle_cast(_Msg, State) ->
 
 handle_info({tcp, _Sock, Data}, State=#state{conn = Conn}) ->
 	{ok, PeerName} = Conn:peername(),
+	{ok, SockName} = Conn:sockname(),
+    io:format("Data from ~p to ~p~n", [PeerName, SockName]),
 	io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
 	Conn:send(Data),
 	Conn:setopts([{active, once}]),
@@ -103,3 +95,4 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+
