@@ -1,0 +1,14 @@
+{application, proxy_protocol_server,
+ [
+  {description, "proxy_protocol echo example"},
+  {vsn, "1"},
+  {modules, [
+             proxy_protocol_server
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.

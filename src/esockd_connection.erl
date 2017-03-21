@@ -112,7 +112,19 @@ wait(Conn = ?CONN_MOD) ->
 upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
-            {ok, {?MODULE, [NewSock, SockFun, Opts]}};
+            case lists:keymember(proxy_protocol, 1, Opts) of
+                true ->
+                    case esockd_proxy_proto:parse(NewSock, Opts) of
+                        ignore ->
+                            {ok, {?MODULE, [NewSock, SockFun, Opts]}};
+                        {ok, ProxySock} ->
+                            {ok, {?MODULE, [ProxySock, SockFun, Opts]}};
+                        {error, Reason} ->
+                            erlang:error(Reason)
+                    end;
+                false ->
+                    {ok, {?MODULE, [NewSock, SockFun, Opts]}}
+            end;
         {error, tls_alert} ->
             exit(normal);
         {error, closed} ->

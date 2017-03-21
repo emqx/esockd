@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2017, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2014-2015, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -20,11 +20,11 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% Simple Echo Server.
+%%% Proxy Protcol Echo Server.
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
--module(gen_echo_server).
+-module(proxy_protocol_server).
 
 -include("../../../include/esockd.hrl").
 
@@ -59,7 +59,8 @@ start(Port) when is_integer(Port) ->
     ok = esockd:start(),
     SockOpts = [{acceptors, 32},
                 {max_clients, 1000000},
-                {sockopts, ?TCP_OPTIONS}],
+                {sockopts, ?TCP_OPTIONS},
+                {connopts, [{proxy_protocol, 1}]}],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
@@ -68,6 +69,7 @@ start_link(Conn) ->
 
 init(Conn) ->
     {ok, Conn1} = Conn:wait(),
+    io:format("Proxy Conn: ~p~n", [Conn1]),
     Conn1:setopts([{active, once}]),
     gen_server:enter_loop(?MODULE, [], #state{conn = Conn1}).
 
@@ -77,22 +79,23 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, State=#state{conn = ?ESOCK(Sock) = Conn}) ->
+handle_info({tcp, _Sock, Data}, State=#state{conn = Conn}) ->
 	{ok, PeerName} = Conn:peername(),
 	io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
 	Conn:send(Data),
 	Conn:setopts([{active, once}]),
     {noreply, State};
 
-handle_info({tcp_error, Sock, Reason}, State=#state{conn = ?ESOCK(Sock)}) ->
+handle_info({tcp_error, _Sock, Reason}, State=#state{conn = _Conn}) ->
 	io:format("tcp_error: ~s~n", [Reason]),
     {stop, {shutdown, {tcp_error, Reason}}, State};
 
-handle_info({tcp_closed, Sock}, State=#state{conn = ?ESOCK(Sock)}) ->
+handle_info({tcp_closed, _Sock}, State=#state{conn = _Conn}) ->
 	io:format("tcp_closed~n"),
 	{stop, normal, State};
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    io:format("Unexpected Info: ~p~n", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->
