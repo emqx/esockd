@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2012-2015, Feng Lee <feng@emqtt.io>
+%%% @Copyright (C) 2012-2017, Feng Lee <feng@emqtt.io>
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -24,6 +24,7 @@
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
+
 -module(ssl_echo_server).
 
 % start
@@ -44,27 +45,28 @@ start(Port) ->
                {keyfile,  "./crt/demo.key"}],
     SockOpts = [binary, {reuseaddr, true}],
     Opts = [{acceptors, 4},
-            {max_clients, 1000}, 
-            {ssl, SslOpts},
+            {max_clients, 1000},
+            {sslopts, SslOpts},
             {sockopts, SockOpts}],
     {ok, _} = esockd:open('echo/ssl', Port, Opts, ssl_echo_server).
 
 start_link(Conn) ->
-	{ok, spawn_link(?MODULE, init, [Conn])}.
+    {ok, spawn_link(?MODULE, init, [Conn])}.
 
 init(Conn) ->
     {ok, NewConn} = Conn:wait(),
     loop(NewConn).
 
 loop(Conn) ->
-	case Conn:recv(0) of
-		{ok, Data} ->
-			{ok, PeerName} = Conn:peername(),
+    case Conn:recv(0) of
+        {ok, Data} ->
+            {ok, PeerName} = Conn:peername(),
             io:format("~s - ~p~n", [esockd_net:format(peername, PeerName), Data]),
-			Conn:send(Data),
-			loop(Conn);
-		{error, Reason} ->
-			io:format("tcp ~s~n", [Reason]),
-			{stop, Reason}
-	end. 
+            Conn:send(Data),
+            Conn:gc(), %% Try GC?
+            loop(Conn);
+        {error, Reason} ->
+            io:format("tcp ~s~n", [Reason]),
+            {stop, Reason}
+    end.
 

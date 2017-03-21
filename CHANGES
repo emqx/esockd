@@ -2,10 +2,19 @@
 eSockd ChangeLog
 ================
 
-5.0-beta (2017/01/20)
+5.0-beta (2017/03/25)
 ---------------------
 
 Proxy Protocol(http://www.haproxy.org/download/1.5/doc/proxy-protocol.txt)
+
+4.2    (2017/03/14)
+-------------------
+
+API Breaking Change '{ssl, list()}' to '{sslopts, [ssl:ssl_option()]}'
+
+Add esockd_connection:peercert/1, esockd_transport:peercert/1 functions
+
+Add esockd_connection:gc/1, esockd_transport:gc/1 functions.
 
 4.1.1    (2017/01/06)
 ---------------------

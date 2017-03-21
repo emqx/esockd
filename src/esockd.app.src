@@ -10,5 +10,8 @@
                   gen_logger
                  ]},
   {mod, {esockd_app, []}},
-  {env, [{logger, {error_logger, info}}]}
+  {env, [{logger, {error_logger, info}}]},
+  {maintainers, ["Feng Lee <feng@emqtt.io>"]},
+  {licenses, ["MIT"]},
+  {links, [{"Github", "https://github.com/emqtt/esockd"}]}
 ]}.

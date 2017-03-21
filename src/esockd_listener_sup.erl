@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -40,11 +40,11 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start Listener Supervisor
--spec start_link(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} when
-    Protocol  :: atom(),
-    ListenOn  :: esockd:listen_on(),
-    Options	  :: [esockd:option()],
-    MFArgs    :: esockd:mfargs().
+-spec(start_link(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} when
+    Protocol :: atom(),
+    ListenOn :: esockd:listen_on(),
+    Options	 :: [esockd:option()],
+    MFArgs   :: esockd:mfargs()).
 start_link(Protocol, ListenOn, Options, MFArgs) ->
     Logger = logger(Options),
     {ok, Sup} = supervisor:start_link(?MODULE, []),
@@ -83,7 +83,7 @@ child_pid(Sup, ChildId) ->
 %%------------------------------------------------------------------------------
 
 init([]) ->
-    {ok, {{rest_for_one, 10, 100}, []}}.
+    {ok, {{rest_for_one, 10, 3600}, []}}.
 
 %%------------------------------------------------------------------------------
 %% Internal functions

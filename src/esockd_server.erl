@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -54,12 +54,12 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start esockd server.
--spec start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}.
+-spec(start_link() -> {ok, Pid :: pid()} | ignore | {error, any()}).
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
 
 %% @doc New Stats Fun.
--spec stats_fun({atom(), esockd:listen_on()}, atom()) -> fun().
+-spec(stats_fun({atom(), esockd:listen_on()}, atom()) -> fun()).
 stats_fun({Protocol, ListenOn}, Metric) ->
     init_stats({Protocol, ListenOn}, Metric),
     fun({inc, Num}) -> esockd_server:inc_stats({Protocol, ListenOn}, Metric, Num);
@@ -67,18 +67,18 @@ stats_fun({Protocol, ListenOn}, Metric) ->
     end.
 
 %% @doc Get Stats.
--spec get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}].
+-spec(get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
     [{Metric, Val} || [Metric, Val]
                       <- ets:match(?STATS_TAB, {{{Protocol, ListenOn}, '$1'}, '$2'})].
 
 %% @doc Inc Stats.
--spec inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any().
+-spec(inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 inc_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, Num).
     
 %% @doc Dec Stats.
--spec dec_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any().
+-spec(dec_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 dec_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, -Num).
 
@@ -88,12 +88,12 @@ update_counter(Key, Num) ->
     ets:update_counter(?STATS_TAB, Key, {2, Num}).
 
 %% @doc Init Stats.
--spec init_stats({atom(), esockd:listen_on()}, atom()) -> ok.
+-spec(init_stats({atom(), esockd:listen_on()}, atom()) -> ok).
 init_stats({Protocol, ListenOn}, Metric) ->
     gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
 
 %% @doc Del Stats.
--spec del_stats({atom(), esockd:listen_on()}) -> ok.
+-spec(del_stats({atom(), esockd:listen_on()}) -> ok).
 del_stats({Protocol, ListenOn}) ->
     gen_server:cast(?SERVER, {del, {Protocol, ListenOn}}).
 

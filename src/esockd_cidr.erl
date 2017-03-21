@@ -1,6 +1,6 @@
 %%%-----------------------------------------------------------------------------
 %%% Copyright (c) 2016 Benoît Chesneau <benoitc@refuge.io>
-%%% Copyright (c) 2016 Feng Lee <feng@emqtt.io>.
+%%% Copyright (c) 2016-2017 Feng Lee <feng@emqtt.io>.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -30,6 +30,8 @@
 %%%-----------------------------------------------------------------------------
 
 -module(esockd_cidr).
+
+-author("Feng Lee <feng@emqtt.io>").
 
 -export([parse/1, parse/2, match/2, count/1, to_string/1, is_ipv4/1, is_ipv6/1]).
 

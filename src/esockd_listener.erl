@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -46,12 +46,12 @@
 -define(ACCEPTOR_POOL, 16).
 
 %% @doc Start Listener
--spec start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
+-spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
     Protocol    :: atom(),
     ListenOn    :: esockd:listen_on(),
     Options	    :: [esockd:option()],
     AcceptorSup :: pid(),
-    Logger      :: gen_logger:logmod().
+    Logger      :: gen_logger:logmod()).
 start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
     gen_server:start_link(?MODULE, {Protocol, ListenOn, Options, AcceptorSup, Logger}, []).
 
@@ -62,7 +62,7 @@ init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
     SockOpts = merge_addr(ListenOn, proplists:get_value(sockopts, Options, [{reuseaddr, true}])),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
-            SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(ssl, Options)),
+            SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(sslopts, Options)),
 			AcceptorNum = proplists:get_value(acceptors, Options, ?ACCEPTOR_POOL),
 			lists:foreach(fun (_) ->
 				{ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock, SockFun)

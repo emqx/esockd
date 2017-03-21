@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -32,6 +32,8 @@
 
 -module(esockd_ratelimit).
 
+-author("Feng Lee <feng@emqtt.io>").
+
 -export([new/2, check/2]).
 
 -record(bucket, {capacity   :: pos_integer(),     %% tokens capacity
@@ -40,21 +42,21 @@
                  lastime    :: pos_integer()      %% millseconds
                 }).
 
--type bucket() :: #bucket{}.
+-type(bucket() :: #bucket{}).
 
--type ratelimit() :: {?MODULE, [bucket()]}.
+-type(ratelimit() :: {?MODULE, [bucket()]}).
 
 -export_type([ratelimit/0]).
 
 %% @doc Create rate limiter bucket.
--spec new(pos_integer(), pos_integer()) -> ratelimit().
+-spec(new(pos_integer(), pos_integer()) -> ratelimit()).
 new(Capacity, Rate) when Capacity > Rate andalso Rate > 0 ->
     Bucket = #bucket{capacity = Capacity, remaining = Capacity,
                      limitrate = Rate/1000, lastime = now_ms()},
     {?MODULE, [Bucket]}.
 
 %% @doc Check inflow bytes.
--spec check(bucket(), pos_integer()) -> {non_neg_integer(), ratelimit()}.
+-spec(check(bucket(), pos_integer()) -> {non_neg_integer(), ratelimit()}).
 check(Bytes, {?MODULE, [Bucket = #bucket{capacity = Capacity, remaining = Remaining,
                                          limitrate = Rate, lastime = Lastime}]}) ->
     Tokens = lists:min([Capacity, Remaining + round(Rate * (now_ms() - Lastime))]),
