@@ -75,10 +75,10 @@ examples/proxy_protocol | proxy protocol v1/2
 Spec:
 
     -spec(open(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, any()} when
-               Protocol  :: atom(),
-               ListenOn  :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}),
-               Options	  :: [option()],
-               MFArgs    :: esockd:mfargs()).
+               Protocol :: atom(),
+               ListenOn :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}),
+               Options  :: [option()],
+               MFArgs   :: esockd:mfargs()).
 
 Options:
 
@@ -88,7 +88,7 @@ Options:
                     | {access, [esockd_access:rule()]}
                     | {logger, atom() | {atom(), atom()}}
                     | {ssl, [ssl:ssloption()]}
-                    | {connopts, [{rate_limit, string()}]}
+                    | {connopts, [connopt()]}
                     | {sockopts, [gen_tcp:listen_option()]}).
 
 MFArgs:
