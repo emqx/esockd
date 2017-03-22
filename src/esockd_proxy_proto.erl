@@ -76,7 +76,7 @@ recv(Sock, Opts) ->
             <<?SIG, 2:4, Cmd:4, AF:4, Trans:4, Len:16>> = Header,
             {ok, ProxyInfo} = esockd_transport:recv(Sock, Len, 1000),
             esockd_transport:setopts(Sock, OriginOpts),
-            io:format("ProxyInfo V2: ~p~n", [ProxyInfo]),
+            %%io:format("ProxyInfo V2: ~p~n", [ProxyInfo]),
             parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
         {_, _Sock, ProxyInfo} ->
             esockd_transport:fast_close(Sock),

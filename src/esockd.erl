@@ -64,6 +64,11 @@
 
 -type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
 
+-type(connopt() :: {rate_limit, string()}
+                 | proxy_protocol
+                 | {proxy_protocol, boolean()}
+                 | {proxy_protocol_timeout, timeout()}).
+
 -type(option() :: {acceptors, pos_integer()}
                 | {max_clients, pos_integer()}
                 | {access, [esockd_access:rule()]}
@@ -71,6 +76,7 @@
                 | {tune_buffer, false | true}
                 | {logger, gen_logger:logcfg()}
                 | {sslopts, [ssl:ssl_option()]}
+                | {connopts, [connopt()]}
                 | {sockopts, [gen_tcp:listen_option()]}).
 
 -type(listen_on() :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}).
