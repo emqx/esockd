@@ -50,7 +50,7 @@ start([Port]) when is_atom(Port) ->
 start(Port) when is_integer(Port) ->
     application:start(sasl),
     ok = esockd:start(),
-    SockOpts = [{sockopts, [binary]}, {connopts, [{proxy_protocol, 2}]}],
+    SockOpts = [{sockopts, [binary]}, {connopts, [proxy_protocol, {proxy_protocol_timeout, 1000}]}],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
