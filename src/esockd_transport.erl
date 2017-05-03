@@ -20,7 +20,7 @@
 %%% SOFTWARE.
 %%%-----------------------------------------------------------------------------
 %%% @doc
-%%% eSockd TCP/SSL Transport
+%%% eSockd TCP/SSL or Proxy Transport
 %%%
 %%% @end
 %%%-----------------------------------------------------------------------------
@@ -45,22 +45,22 @@
 %% tcp -> sslsocket
 -export([ssl_upgrade_fun/1]).
 
--type(sock() :: inet:socket() | esockd:ssl_socket()).
+-type(sock() :: inet:socket() | esockd:ssl_socket() | esockd:proxy_socket()).
 
 -define(SSL_CLOSE_TIMEOUT, 5000).
 
 -define(SSL_HANDSHAKE_TIMEOUT, 15000).
 
-%%------------------------------------------------------------------------------
-%% API
-%%------------------------------------------------------------------------------
+-compile({no_auto_import,[port_command/2]}).
 
-%% @doc socket type: tcp | ssl
--spec(type(inet:socket() | esockd:ssl_socket()) -> tcp | ssl).
+%% @doc socket type: tcp | ssl | proxy
+-spec type(sock()) -> tcp | ssl | proxy.
 type(Sock) when is_port(Sock) ->
     tcp;
 type(#ssl_socket{ssl = _SslSock})  ->
-    ssl.
+    ssl;
+type(#proxy_socket{}) ->
+    proxy.
 
 %% @doc Listen
 -spec(listen(Port, SockOpts) -> {ok, Sock} | {error, Reason :: any()} when
@@ -84,7 +84,9 @@ controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
 close(Sock) when is_port(Sock) ->
     gen_tcp:close(Sock);
 close(#ssl_socket{ssl = SslSock}) ->
-    ssl:close(SslSock).
+    ssl:close(SslSock);
+close(#proxy_socket{socket = Sock}) ->
+    close(Sock).
 
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
@@ -110,7 +112,9 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
         {'DOWN', MRef, process, Pid, _Reason} ->
             ok
     end,
-    catch port_close(Sock), ok.
+    catch port_close(Sock), ok;
+fast_close(#proxy_socket{socket = Sock}) ->
+    fast_close(Sock).
 
 %% @doc Send data
 -spec(send(Sock, Data) -> ok when
@@ -119,7 +123,9 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
 send(Sock, Data) when is_port(Sock) ->
     gen_tcp:send(Sock, Data);
 send(#ssl_socket{ssl = SslSock}, Data) ->
-    ssl:send(SslSock, Data).
+    ssl:send(SslSock, Data);
+send(#proxy_socket{socket = Sock}, Data) ->
+    send(Sock, Data).
 
 %% @doc Port command to write data
 port_command(Sock, Data) when is_port(Sock) ->
@@ -128,7 +134,9 @@ port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
     case ssl:send(SslSock, Data) of
         ok -> self() ! {inet_reply, Sock, ok}, true;
         {error, Reason} -> erlang:error(Reason)
-    end.
+    end;
+port_command(#proxy_socket{socket = Sock}, Data) ->
+    port_command(Sock, Data).
 
 %% @doc Receive Data
 -spec(recv(Sock, Length) -> {ok, Data} | {error, Reason :: any()} when
@@ -138,7 +146,9 @@ port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
 recv(Sock, Length) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length);
 recv(#ssl_socket{ssl = SslSock}, Length)  ->
-    ssl:recv(SslSock, Length).
+    ssl:recv(SslSock, Length);
+recv(#proxy_socket{socket = Sock}, Length) ->
+    recv(Sock, Length).
 
 -spec(recv(Sock, Length, Timout) -> {ok, Data} | {error, closed | atom()} when
     Sock   :: sock(),
@@ -148,7 +158,9 @@ recv(#ssl_socket{ssl = SslSock}, Length)  ->
 recv(Sock, Length, Timeout) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length, Timeout);
 recv(#ssl_socket{ssl = SslSock}, Length, Timeout)  ->
-    ssl:recv(SslSock, Length, Timeout).
+    ssl:recv(SslSock, Length, Timeout);
+recv(#proxy_socket{socket = Sock}, Length, Timeout) ->
+    recv(Sock, Length, Timeout).
 
 %% @doc Async Receive data
 -spec(async_recv(Sock, Length) -> {ok, Ref} when
@@ -173,19 +185,25 @@ async_recv(Sock = #ssl_socket{ssl = SslSock}, Length, Timeout) ->
 async_recv(Sock, Length, infinity) when is_port(Sock) ->
     prim_inet:async_recv(Sock, Length, -1);
 async_recv(Sock, Length, Timeout) when is_port(Sock) ->
-    prim_inet:async_recv(Sock, Length, Timeout).
+    prim_inet:async_recv(Sock, Length, Timeout);
+async_recv(#proxy_socket{socket = Sock}, Length, Timeout) ->
+    async_recv(Sock, Length, Timeout).
 
 %% @doc Get socket options
 getopts(Sock, OptionNames) when is_port(Sock) ->
     inet:getopts(Sock, OptionNames);
 getopts(#ssl_socket{ssl = SslSock}, OptionNames) ->
-    ssl:getopts(SslSock, OptionNames).
+    ssl:getopts(SslSock, OptionNames);
+getopts(#proxy_socket{socket = Sock}, OptionNames) ->
+    getopts(Sock, OptionNames).
 
 %% @doc Set socket options
 setopts(Sock, Options) when is_port(Sock) ->
     inet:setopts(Sock, Options);
 setopts(#ssl_socket{ssl = SslSock}, Options) ->
-    ssl:setopts(SslSock, Options).
+    ssl:setopts(SslSock, Options);
+setopts(#proxy_socket{socket = Socket}, Options) ->
+    setopts(Socket, Options).
 
 %% @doc Get socket stats
 -spec(getstat(Sock, Stats) -> {ok, Values} | {error, any()} when
@@ -195,7 +213,9 @@ setopts(#ssl_socket{ssl = SslSock}, Options) ->
 getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
 getstat(#ssl_socket{tcp = Sock}, Stats) ->
-    inet:getstat(Sock, Stats).
+    inet:getstat(Sock, Stats);
+getstat(#proxy_socket{socket = Sock}, Stats) ->
+    getstat(Sock, Stats).
 
 %% @doc Sock name
 -spec(sockname(Sock) -> {ok, {Address, Port}} | {error, any()} when
@@ -205,7 +225,9 @@ getstat(#ssl_socket{tcp = Sock}, Stats) ->
 sockname(Sock) when is_port(Sock) ->
     inet:sockname(Sock);
 sockname(#ssl_socket{ssl = SslSock}) ->
-    ssl:sockname(SslSock).
+    ssl:sockname(SslSock);
+sockname(#proxy_socket{dst_addr = DstAddr, dst_port = DstPort}) ->
+    {ok, {DstAddr, DstPort}}.
 
 %% @doc Socket peername
 -spec(peername(Sock) -> {ok, {Address, Port}} | {error, any()} when
@@ -215,14 +237,18 @@ sockname(#ssl_socket{ssl = SslSock}) ->
 peername(Sock) when is_port(Sock) ->
     inet:peername(Sock);
 peername(#ssl_socket{ssl = SslSock}) ->
-    ssl:peername(SslSock).
+    ssl:peername(SslSock);
+peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
+    {ok, {SrcAddr, SrcPort}}.
 
 %% @doc Socket peercert
 -spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
 peercert(Sock) when is_port(Sock) ->
     nossl;
 peercert(#ssl_socket{ssl = SslSock}) ->
-    ssl:peercert(SslSock).
+    ssl:peercert(SslSock);
+peercert(#proxy_socket{socket = Sock}) ->
+    ssl:peercert(Sock).    
 
 %% @doc Shutdown socket
 -spec(shutdown(Sock, How) -> ok | {error, Reason :: any()} when
@@ -231,7 +257,9 @@ peercert(#ssl_socket{ssl = SslSock}) ->
 shutdown(Sock, How) when is_port(Sock) ->
     gen_tcp:shutdown(Sock, How);
 shutdown(#ssl_socket{ssl = SslSock}, How) ->
-    ssl:shutdown(SslSock, How).
+    ssl:shutdown(SslSock, How);
+shutdown(#proxy_socket{socket = Sock}, How) ->
+    shutdown(Sock, How).
 
 %% @doc Function that upgrade socket to sslsocket
 ssl_upgrade_fun(undefined) ->
@@ -266,6 +294,8 @@ gc(Sock) when is_port(Sock) ->
 %% -record(sslsocket, {fd = nil, pid = nil}).
 gc(#ssl_socket{ssl = {sslsocket, _, Pid}}) when is_pid(Pid) ->
     erlang:garbage_collect(Pid);
+gc(#proxy_socket{socket = Sock}) ->
+    gc(Sock);
 gc(_Sock) ->
     ok.
 

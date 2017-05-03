@@ -18,11 +18,13 @@
 
 -include_lib("eunit/include/eunit.hrl").
 
+-include_lib("common_test/include/ct.hrl").
+
 %% Common Test
 -compile(export_all).
 
 all() ->
-    [{group, esockd}, {group, cidr}, {group, access}, {group, udp}].
+    [{group, esockd}, {group, cidr}, {group, access}, {group, udp}, {group, proxy_protocol}].
 
 groups() ->
     [{esockd, [sequence],
@@ -51,7 +53,16 @@ groups() ->
        access_match_allow,
        access_ipv6_match]},
      {udp, [sequence],
-      [esockd_udp_server]}].
+      [esockd_udp_server]},
+     {proxy_protocol, [sequence],
+      [new_connection_tcp4,
+       new_connection_tcp6,
+       new_connection_v2,
+       unknow_data,
+       garbage_date,
+       reuse_socket
+       ]}
+    ].
 
 init_per_suite(Config) ->
     application:start(lager),
@@ -142,6 +153,7 @@ esockd_to_string(_) ->
     ?assertEqual("::1:9000", esockd:to_string({{0,0,0,0,0,0,0,1}, 9000})).
 
 echo_mfa() -> {echo_server, start_link, []}.
+pp_mfa() -> {pp_server, start_link, []}.
  
 %%------------------------------------------------------------------------------
 %% CIDR
@@ -269,3 +281,76 @@ udp_echo_loop(Socket, {Address, Port} = Peer) ->
             ok
     end.
 
+new_connection_tcp4(Config) ->
+    {ok, _LSup} = proxy_protocol_server:start(5000),
+    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Socket, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
+    ok = gen_tcp:send(Socket, <<"v1 tcp4">>),
+    receive
+        {tcp, Sock, Data} ->
+            "v1 tcp4" = Data
+    end,
+    Config.
+
+new_connection_tcp6(Config) ->
+    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Socket, <<"PROXY TCP4 ::1 ::1 6000 50000\r\n">>),
+    ok = gen_tcp:send(Socket, <<"v1 tcp6">>),
+    receive
+        {tcp, Sock, Data} ->
+            "v1 tcp6" = Data
+    end,
+    Config.
+
+
+new_connection_v2(Config) ->
+    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    Bin = <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,12,127,
+            50,210,1,210,21,16,142,250,32,1,181>>,
+    ok = gen_tcp:send(Socket, Bin),
+    ok = gen_tcp:send(Socket, <<"v2">>),
+    receive
+        {tcp, Sock, Data} ->
+            "v2" = Data
+    end,
+    Config.
+
+unknow_data(Config) ->
+    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Socket, "PROXY UNKNOWN\r\n"),
+    ok = gen_tcp:send(Socket, <<"unknow">>),
+    receive
+        {tcp, Sock, Data} ->
+            ct:log("Data:~p~n", [Data]),
+            "unknow" = Data
+    end,
+    Config.
+
+garbage_date(Config) ->
+    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Socket, "************\r\n"),
+    ok = gen_tcp:send(Socket, <<"garbage_date">>),
+    Config.
+
+
+reuse_socket(Config) ->
+    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Socket, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
+    ok = gen_tcp:send(Socket, <<"m1">>),
+    receive
+        {tcp, _Sock, Data} ->
+            "m1" = Data
+    end,
+    esockd_transport:close(Socket),
+    {ok, Socket1} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Socket1, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
+    ok = gen_tcp:send(Socket1, <<"m2">>),
+    receive
+        {tcp, _Sock, Data1} ->
+            "m2" = Data1
+    after 1000 ->
+          ct:log("timeout:~p~n", [timeout]),
+          ok
+    end,
+    esockd_transport:close(Socket1),
+    Config.

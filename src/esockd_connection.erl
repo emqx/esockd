@@ -112,7 +112,15 @@ wait(Conn = ?CONN_MOD) ->
 upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
-            {ok, {?MODULE, [NewSock, SockFun, Opts]}};
+            case proplists:get_bool(proxy_protocol, Opts)
+                 andalso esockd_proxy_proto:recv(NewSock, Opts) of
+                false ->
+                    {ok, {?MODULE, [NewSock, SockFun, Opts]}};
+                {ok, ProxySock} ->
+                    {ok, {?MODULE, [ProxySock, SockFun, Opts]}};
+                {error, Reason} ->
+                    error(Reason)
+            end;
         {error, tls_alert} ->
             exit(normal);
         {error, closed} ->

@@ -29,10 +29,21 @@
 -define(ESOCK(Sock), {esockd_connection, [Sock, _, _]}).
 
 %%------------------------------------------------------------------------------
-%% SSL Sock Wrapper.
+%% SSL Socket Wrapper.
 %%------------------------------------------------------------------------------
 -record(ssl_socket, {tcp :: inet:socket(),
                      ssl :: ssl:sslsocket()}).
 
 -define(IS_SSL(Sock), is_record(Sock, ssl_socket)).
+
+%%------------------------------------------------------------------------------
+%% Proxy-Protocol Socket Wrapper
+%%------------------------------------------------------------------------------
+
+-record(proxy_socket, {inet     :: inet4 | inet6,
+                       socket   :: inet:socket() | #ssl_socket{},
+                       src_addr :: inet:ip_address(),
+                       dst_addr :: inet:ip_address(),
+                       src_port :: inet:port_number(),
+                       dst_port :: inet:port_number()}).
 

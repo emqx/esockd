@@ -107,6 +107,7 @@ handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSoc
             case esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun) of
                 {ok, _Pid}        -> ok;
                 {error, enotconn} -> catch port_close(Sock); %% quiet...issue #10
+                {error, einval}   -> catch port_close(Sock); %% quiet... haproxy check
                 {error, Reason}   -> catch port_close(Sock),
                                      Logger:error("Failed to start connection on ~s - ~p", [SockName, Reason])
             end;
