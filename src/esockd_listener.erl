@@ -33,13 +33,14 @@
 
 -behaviour(gen_server).
 
--export([start_link/5]).
+-export([start_link/5, options/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
 -record(state, {protocol  :: atom(),
                 listen_on :: esockd:listen_on(),
+                options   :: [esockd:option()],
                 lsock     :: inet:socket(),
                 logger    :: gen_logger:logmod()}).
 
@@ -54,6 +55,14 @@
     Logger      :: gen_logger:logmod()).
 start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
     gen_server:start_link(?MODULE, {Protocol, ListenOn, Options, AcceptorSup, Logger}, []).
+
+-spec(options(pid()) -> [esockd:option()]).
+options(Listener) ->
+    gen_server:call(Listener, options).
+
+%%------------------------------------------------------------------------------
+%% gen_server Callbacks
+%%------------------------------------------------------------------------------
 
 init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
     Port = port(ListenOn),
@@ -70,7 +79,8 @@ init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
             {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
             io:format("~s listen on ~s:~p with ~p acceptors.~n",
                       [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
-            {ok, #state{protocol = Protocol, listen_on = ListenOn, lsock = LSock, logger = Logger}};
+            {ok, #state{protocol = Protocol, listen_on = ListenOn, options = Options,
+                        lsock = LSock, logger = Logger}};
         {error, Reason} ->
             Logger:error("~s failed to listen on ~p - ~p (~s)~n",
                          [Protocol, Port, Reason, inet:format_error(Reason)]),
@@ -84,6 +94,9 @@ merge_addr(Port, SockOpts) when is_integer(Port) ->
     SockOpts;
 merge_addr({Addr, _Port}, SockOpts) ->
     lists:keystore(ip, 1, SockOpts, {ip, Addr}).
+
+handle_call(options, _From, State = #state{options = Options}) ->
+    {reply, Options, State};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
