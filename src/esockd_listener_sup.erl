@@ -31,7 +31,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/4, connection_sup/1, acceptor_sup/1]).
+-export([start_link/4, listener/1, connection_sup/1, acceptor_sup/1]).
 
 -export([init/1]).
 
@@ -64,6 +64,10 @@ start_link(Protocol, ListenOn, Options, MFArgs) ->
 			{esockd_listener, start_link, [Protocol, ListenOn, Options, AcceptorSup, Logger]},
 				transient, 16#ffffffff, worker, [esockd_listener]}),
 	{ok, Sup}.
+
+%% @doc Get Listener.
+listener(Sup) ->
+    child_pid(Sup, listener).
 
 %% @doc Get connection supervisor.
 connection_sup(Sup) ->
