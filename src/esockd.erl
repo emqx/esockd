@@ -40,6 +40,7 @@
 %% Management API
 -export([listeners/0, listener/1,
          get_stats/1,
+         get_options/1,
          get_acceptors/1,
          get_max_clients/1,
          set_max_clients/2,
@@ -134,6 +135,13 @@ listener({Protocol, ListenOn}) ->
 -spec(get_stats({atom(), listen_on()}) -> [{atom(), non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
     esockd_server:get_stats({Protocol, fixaddr(ListenOn)}).
+
+%% @doc Get options
+-spec(get_options({atom(), listen_on()}) -> undefined | pos_integer()).
+get_options({Protocol, ListenOn}) ->
+    with_listener({Protocol, ListenOn}, fun get_options/1);
+get_options(LSup) when is_pid(LSup) ->
+    esockd_listener:options(esockd_listener_sup:listener(LSup)).
 
 %% @doc Get Acceptors Number
 -spec(get_acceptors({atom(), listen_on()}) -> undefined | pos_integer()).
