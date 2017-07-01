@@ -35,7 +35,7 @@
 -export([start_link/0]).
 
 -export([start_listener/4, stop_listener/2, listeners/0, listener/1,
-         child_spec/4, start_child/1]).
+         child_spec/4, start_child/1, restart_listener/2]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -100,6 +100,14 @@ listener({Protocol, ListenOn}) ->
     case [Pid || {Id, Pid, supervisor, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
+    end.
+
+-spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, any()}).
+restart_listener(Protocol, ListenOn) ->
+    ChildId = child_id(Protocol, ListenOn),
+    case supervisor:terminate_child(?MODULE, ChildId) of
+        ok    -> supervisor:restart_child(?MODULE, ChildId);
+        Error -> Error
     end.
 
 %%------------------------------------------------------------------------------
