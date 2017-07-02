@@ -35,7 +35,7 @@
 -export([start/0]).
 
 %% Core API
--export([open/4, child_spec/4, close/2, close/1]).
+-export([open/4, child_spec/4, close/2, close/1, reopen/1, reopen/2]).
 
 %% Management API
 -export([listeners/0, listener/1,
@@ -121,6 +121,16 @@ close({Protocol, ListenOn}) when is_atom(Protocol) ->
 -spec(close(atom(), listen_on()) -> ok).
 close(Protocol, ListenOn) when is_atom(Protocol) ->
 	esockd_sup:stop_listener(Protocol, fixaddr(ListenOn)).
+
+%% @doc reopen the Listener
+-spec(reopen({atom(), listen_on()}) -> {ok, pid()} | {error, any()}).
+reopen({Protocol, ListenOn}) when is_atom(Protocol) ->
+    reopen(Protocol, ListenOn).
+
+-spec(reopen(atom(), listen_on()) -> {ok, pid()} | {error, any()}).
+reopen(Protocol, ListenOn) when is_atom(Protocol) ->
+    esockd_sup:restart_listener(Protocol, fixaddr(ListenOn)).
+
 
 %% @doc Get listeners.
 -spec listeners() -> [{{atom(), listen_on()}, pid()}].
