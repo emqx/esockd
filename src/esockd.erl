@@ -123,13 +123,13 @@ close(Protocol, ListenOn) when is_atom(Protocol) ->
 	esockd_sup:stop_listener(Protocol, fixaddr(ListenOn)).
 
 %% @doc reopen the Listener
--spec(reopen({atom(), listen_on()}) -> ok).
+-spec(reopen({atom(), listen_on()}) -> {ok, pid()} | {error, any()}).
 reopen({Protocol, ListenOn}) when is_atom(Protocol) ->
     reopen(Protocol, ListenOn).
 
--spec(reopen(atom(), listen_on()) -> ok).
+-spec(reopen(atom(), listen_on()) -> {ok, pid()} | {error, any()}).
 reopen(Protocol, ListenOn) when is_atom(Protocol) ->
-	esockd_sup:restart_listener(Protocol, fixaddr(ListenOn)).
+    esockd_sup:restart_listener(Protocol, fixaddr(ListenOn)).
 
 
 %% @doc Get listeners.

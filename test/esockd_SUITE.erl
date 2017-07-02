@@ -30,6 +30,9 @@ groups() ->
     [{esockd, [sequence],
       [esockd_child_spec,
        esockd_open_close,
+       esockd_reopen,
+       esockd_reopen1,
+       esockd_reopen_fail,
        esockd_listeners,
        esockd_get_stats,
        esockd_get_acceptors,
@@ -82,10 +85,38 @@ esockd_child_spec(_) ->
     ?assertEqual({listener_sup, {echo, 5000}}, element(1, Spec)).
 
 esockd_open_close(_) ->
-    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 5000}, [binary, {packet, raw}], echo_mfa()),
-    {ok, Sock} = gen_tcp:connect("127.0.0.1", 5000, []),
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 3000}, [binary, {packet, raw}], echo_mfa()),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", 3000, []),
     ok = gen_tcp:send(Sock, <<"Hello">>),
-    esockd:close(echo, {"127.0.0.1", 5000}).
+    ok = esockd:close(echo, {"127.0.0.1", 3000}).
+
+esockd_reopen(_) ->
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 3000}, [binary, {packet, raw}], echo_mfa()),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", 3000, []),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    timer:sleep(10),
+    {ok, _RSup} = esockd:reopen({echo, {"127.0.0.1", 3000}}),
+    {ok, ReopnSock} = gen_tcp:connect("127.0.0.1", 3000, []),
+    ok = gen_tcp:send(ReopnSock, <<"Hello1">>),
+    timer:sleep(10),
+    esockd:close(echo, {"127.0.0.1", 3000}).
+
+esockd_reopen1(_) ->
+    {ok, _LSup} = esockd:open(echo, 7000, [{max_clients, 4}, {acceptors, 4}], echo_mfa()),
+    timer:sleep(10),
+    {ok, _ReopnLSup} = esockd:reopen({echo, 7000}),
+    ?assertEqual(4, esockd:get_max_clients({echo, 7000})),
+    ?assertEqual(4, esockd:get_acceptors({echo, 7000})),
+    esockd:close(echo, 7000).
+
+esockd_reopen_fail(_) ->
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 4000}, [{acceptors, 4}], echo_mfa()),
+    {error, _Reson} = esockd:reopen({echo, 4000}),
+    ?assertEqual(4, esockd:get_acceptors({echo, {"127.0.0.1", 4000}})),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", 4000, []),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    timer:sleep(10),
+    esockd:close(echo, {"127.0.0.1", 4000}).
 
 esockd_listeners(_) ->
     {ok, LSup} = esockd:open(echo, 6000, [], echo_mfa()),
