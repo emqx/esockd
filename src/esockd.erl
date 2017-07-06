@@ -114,11 +114,11 @@ child_spec(Protocol, ListenOn, Options, MFArgs) ->
     esockd_sup:child_spec(Protocol, fixaddr(ListenOn), Options, MFArgs).
 
 %% @doc Close the Listener
--spec(close({atom(), listen_on()}) -> ok).
+-spec(close({atom(), listen_on()}) -> ok | {error, any()}).
 close({Protocol, ListenOn}) when is_atom(Protocol) ->
     close(Protocol, ListenOn).
 
--spec(close(atom(), listen_on()) -> ok).
+-spec(close(atom(), listen_on()) -> ok | {error, any()}).
 close(Protocol, ListenOn) when is_atom(Protocol) ->
 	esockd_sup:stop_listener(Protocol, fixaddr(ListenOn)).
 
