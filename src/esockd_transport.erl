@@ -129,7 +129,7 @@ send(#proxy_socket{socket = Sock}, Data) ->
 
 %% @doc Port command to write data
 port_command(Sock, Data) when is_port(Sock) ->
-    erlang:port_command(Sock, Data);
+    erlang:port_command(Sock, Data, [nosuspend]);
 port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
     case ssl:send(SslSock, Data) of
         ok -> self() ! {inet_reply, Sock, ok}, true;
