@@ -33,6 +33,10 @@
 
 -export([recv/2]).
 
+-ifdef(TEST).
+-export([parse_v1/2, parse_v2/4]).
+-endif.
+
 %% Protocol Command
 -define(LOCAL, 16#0).
 -define(PROXY, 16#1).
@@ -125,14 +129,4 @@ inet_family(?UNSPEC) -> unspec;
 inet_family(?INET)   -> inet4;
 inet_family(?INET6)  -> inet6;
 inet_family(?UNIX)   -> unix.
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-parse_proxy_info_test() ->
-    ?assertEqual({{255,255,255,255}, {255,255,255,255}, 65535, 65535}, parse_proxy_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>)),
-    ?assertEqual({{0,0,0,0,0,0,0,1}, {0,0,0,0,0,0,0,1}, 6000, 50000},
-                 parse_proxy_v2(<<"::1 ::1 6000 50000\r\n">>)).
--endif.
 
