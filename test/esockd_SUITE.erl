@@ -317,12 +317,20 @@ udp_echo_loop(Socket, {Address, Port} = Peer) ->
     end.
 
 parse_proxy_info_v1(Config) ->
+    ?assertEqual({ok, #proxy_socket{src_addr = {192,168,1,30}, src_port = 45420,
+                                    dst_addr = {192,168,1,2}, dst_port = 1883}},
+                 esockd_proxy_proto:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>, #proxy_socket{})),
     ?assertEqual({ok, #proxy_socket{src_addr = {255,255,255,255}, src_port = 65535,
                                     dst_addr = {255,255,255,255}, dst_port = 65535}},
                  esockd_proxy_proto:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>, #proxy_socket{})),
     Config.
 
 parse_proxy_info_v2(Config) ->
+    ?assertEqual({ok, #proxy_socket{src_addr = {104,199,189,98}, src_port = 6000,
+                                    dst_addr = {106,185,34,253}, dst_port = 8883,
+                                    inet = inet4}},
+                 esockd_proxy_proto:parse_v2(16#1, 16#1, <<104,199,189,98,106,185,34,253,6000:16,8883:16>>,
+                                             #proxy_socket{inet = inet4})),
     ?assertEqual({ok, #proxy_socket{src_addr = {0,0,0,0,0,0,0,1}, src_port = 6000,
                                     dst_addr = {0,0,0,0,0,0,0,1}, dst_port = 5000,
                                     inet = inet6}},
