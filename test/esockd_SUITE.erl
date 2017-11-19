@@ -16,6 +16,8 @@
 
 -module(esockd_SUITE).
 
+-include("esockd.hrl").
+
 -include_lib("eunit/include/eunit.hrl").
 
 -include_lib("common_test/include/ct.hrl").
@@ -58,7 +60,9 @@ groups() ->
      {udp, [sequence],
       [esockd_udp_server]},
      {proxy_protocol, [sequence],
-      [new_connection_tcp4,
+      [parse_proxy_info_v1,
+       parse_proxy_info_v2,
+       new_connection_tcp4,
        new_connection_tcp6,
        new_connection_v2,
        unknow_data,
@@ -218,8 +222,8 @@ parse_ipv6_cidr(_) ->
 	?assert(esockd_cidr:parse("2001:abcd::/128") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 0, 0, 0, 0, 0, 0}, 128}).
 
 cidr_to_string(_) ->
-    ?assertEqual(esockd_cidr:to_string({{192,168,0,0}, {192,168,255,255}, 16}), "192.168.0.0/16"),
-	?assertEqual(esockd_cidr:to_string({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 65535, 65535, 65535, 65535, 65535, 65535}, 32}), "2001:ABCD::/32").
+    ?assertEqual("192.168.0.0/16", esockd_cidr:to_string({{192,168,0,0}, {192,168,255,255}, 16})),
+	?assertEqual("2001:abcd::/32", esockd_cidr:to_string({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 65535, 65535, 65535, 65535, 65535, 65535}, 32})).
 
 ipv4_address_count(_) ->
 	?assert(esockd_cidr:count(esockd_cidr:parse("192.168.0.0/0", true))  == 4294967296),
@@ -311,6 +315,27 @@ udp_echo_loop(Socket, {Address, Port} = Peer) ->
          _Any ->
             ok
     end.
+
+parse_proxy_info_v1(Config) ->
+    ?assertEqual({ok, #proxy_socket{src_addr = {192,168,1,30}, src_port = 45420,
+                                    dst_addr = {192,168,1,2}, dst_port = 1883}},
+                 esockd_proxy_proto:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>, #proxy_socket{})),
+    ?assertEqual({ok, #proxy_socket{src_addr = {255,255,255,255}, src_port = 65535,
+                                    dst_addr = {255,255,255,255}, dst_port = 65535}},
+                 esockd_proxy_proto:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>, #proxy_socket{})),
+    Config.
+
+parse_proxy_info_v2(Config) ->
+    ?assertEqual({ok, #proxy_socket{src_addr = {104,199,189,98}, src_port = 6000,
+                                    dst_addr = {106,185,34,253}, dst_port = 8883,
+                                    inet = inet4}},
+                 esockd_proxy_proto:parse_v2(16#1, 16#1, <<104,199,189,98,106,185,34,253,6000:16,8883:16>>,
+                                             #proxy_socket{inet = inet4})),
+    ?assertEqual({ok, #proxy_socket{src_addr = {0,0,0,0,0,0,0,1}, src_port = 6000,
+                                    dst_addr = {0,0,0,0,0,0,0,1}, dst_port = 5000,
+                                    inet = inet6}},
+                 esockd_proxy_proto:parse_v2(16#1, 16#1, <<1:128, 1:128, 6000:16, 5000:16>>, #proxy_socket{inet = inet6})),
+    Config.
 
 new_connection_tcp4(Config) ->
     {ok, _LSup} = proxy_protocol_server:start(5000),
