@@ -69,7 +69,7 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start connection supervisor.
--spec(start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, any()} when
+-spec(start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, term()} when
     Options :: [esockd:option()],
     MFArgs  :: esockd:mfargs(),
     Logger  :: gen_logger:logmod()).

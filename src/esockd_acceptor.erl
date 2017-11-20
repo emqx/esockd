@@ -49,7 +49,7 @@
                 emfile_count = 0}).
 
 %% @doc Start Acceptor
--spec(start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, any()} when
+-spec(start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger, LSock, SockFun) -> {ok, pid()} | {error, term()} when
       ConnSup        :: pid(),
       AcceptStatsFun :: fun(),
       BufferTuneFun  :: esockd:tune_fun(),

@@ -81,7 +81,7 @@ parse_rl(Str) ->
 
 %% @doc Start the connection process.
 -spec(start_link(esockd:mfargs(), connection()) -> {ok, pid()}
-                                                 | {error, any()}
+                                                 | {error, term()}
                                                  | ignore).
 start_link(M, Conn = ?CONN_MOD) when is_atom(M) ->
     M:start_link(Conn);
@@ -152,20 +152,20 @@ type(?CONN_MOD(Sock)) ->
     ?Transport:type(Sock).
 
 %% @doc Sockname of the connection.
--spec(sockname(connection()) -> {ok, {Address, Port}} | {error, any()} when
+-spec(sockname(connection()) -> {ok, {Address, Port}} | {error, inet:posix()} when
     Address :: inet:ip_address(),
     Port    :: inet:port_number()).
 sockname(?CONN_MOD(Sock)) ->
     ?Transport:sockname(Sock).
 
 %% @doc Peername of the connection.
--spec(peername(connection()) -> {ok, {Address, Port}} | {error, any()} when
+-spec(peername(connection()) -> {ok, {Address, Port}} | {error, inet:posix()} when
     Address :: inet:ip_address(),
     Port    :: inet:port_number()).
 peername(?CONN_MOD(Sock)) ->
     ?Transport:peername(Sock).
 
--spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+-spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, term()}).
 peercert(?CONN_MOD(Sock)) ->
     ?Transport:peercert(Sock).
 

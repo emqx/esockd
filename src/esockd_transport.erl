@@ -206,7 +206,7 @@ setopts(#proxy_socket{socket = Socket}, Options) ->
     setopts(Socket, Options).
 
 %% @doc Get socket stats
--spec(getstat(Sock, Stats) -> {ok, Values} | {error, any()} when
+-spec(getstat(Sock, Stats) -> {ok, Values} | {error, inet:posix()} when
     Sock   :: sock(),
     Stats  :: list(),
     Values :: list()).
@@ -218,7 +218,7 @@ getstat(#proxy_socket{socket = Sock}, Stats) ->
     getstat(Sock, Stats).
 
 %% @doc Sock name
--spec(sockname(Sock) -> {ok, {Address, Port}} | {error, any()} when
+-spec(sockname(Sock) -> {ok, {Address, Port}} | {error, inet:posix()} when
     Sock    :: sock(),
     Address :: inet:ip_address(),
     Port    :: inet:port_number()).
@@ -230,7 +230,7 @@ sockname(#proxy_socket{dst_addr = DstAddr, dst_port = DstPort}) ->
     {ok, {DstAddr, DstPort}}.
 
 %% @doc Socket peername
--spec(peername(Sock) -> {ok, {Address, Port}} | {error, any()} when
+-spec(peername(Sock) -> {ok, {Address, Port}} | {error, inet:posix()} when
     Sock    :: sock(),
     Address :: inet:ip_address(),
     Port    :: inet:port_number()).
@@ -242,16 +242,16 @@ peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
     {ok, {SrcAddr, SrcPort}}.
 
 %% @doc Socket peercert
--spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+-spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, Reason :: term()}).
 peercert(Sock) when is_port(Sock) ->
     nossl;
 peercert(#ssl_socket{ssl = SslSock}) ->
     ssl:peercert(SslSock);
 peercert(#proxy_socket{socket = Sock}) ->
-    ssl:peercert(Sock).    
+    ssl:peercert(Sock).
 
 %% @doc Shutdown socket
--spec(shutdown(Sock, How) -> ok | {error, Reason :: any()} when
+-spec(shutdown(Sock, How) -> ok | {error, Reason :: term()} when
     Sock :: sock(),
     How  :: read | write | read_write).
 shutdown(Sock, How) when is_port(Sock) ->

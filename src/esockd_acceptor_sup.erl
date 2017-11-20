@@ -48,7 +48,7 @@ start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) ->
     supervisor:start_link(?MODULE, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]).
 
 %% @doc Start a acceptor.
--spec(start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, any()} | ignore when
+-spec(start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, term()} | ignore when
       AcceptorSup :: pid(),
       LSock       :: inet:socket(),
       SockFun     :: esockd:sock_fun()).

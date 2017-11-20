@@ -57,9 +57,9 @@
 
 -type(proxy_socket() :: #proxy_socket{}).
 
--type(tune_fun() :: fun((inet:socket()) -> ok | {error, any()})).
+-type(tune_fun() :: fun((inet:socket()) -> ok | {error, term()})).
 
--type(sock_fun() :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, any()})).
+-type(sock_fun() :: fun((inet:socket()) -> {ok, inet:socket() | ssl_socket()} | {error, term()})).
 
 -type(sock_args() :: {atom(), inet:socket(), sock_fun()}).
 
@@ -95,7 +95,7 @@ start() ->
     {ok, _} = application:ensure_all_started(esockd), ok.
 
 %% @doc Open a Listener.
--spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, any()}).
+-spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, term()}).
 open(Protocol, Port, Options, MFArgs) when is_integer(Port) ->
 	esockd_sup:start_listener(Protocol, Port, Options, MFArgs);
 
@@ -114,20 +114,20 @@ child_spec(Protocol, ListenOn, Options, MFArgs) ->
     esockd_sup:child_spec(Protocol, fixaddr(ListenOn), Options, MFArgs).
 
 %% @doc Close the Listener
--spec(close({atom(), listen_on()}) -> ok | {error, any()}).
+-spec(close({atom(), listen_on()}) -> ok | {error, term()}).
 close({Protocol, ListenOn}) when is_atom(Protocol) ->
     close(Protocol, ListenOn).
 
--spec(close(atom(), listen_on()) -> ok | {error, any()}).
+-spec(close(atom(), listen_on()) -> ok | {error, term()}).
 close(Protocol, ListenOn) when is_atom(Protocol) ->
 	esockd_sup:stop_listener(Protocol, fixaddr(ListenOn)).
 
 %% @doc reopen the Listener
--spec(reopen({atom(), listen_on()}) -> {ok, pid()} | {error, any()}).
+-spec(reopen({atom(), listen_on()}) -> {ok, pid()} | {error, term()}).
 reopen({Protocol, ListenOn}) when is_atom(Protocol) ->
     reopen(Protocol, ListenOn).
 
--spec(reopen(atom(), listen_on()) -> {ok, pid()} | {error, any()}).
+-spec(reopen(atom(), listen_on()) -> {ok, pid()} | {error, term()}).
 reopen(Protocol, ListenOn) when is_atom(Protocol) ->
     esockd_sup:restart_listener(Protocol, fixaddr(ListenOn)).
 
@@ -202,14 +202,14 @@ get_access_rules(LSup) when is_pid(LSup) ->
     esockd_connection_sup:access_rules(ConnSup).
 
 %% @doc Allow access address
--spec(allow({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok | {error, any()}).
+-spec(allow({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok | {error, term()}).
 allow({Protocol, ListenOn}, CIDR) ->
     LSup = listener({Protocol, ListenOn}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:allow(ConnSup, CIDR).
 
 %% @doc Deny access address
--spec(deny({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok | {error, any()}).
+-spec(deny({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok | {error, term()}).
 deny({Protocol, ListenOn}, CIDR) ->
     LSup = listener({Protocol, ListenOn}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),

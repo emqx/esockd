@@ -59,7 +59,7 @@
 -define(SIG, "\r\n\0\r\nQUIT\n").
 
 -spec(recv(inet:socket() | #ssl_socket{}, list(tuple())) ->
-      {ok, #proxy_socket{}} | {error, any()}).
+      {ok, #proxy_socket{}} | {error, term()}).
 recv(Sock, Opts) ->
     Timeout = proplists:get_value(proxy_protocol_timeout, Opts, ?TIMEOUT),
     {ok, OriginOpts} = esockd_transport:getopts(Sock, [active, packet]),
