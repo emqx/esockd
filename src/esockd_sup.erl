@@ -48,7 +48,7 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start the supervisor.
--spec(start_link() -> {ok, pid()} | {error, any()}).
+-spec(start_link() -> {ok, pid()} | {error, term()}).
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
@@ -65,7 +65,7 @@ child_spec(Protocol, ListenOn, Options, MFArgs) ->
                 transient, infinity, supervisor, [esockd_listener_sup]}.
 
 %% @doc Start a Listener.
--spec(start_listener(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, any()} when
+-spec(start_listener(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, term()} when
       Protocol :: atom(),
       ListenOn :: esockd:listen_on(),
       Options  :: [esockd:option()],
@@ -73,12 +73,12 @@ child_spec(Protocol, ListenOn, Options, MFArgs) ->
 start_listener(Protocol, ListenOn, Options, MFArgs) ->
     start_child(child_spec(Protocol, ListenOn, Options, MFArgs)).
 
--spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, any()}).
+-spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, term()}).
 start_child(ChildSpec) ->
 	supervisor:start_child(?MODULE, ChildSpec).
 
 %% @doc Stop the listener.
--spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, any()}).
+-spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 stop_listener(Protocol, ListenOn) ->
     ChildId = child_id(Protocol, ListenOn),
 	case supervisor:terminate_child(?MODULE, ChildId) of
@@ -102,7 +102,7 @@ listener({Protocol, ListenOn}) ->
         L  -> hd(L)
     end.
 
--spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, any()}).
+-spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 restart_listener(Protocol, ListenOn) ->
     ChildId = child_id(Protocol, ListenOn),
     case supervisor:terminate_child(?MODULE, ChildId) of

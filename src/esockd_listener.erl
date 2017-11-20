@@ -47,7 +47,7 @@
 -define(ACCEPTOR_POOL, 16).
 
 %% @doc Start Listener
--spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, any()} | ignore when 
+-spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, term()} | ignore when 
     Protocol    :: atom(),
     ListenOn    :: esockd:listen_on(),
     Options	    :: [esockd:option()],
