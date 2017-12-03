@@ -33,7 +33,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/5, options/1]).
+-export([start_link/5, options/1, get_port/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -42,6 +42,8 @@
                 listen_on :: esockd:listen_on(),
                 options   :: [esockd:option()],
                 lsock     :: inet:socket(),
+                laddress  :: inet:ip_address(),
+                lport     :: inet:port_number(),
                 logger    :: gen_logger:logmod()}).
 
 -define(ACCEPTOR_POOL, 16).
@@ -60,6 +62,10 @@ start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
 options(Listener) ->
     gen_server:call(Listener, options).
 
+-spec(get_port(pid()) -> inet:port_number()).
+get_port(Listener) ->
+    gen_server:call(Listener, get_port).
+
 %%------------------------------------------------------------------------------
 %% gen_server Callbacks
 %%------------------------------------------------------------------------------
@@ -76,11 +82,11 @@ init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
 			lists:foreach(fun (_) ->
 				{ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock, SockFun)
 			end, lists:seq(1, AcceptorNum)),
-            {ok, {LIPAddress, LPort}} = inet:sockname(LSock),
+            {ok, {LAddress, LPort}} = inet:sockname(LSock),
             io:format("~s listen on ~s:~p with ~p acceptors.~n",
-                      [Protocol, esockd_net:ntoab(LIPAddress), LPort, AcceptorNum]),
+                      [Protocol, esockd_net:ntoab(LAddress), LPort, AcceptorNum]),
             {ok, #state{protocol = Protocol, listen_on = ListenOn, options = Options,
-                        lsock = LSock, logger = Logger}};
+                        lsock = LSock, laddress = LAddress, lport = LPort, logger = Logger}};
         {error, Reason} ->
             Logger:error("~s failed to listen on ~p - ~p (~s)~n",
                          [Protocol, Port, Reason, inet:format_error(Reason)]),
@@ -97,6 +103,9 @@ merge_addr({Addr, _Port}, SockOpts) ->
 
 handle_call(options, _From, State = #state{options = Options}) ->
     {reply, Options, State};
+
+handle_call(get_port, _From, State = #state{lport = LPort}) ->
+    {reply, LPort, State};
 
 handle_call(_Request, _From, State) ->
     {noreply, State}.
