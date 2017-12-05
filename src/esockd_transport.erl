@@ -33,7 +33,7 @@
 
 -export([type/1]).
 
--export([listen/2, send/2, port_command/2, recv/2, recv/3, async_recv/2, async_recv/3,
+-export([listen/2, send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
          controlling_process/2, close/1, fast_close/1]).
 
 -export([getopts/2, setopts/2, getstat/2]).
@@ -51,10 +51,10 @@
 
 -define(SSL_HANDSHAKE_TIMEOUT, 15000).
 
--compile({no_auto_import,[port_command/2]}).
+%%-compile({no_auto_import,[port_command/2]}).
 
 %% @doc socket type: tcp | ssl | proxy
--spec type(sock()) -> tcp | ssl | proxy.
+-spec(type(sock()) -> tcp | ssl | proxy).
 type(Sock) when is_port(Sock) ->
     tcp;
 type(#ssl_socket{ssl = _SslSock})  ->
@@ -63,19 +63,21 @@ type(#proxy_socket{}) ->
     proxy.
 
 %% @doc Listen
--spec(listen(Port, SockOpts) -> {ok, Sock} | {error, Reason :: any()} when
+-spec(listen(Port, SockOpts) -> {ok, Sock} | {error, Reason} when
     Port     :: inet:port_number(),
     SockOpts :: [gen_tcp:listen_option()],
-    Sock     :: inet:socket()).
+    Sock     :: inet:socket(),
+    Reason   :: system_limit | inet:posix()).
 listen(Port, SockOpts) ->
     gen_tcp:listen(Port, SockOpts).
 
 %% @doc Set Controlling Process of Socket
--spec(controlling_process(Sock, NewOwener) -> ok | {error, Reason :: any()} when
+-spec(controlling_process(Sock, NewOwener) -> ok | {error, Reason} when
     Sock      :: sock(),
-    NewOwener :: pid()).
+    NewOwener :: pid(),
+    Reason    :: closed | not_owner | badarg | inet:posix()).
 controlling_process(Sock, NewOwner) when is_port(Sock) ->
-    inet:tcp_controlling_process(Sock, NewOwner);
+    gen_tcp:controlling_process(Sock, NewOwner);
 controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
     ssl:controlling_process(SslSock, NewOwner).
 
@@ -88,6 +90,7 @@ close(#ssl_socket{ssl = SslSock}) ->
 close(#proxy_socket{socket = Sock}) ->
     close(Sock).
 
+-spec(fast_close(sock()) -> ok).
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
 %% From rabbit_net.erl
@@ -116,10 +119,9 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
 fast_close(#proxy_socket{socket = Sock}) ->
     fast_close(Sock).
 
-%% @doc Send data
--spec(send(Sock, Data) -> ok when
-    Sock :: sock(),
-    Data :: iolist()).
+%% @doc Send data.
+-spec(send(Sock :: sock(), Data :: iodata()) -> ok | {error, Reason} when
+    Reason :: closed | timeout | inet:posix()).
 send(Sock, Data) when is_port(Sock) ->
     gen_tcp:send(Sock, Data);
 send(#ssl_socket{ssl = SslSock}, Data) ->
@@ -127,34 +129,41 @@ send(#ssl_socket{ssl = SslSock}, Data) ->
 send(#proxy_socket{socket = Sock}, Data) ->
     send(Sock, Data).
 
-%% @doc Port command to write data
-port_command(Sock, Data) when is_port(Sock) ->
-    erlang:port_command(Sock, Data, [nosuspend]);
-port_command(Sock = #ssl_socket{ssl = SslSock}, Data) ->
-    case ssl:send(SslSock, Data) of
-        ok -> self() ! {inet_reply, Sock, ok}, true;
-        {error, Reason} -> erlang:error(Reason)
+%% @doc Port command to write data.
+-spec(async_send(Sock :: sock(), Data :: iodata()) -> ok | {error, Reason} when
+    Reason :: close | timeout | inet:posix()).
+async_send(Sock, Data) when is_port(Sock) ->
+    case erlang:port_command(Sock, Data, [nosuspend]) of
+        true  -> ok;
+        false -> {error, timeout} %%TODO: tcp window full?
     end;
-port_command(#proxy_socket{socket = Sock}, Data) ->
-    port_command(Sock, Data).
+async_send(Sock = #ssl_socket{ssl = SslSock}, Data) ->
+    case ssl:send(SslSock, Data) of
+        ok -> self() ! {inet_reply, Sock, ok}, ok;
+        {error, Reason} -> {error, Reason}
+    end;
+async_send(#proxy_socket{socket = Sock}, Data) ->
+    async_send(Sock, Data).
 
-%% @doc Receive Data
--spec(recv(Sock, Length) -> {ok, Data} | {error, Reason :: any()} when
+%% @doc Receive data.
+-spec(recv(Sock, Length) -> {ok, Data} | {error, Reason} when
     Sock   :: sock(),
     Length :: non_neg_integer(),
-    Data   :: [char()] | binary()).
+    Data   :: string() | binary(),
+    Reason :: closed | inet:posix()).
 recv(Sock, Length) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length);
-recv(#ssl_socket{ssl = SslSock}, Length)  ->
+recv(#ssl_socket{ssl = SslSock}, Length) ->
     ssl:recv(SslSock, Length);
 recv(#proxy_socket{socket = Sock}, Length) ->
     recv(Sock, Length).
 
--spec(recv(Sock, Length, Timout) -> {ok, Data} | {error, closed | atom()} when
+-spec(recv(Sock, Length, Timout) -> {ok, Data} | {error, Reason} when
     Sock   :: sock(),
     Length :: non_neg_integer(),
     Timout :: timeout(),
-    Data   :: [char()] | binary()).
+    Data   :: string() | binary(),
+    Reason :: closed | inet:posix()).
 recv(Sock, Length, Timeout) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length, Timeout);
 recv(#ssl_socket{ssl = SslSock}, Length, Timeout)  ->
@@ -162,7 +171,7 @@ recv(#ssl_socket{ssl = SslSock}, Length, Timeout)  ->
 recv(#proxy_socket{socket = Sock}, Length, Timeout) ->
     recv(Sock, Length, Timeout).
 
-%% @doc Async Receive data
+%% @doc Async Receive data.
 -spec(async_recv(Sock, Length) -> {ok, Ref} when
     Sock   :: sock(),
     Length :: non_neg_integer(),
@@ -178,9 +187,7 @@ async_recv(Sock, Length) ->
 async_recv(Sock = #ssl_socket{ssl = SslSock}, Length, Timeout) ->
     Self = self(),
     Ref = make_ref(),
-    spawn(fun () -> Self ! {inet_async, Sock, Ref,
-        ssl:recv(SslSock, Length, Timeout)}
-    end),
+    spawn(fun() -> Self ! {inet_async, Sock, Ref, ssl:recv(SslSock, Length, Timeout)} end),
     {ok, Ref};
 async_recv(Sock, Length, infinity) when is_port(Sock) ->
     prim_inet:async_recv(Sock, Length, -1);
@@ -189,7 +196,9 @@ async_recv(Sock, Length, Timeout) when is_port(Sock) ->
 async_recv(#proxy_socket{socket = Sock}, Length, Timeout) ->
     async_recv(Sock, Length, Timeout).
 
-%% @doc Get socket options
+%% @doc Get socket options.
+-spec(getopts(sock(), [inet:socket_getopt()]) ->
+    {ok, [inet:socket_setopt()]} | {error, inet:posix()}).
 getopts(Sock, OptionNames) when is_port(Sock) ->
     inet:getopts(Sock, OptionNames);
 getopts(#ssl_socket{ssl = SslSock}, OptionNames) ->
@@ -198,6 +207,7 @@ getopts(#proxy_socket{socket = Sock}, OptionNames) ->
     getopts(Sock, OptionNames).
 
 %% @doc Set socket options
+-spec(setopts(sock(), [inet:socket_setopt()]) -> ok | {error, inet:posix()}).
 setopts(Sock, Options) when is_port(Sock) ->
     inet:setopts(Sock, Options);
 setopts(#ssl_socket{ssl = SslSock}, Options) ->
@@ -206,10 +216,7 @@ setopts(#proxy_socket{socket = Socket}, Options) ->
     setopts(Socket, Options).
 
 %% @doc Get socket stats
--spec(getstat(Sock, Stats) -> {ok, Values} | {error, any()} when
-    Sock   :: sock(),
-    Stats  :: list(),
-    Values :: list()).
+-spec(getstat(sock(), [inet:stat_option()]) -> {ok, [{inet:stat_option(), integer()}]} | {error, inet:posix()}).
 getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
 getstat(#ssl_socket{tcp = Sock}, Stats) ->
@@ -218,10 +225,7 @@ getstat(#proxy_socket{socket = Sock}, Stats) ->
     getstat(Sock, Stats).
 
 %% @doc Sock name
--spec(sockname(Sock) -> {ok, {Address, Port}} | {error, any()} when
-    Sock    :: sock(),
-    Address :: inet:ip_address(),
-    Port    :: inet:port_number()).
+-spec(sockname(sock()) -> {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix()}).
 sockname(Sock) when is_port(Sock) ->
     inet:sockname(Sock);
 sockname(#ssl_socket{ssl = SslSock}) ->
@@ -230,10 +234,7 @@ sockname(#proxy_socket{dst_addr = DstAddr, dst_port = DstPort}) ->
     {ok, {DstAddr, DstPort}}.
 
 %% @doc Socket peername
--spec(peername(Sock) -> {ok, {Address, Port}} | {error, any()} when
-    Sock    :: sock(),
-    Address :: inet:ip_address(),
-    Port    :: inet:port_number()).
+-spec(peername(sock()) -> {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix()}).
 peername(Sock) when is_port(Sock) ->
     inet:peername(Sock);
 peername(#ssl_socket{ssl = SslSock}) ->
@@ -242,18 +243,17 @@ peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
     {ok, {SrcAddr, SrcPort}}.
 
 %% @doc Socket peercert
--spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+-spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, Reason :: term()}).
 peercert(Sock) when is_port(Sock) ->
     nossl;
 peercert(#ssl_socket{ssl = SslSock}) ->
     ssl:peercert(SslSock);
 peercert(#proxy_socket{socket = Sock}) ->
-    ssl:peercert(Sock).    
+    ssl:peercert(Sock).
 
 %% @doc Shutdown socket
--spec(shutdown(Sock, How) -> ok | {error, Reason :: any()} when
-    Sock :: sock(),
-    How  :: read | write | read_write).
+-spec(shutdown(sock(), How) -> ok | {error, Reason :: inet:posix()} when
+    How :: read | write | read_write).
 shutdown(Sock, How) when is_port(Sock) ->
     gen_tcp:shutdown(Sock, How);
 shutdown(#ssl_socket{ssl = SslSock}, How) ->

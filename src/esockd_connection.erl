@@ -81,7 +81,7 @@ parse_rl(Str) ->
 
 %% @doc Start the connection process.
 -spec(start_link(esockd:mfargs(), connection()) -> {ok, pid()}
-                                                 | {error, any()}
+                                                 | {error, term()}
                                                  | ignore).
 start_link(M, Conn = ?CONN_MOD) when is_atom(M) ->
     M:start_link(Conn);
@@ -152,66 +152,85 @@ type(?CONN_MOD(Sock)) ->
     ?Transport:type(Sock).
 
 %% @doc Sockname of the connection.
--spec(sockname(connection()) -> {ok, {Address, Port}} | {error, any()} when
+-spec(sockname(connection()) -> {ok, {Address, Port}} | {error, inet:posix()} when
     Address :: inet:ip_address(),
     Port    :: inet:port_number()).
 sockname(?CONN_MOD(Sock)) ->
     ?Transport:sockname(Sock).
 
 %% @doc Peername of the connection.
--spec(peername(connection()) -> {ok, {Address, Port}} | {error, any()} when
+-spec(peername(connection()) -> {ok, {Address, Port}} | {error, inet:posix()} when
     Address :: inet:ip_address(),
     Port    :: inet:port_number()).
 peername(?CONN_MOD(Sock)) ->
     ?Transport:peername(Sock).
 
--spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, any()}).
+-spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, term()}).
 peercert(?CONN_MOD(Sock)) ->
     ?Transport:peercert(Sock).
 
 %% @doc Get socket options
+-spec(getopts([inet:socket_getopt()], connection())
+      -> {ok, [inet:socket_setopt()]} | {error, inet:posix()}).
 getopts(Keys, ?CONN_MOD(Sock)) ->
     ?Transport:getopts(Sock, Keys).
 
 %% @doc Set socket options
+-spec(setopts([inet:socket_setopt()], connection()) -> ok | {error, inet:posix()}).
 setopts(Options, ?CONN_MOD(Sock)) ->
     ?Transport:setopts(Sock, Options).
 
 %% @doc Get socket stats
+-spec(getstat([inet:stat_option()], connection())
+      -> {ok, [{inet:stat_option(), integer()}]} | {error, inet:posix()}).
 getstat(Stats, ?CONN_MOD(Sock)) ->
     ?Transport:getstat(Sock, Stats).
 
 %% @doc Controlling Process of Connection
--spec(controlling_process(pid(), connection()) -> any()).
+-spec(controlling_process(pid(), connection()) -> ok | {error, term()}).
 controlling_process(Owner, ?CONN_MOD(Sock)) ->
     ?Transport:controlling_process(Sock, Owner).
 
 %% @doc Send data
--spec(send(iodata(), connection()) -> ok).
+-spec(send(iodata(), connection()) -> ok | {error, Reason :: closed | inet:posix()}).
 send(Data, ?CONN_MOD(Sock)) ->
     ?Transport:send(Sock, Data).
 
 %% @doc Send data asynchronously by port_command/2
--spec(async_send(iodata(), connection()) -> ok).
+-spec(async_send(iodata(), connection()) -> boolean()).
 async_send(Data, ?CONN_MOD(Sock)) ->
-    ?Transport:port_command(Sock, Data).
+    ?Transport:async_send(Sock, Data).
 
 %% @doc Receive data
+-spec(recv(Length, connection()) -> {ok, Data} | {error, Reason} when
+    Length :: non_neg_integer(),
+    Data   :: string() | binary(),
+    Reason :: closed | inet:posix()).
 recv(Length, ?CONN_MOD(Sock)) ->
     ?Transport:recv(Sock, Length).
 
+-spec(recv(Length, Timout, Conn :: connection()) -> {ok, Data} | {error, Reason} when
+    Length :: non_neg_integer(),
+    Timout :: timeout(),
+    Data   :: string() | binary(),
+    Reason :: closed | inet:posix()).
 recv(Length, Timeout, ?CONN_MOD(Sock)) ->
     ?Transport:recv(Sock, Length, Timeout).
 
 %% @doc Receive data asynchronously
+-spec(async_recv(non_neg_integer(), connection()) -> {ok, reference()}).
 async_recv(Length, ?CONN_MOD(Sock)) ->
     ?Transport:async_recv(Sock, Length, infinity).
 
+-spec(async_recv(Length, Timeout, connection()) -> {ok, Ref} when
+    Length  :: non_neg_integer(),
+    Timeout :: non_neg_integer() | infinity,
+    Ref     :: reference()).
 async_recv(Length, Timeout, ?CONN_MOD(Sock)) ->
     ?Transport:async_recv(Sock, Length, Timeout).
 
 %% @doc Shutdown connection
--spec(shutdown(How, connection()) -> ok | {error, Reason :: any()} when
+-spec(shutdown(How, connection()) -> ok | {error, Reason :: inet:posix()} when
     How :: read | write | read_write).
 shutdown(How, ?CONN_MOD(Sock)) ->
     ?Transport:shutdown(Sock, How).
