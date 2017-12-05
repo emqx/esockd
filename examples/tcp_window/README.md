@@ -12,3 +12,8 @@ port_command(Socket, Data)              | {send_timeout, 5000}     | Return true
 port_command(Socket, Data, [force])     | {send_timeout, 5000}     | Return true always. Write to TCP Stack.
 port_command(Socket, Data, [nosuspend]) | {send_timeout, 5000}     | Return false first, and true after timeout. Drop the packets silently.
 
+## Conclusions
+
+1. Should set the `send_timeout` option if using `gen_tcp:send`
+2. Should set the `nosuspend` option if using `port_command`
+

@@ -33,30 +33,31 @@
          {packet, raw},
          {recbuf, 1024},
          {sndbuf, 1024},
-         {send_timeout, 3000}]).
+         {send_timeout_close, true},
+         {send_timeout, 5000}]).
 
 main() -> main(5000, sync).
 
-main([Port, Type]) when is_atom(Port) ->
-    main(list_to_integer(atom_to_list(Port)), Type).
+main([Port, How]) when is_atom(Port) ->
+    main(list_to_integer(atom_to_list(Port)), How).
 
-main(Port, Type) when is_integer(Port) ->
+main(Port, How) when is_integer(Port) ->
     lists:foreach(fun application:ensure_all_started/1, [sasl, crypto, gen_logger, esockd]),
     SockOpts = [{access, [{allow, all}]},
-                {acceptors, 1}, 
+                {acceptors, 1},
                 {shutdown, infinity},
                 {max_clients, 100},
                 {sockopts, ?TCP_OPTIONS}],
-    esockd:open(tcp_block, Port, SockOpts, {?MODULE, start_server, [Type]}),
+    esockd:open(tcp_block, Port, SockOpts, {?MODULE, start_server, [How]}),
     start_client(Port).
 
-start_server(Conn, Type) ->
-	{ok, spawn_link(?MODULE, server_init, [Conn, Type])}.
+start_server(Conn, How) ->
+	{ok, spawn_link(?MODULE, server_init, [Conn, How])}.
 
-server_init(Conn0, Type) ->
+server_init(Conn0, How) ->
     {ok, Conn} = Conn0:wait(),
     io:format("sockopts: ~p~n", [Conn:getopts([send_timeout, send_timeout_close])]),
-    server_loop(Conn, send_fun(Type, Conn)).
+    server_loop(Conn, send_fun(How, Conn)).
 
 server_loop(Conn, SendFun) ->
 	case Conn:recv(0) of
@@ -80,12 +81,13 @@ send_loop(Conn, SendFun, Data, Count) ->
             send_loop(Conn, SendFun, Data, Count + iolist_size(Data));
         false ->
             io:format("False Send ~w~n", [Count]),
+            io:format("Stats: ~p~n", [Conn:getstat([send_cnt])]),
             send_loop(Conn, SendFun, Data, Count + iolist_size(Data));
         ok ->
             io:format("Send ~w~n", [Count]),
             send_loop(Conn, SendFun, Data, Count + iolist_size(Data));
         {error, Error} ->
-            io:format("Send error: ~p~n", [Error]),
+            io:format("server tcp error: ~p~n", [Error]),
             Conn:fast_close()
     end.
 
@@ -100,7 +102,7 @@ start_client(Port) ->
 
 client_loop(Sock, I) ->
     gen_tcp:send(Sock, crypto:strong_rand_bytes(1024*1024)),
-    timer:sleep(100000),
+    timer:sleep(1000),
     case gen_tcp:recv(Sock, 0) of
         {ok, Data} ->
             io:format("client recv: ~p~n", [Data]),
@@ -117,5 +119,5 @@ send_fun(async, Conn) ->
 send_fun(async_force, Conn) ->
     fun(Data) -> port_command(Conn:sock(), Data, [force]) end;
 send_fun(async_nosuspend, Conn) ->
-    fun(Data) -> port_command(Conn:sock(), Data, [nosuspend]) end.
+    fun(Data) -> Conn:async_send(Data) end.
 
