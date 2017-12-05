@@ -48,6 +48,12 @@
 
 -define(ACCEPTOR_POOL, 16).
 
+-define(DEFAULT_SOCKOPTS,
+        [{nodelay, true},
+         {reuseaddr, true},
+         {send_timeout, 30000},
+         {send_timeout_close, true}]).
+
 %% @doc Start Listener
 -spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, term()} | ignore when 
     Protocol    :: atom(),
@@ -73,8 +79,8 @@ get_port(Listener) ->
 init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
-    %%Don't active the socket...
-    SockOpts = merge_addr(ListenOn, proplists:get_value(sockopts, Options, [{reuseaddr, true}])),
+    %% Don't active the socket...
+    SockOpts = merge_addr(ListenOn, sockopts(Options)),
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             SockFun = esockd_transport:ssl_upgrade_fun(proplists:get_value(sslopts, Options)),
@@ -92,6 +98,9 @@ init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
                          [Protocol, Port, Reason, inet:format_error(Reason)]),
             {stop, {cannot_listen, Port, Reason}}
     end.
+
+sockopts(Options) ->
+    esockd_util:merge_opts(?DEFAULT_SOCKOPTS, proplists:get_value(sockopts, Options, [])).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.

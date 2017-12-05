@@ -60,7 +60,7 @@ init([Protocol, Port, Opts, MFA]) ->
     Logger = init_logger(Opts),
     %% Delete {logger, LogMod}, {active, false}
     Opts1 = proplists:delete(logger, proplists:delete(active, Opts)),
-    case gen_udp:open(Port, merge_opts(?SOCKOPTS, Opts1)) of
+    case gen_udp:open(Port, esockd_util:merge_opts(?SOCKOPTS, Opts1)) of
         {ok, Sock} ->
             io:format("~s opened on udp ~p~n", [Protocol, Port]),
             {ok, #state{proto = Protocol, sock = Sock, mfa = MFA,
@@ -121,20 +121,6 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% Internel functions
 %%--------------------------------------------------------------------
-
-merge_opts(Defaults, Options) ->
-    lists:foldl(
-        fun({Opt, Val}, Acc) ->
-                case lists:keymember(Opt, 1, Acc) of
-                    true  -> lists:keyreplace(Opt, 1, Acc, {Opt, Val});
-                    false -> [{Opt, Val}|Acc]
-                end;
-            (Opt, Acc) ->
-                case lists:member(Opt, Acc) of
-                    true  -> Acc;
-                    false -> [Opt | Acc]
-                end
-    end, Defaults, Options).
 
 store_peer(Peer, Pid, State = #state{peers = Peers}) ->
     State#state{peers = dict:store(Peer, Pid, Peers)}.

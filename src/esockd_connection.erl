@@ -199,7 +199,7 @@ send(Data, ?CONN_MOD(Sock)) ->
 %% @doc Send data asynchronously by port_command/2
 -spec(async_send(iodata(), connection()) -> boolean()).
 async_send(Data, ?CONN_MOD(Sock)) ->
-    ?Transport:port_command(Sock, Data).
+    ?Transport:async_send(Sock, Data).
 
 %% @doc Receive data
 -spec(recv(Length, connection()) -> {ok, Data} | {error, Reason} when
