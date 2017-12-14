@@ -40,10 +40,31 @@
 %% Proxy-Protocol Socket Wrapper
 %%------------------------------------------------------------------------------
 
+-record(pp2_ssl_client, {pp2_client_ssl       :: boolean(),
+                         pp2_client_cert_conn :: boolean(),
+                         pp2_client_cert_sess :: boolean()
+                         }).
+
+-record(pp2_ssl, {pp2_ssl_client  :: #pp2_ssl_client{},
+                  pp2_ssl_verify  :: success | failed,
+                  pp2_ssl_version :: binary(), % US-ASCII string
+                  pp2_ssl_cn      :: binary(), % UTF8-encoded string
+                  pp2_ssl_cipher  :: binary(), % US-ASCII string
+                  pp2_ssl_sig_alg :: binary(), % US-ASCII string
+                  pp2_ssl_key_alg :: binary()  % US-ASCII string
+                  }).
+
 -record(proxy_socket, {inet     :: inet4 | inet6,
                        socket   :: inet:socket() | #ssl_socket{},
                        src_addr :: inet:ip_address(),
                        dst_addr :: inet:ip_address(),
                        src_port :: inet:port_number(),
-                       dst_port :: inet:port_number()}).
+                       dst_port :: inet:port_number(),
 
+                       %% proxy protocol v2 addtional fields
+                       pp2_alpn        :: binary(), % byte sequence
+                       pp2_authority   :: binary(), % UTF8-encoded string
+                       pp2_crc32c      :: integer(),% 32-bit number
+                       pp2_netns       :: binary(), % US-ASCII string
+                       pp2_ssl         :: #pp2_ssl{}
+                       }).

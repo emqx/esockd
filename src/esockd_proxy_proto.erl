@@ -54,6 +54,20 @@
 
 -define(TIMEOUT, 5000).
 
+%% Proxy Protocol Additional Fields
+-define(PP2_TYPE_ALPN,           16#01).
+-define(PP2_TYPE_AUTHORITY,      16#02).
+-define(PP2_TYPE_CRC32C,         16#03).
+-define(PP2_TYPE_NOOP,           16#04).
+-define(PP2_TYPE_NETNS,          16#30).
+
+-define(PP2_TYPE_SSL,            16#20).
+-define(PP2_SUBTYPE_SSL_VERSION, 16#21).
+-define(PP2_SUBTYPE_SSL_CN,      16#22).
+-define(PP2_SUBTYPE_SSL_CIPHER,  16#23).
+-define(PP2_SUBTYPE_SSL_SIG_ALG, 16#24).
+-define(PP2_SUBTYPE_SSL_KEY_ALG, 16#25).
+
 %% Protocol signature:
 %% 16#0D,16#0A,16#00,16#0D,16#0A,16#51,16#55,16#49,16#54,16#0A
 -define(SIG, "\r\n\0\r\nQUIT\n").
@@ -106,20 +120,73 @@ parse_v2(?LOCAL, _Trans, _ProxyInfo, #proxy_socket{socket = Sock}) ->
 
 parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet4}) ->
     <<A:8, B:8, C:8, D:8, W:8, X:8, Y:8, Z:8,
-      SrcPort:16, DstPort:16, _/binary>> = ProxyInfo,
-    {ok, ProxySock#proxy_socket{src_addr = {A, B, C, D}, src_port = SrcPort,
-                                dst_addr = {W, X, Y, Z}, dst_port = DstPort}};
+      SrcPort:16, DstPort:16, AdditionalFields/binary>> = ProxyInfo,
+    parse_v2_additional(AdditionalFields, ProxySock#proxy_socket{
+        src_addr = {A, B, C, D}, src_port = SrcPort,
+        dst_addr = {W, X, Y, Z}, dst_port = DstPort});
 
 parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet6}) ->
     <<A:16, B:16, C:16, D:16, E:16, F:16, G:16, H:16,
       R:16, S:16, T:16, U:16, V:16, W:16, X:16, Y:16,
-      SrcPort:16, DstPort:16, _/binary>> = ProxyInfo,
-    {ok, ProxySock#proxy_socket{src_addr = {A, B, C, D, E, F, G, H}, src_port = SrcPort,
-                                dst_addr = {R, S, T, U, V, W, X, Y}, dst_port = DstPort}};
+      SrcPort:16, DstPort:16, AdditionalFields/binary>> = ProxyInfo,
+    parse_v2_additional(AdditionalFields, ProxySock#proxy_socket{
+        src_addr = {A, B, C, D, E, F, G, H}, src_port = SrcPort,
+        dst_addr = {R, S, T, U, V, W, X, Y}, dst_port = DstPort});
 
 parse_v2(_, _, _, #proxy_socket{socket = Sock}) ->
     esockd_transport:fast_close(Sock),
     {error, unsupported_proto_v2}.
+
+
+parse_v2_additional(<<>>, ProxySock) ->
+    {ok, ProxySock};
+parse_v2_additional(<<?PP2_TYPE_ALPN:8, Len:16, PP2_ALPN:Len/binary, Remainder/bitstring>>, ProxySock) ->
+    parse_v2_additional(Remainder, ProxySock#proxy_socket{pp2_alpn = PP2_ALPN});
+parse_v2_additional(<<?PP2_TYPE_AUTHORITY:8, Len:16, PP2_AUTHORITY:Len/binary, Remainder/bitstring>>, ProxySock) ->
+    parse_v2_additional(Remainder, ProxySock#proxy_socket{pp2_authority = PP2_AUTHORITY});
+parse_v2_additional(<<?PP2_TYPE_CRC32C:8, Len:16, PP2_CRC32C:Len/binary, Remainder/bitstring>>, ProxySock) ->
+    parse_v2_additional(Remainder, ProxySock#proxy_socket{pp2_crc32c = PP2_CRC32C});
+parse_v2_additional(<<?PP2_TYPE_NOOP:8, Len:16, _Ignore:Len/binary, Remainder/bitstring>>, ProxySock) ->
+    parse_v2_additional(Remainder, ProxySock);
+parse_v2_additional(<<?PP2_TYPE_NETNS:8, Len:16, PP2_NETNS:Len/binary, Remainder/bitstring>>, ProxySock) ->
+    parse_v2_additional(Remainder, ProxySock#proxy_socket{pp2_netns = PP2_NETNS});
+parse_v2_additional(<<?PP2_TYPE_SSL:8, Len:16, PP2_SSL:Len/binary, Remainder/bitstring>>, ProxySock) ->
+    {ok, ProxySockWithSSL} = parse_v2_ssl(PP2_SSL, ProxySock),
+    parse_v2_additional(Remainder, ProxySockWithSSL);
+parse_v2_additional(InvalidAdditionalFields, _ProxySock) ->
+    {error, {invalid_pp2_additional_fields, InvalidAdditionalFields}}.
+
+
+parse_v2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_CLIENT_SSL:1,
+               PP2_SSL_VERIFY:32, SubFields/bitstring>>, ProxySock) ->
+    SSLVerificationResult = ssl_verification_result(PP2_SSL_VERIFY),
+
+    SSLClientFlags = #pp2_ssl_client{pp2_client_ssl = to_bool(PP2_CLIENT_SSL),
+                                     pp2_client_cert_conn = to_bool(PP2_CLIENT_CERT_CONN),
+                                     pp2_client_cert_sess = to_bool(PP2_CLIENT_CERT_SESS)},
+    {ok, SSL} = parse_v2_ssl_sub(SubFields, #pp2_ssl{
+                    pp2_ssl_verify = SSLVerificationResult,
+                    pp2_ssl_client = SSLClientFlags}),
+    {ok, ProxySock#proxy_socket{pp2_ssl = SSL}};
+parse_v2_ssl(InvalidSSLFields, _ProxySock) ->
+    {error, {invalid_pp2_ssl, InvalidSSLFields}}.
+ 
+
+parse_v2_ssl_sub(<<>>, SSL) ->
+    {ok, SSL};
+parse_v2_ssl_sub(<<?PP2_SUBTYPE_SSL_VERSION:8, Len:16, PP2_SSL_VERSION:Len/binary, Remainder/bitstring>>, SSL) ->
+    parse_v2_ssl_sub(Remainder, SSL#pp2_ssl{pp2_ssl_version = PP2_SSL_VERSION});
+parse_v2_ssl_sub(<<?PP2_SUBTYPE_SSL_CN:8, Len:16, PP2_SSL_CN:Len/binary, Remainder/bitstring>>, SSL) ->
+    parse_v2_ssl_sub(Remainder, SSL#pp2_ssl{pp2_ssl_cn = PP2_SSL_CN});
+parse_v2_ssl_sub(<<?PP2_SUBTYPE_SSL_CIPHER:8, Len:16, PP2_SSL_CIPHER:Len/binary, Remainder/bitstring>>, SSL) ->
+    parse_v2_ssl_sub(Remainder, SSL#pp2_ssl{pp2_ssl_cipher = PP2_SSL_CIPHER});
+parse_v2_ssl_sub(<<?PP2_SUBTYPE_SSL_SIG_ALG:8, Len:16, PP2_SSL_SIG_ALG:Len/binary, Remainder/bitstring>>, SSL) ->
+    parse_v2_ssl_sub(Remainder, SSL#pp2_ssl{pp2_ssl_sig_alg = PP2_SSL_SIG_ALG});
+parse_v2_ssl_sub(<<?PP2_SUBTYPE_SSL_KEY_ALG:8, Len:16, PP2_SSL_KEY_ALG:Len/binary, Remainder/bitstring>>, SSL) ->
+    parse_v2_ssl_sub(Remainder, SSL#pp2_ssl{pp2_ssl_key_alg = PP2_SSL_KEY_ALG});
+parse_v2_ssl_sub(InvalidSSLSubFields, _SSL) ->
+    {error, {invalid_pp2_ssl_sub_fields, InvalidSSLSubFields}}.
+
 
 %% V1
 inet_family($4) -> inet4;
@@ -130,3 +197,8 @@ inet_family(?INET)   -> inet4;
 inet_family(?INET6)  -> inet6;
 inet_family(?UNIX)   -> unix.
 
+to_bool(1) -> true;  
+to_bool(_) -> false.  
+
+ssl_verification_result(0) -> success;
+ssl_verification_result(_) -> failed.
