@@ -113,7 +113,7 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
             case proplists:get_bool(proxy_protocol, Opts)
-                 andalso esockd_proxy_proto:recv(NewSock, Opts) of
+                 andalso esockd_proxy_protocol:recv(NewSock, Opts) of
                 false ->
                     {ok, {?MODULE, [NewSock, SockFun, Opts]}};
                 {ok, ProxySock} ->

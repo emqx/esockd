@@ -1,3 +1,5 @@
+2017/03/10                                                        Willy Tarreau
+                                                           HAProxy Technologies
                                The PROXY protocol
                                  Versions 1 & 2
 
@@ -21,6 +23,10 @@ Revision history
    2014/06/14 - fix v2 header check in example code, and update Forwarded spec
    2014/07/12 - update list of implementations (add Squid)
    2015/05/02 - update list of implementations and format of the TLV add-ons
+   2017/03/10 - added the checksum, noop and more SSL-related TLV types,
+                reserved TLV type ranges, added TLV documentation, clarified
+                string encoding. With contributions from Andriy Palamarchuk
+                (Amazon.com).
 
 
 1. Background
@@ -56,11 +62,11 @@ The typical architecture becomes the following one :
 
 
       +--------+      HTTP                      :80 +----------+
-      | client |  --------------------------------&gt; |          |
+      | client |  --------------------------------> |          |
       |        |                                    | haproxy, |
       +--------+             +---------+            |  1 or 2  |
      /        /     HTTPS    | stunnel |  HTTP  :81 | listening|
-    &lt;________/    ---------&gt; | (server | ---------&gt; |  ports   |
+    <________/    ---------> | (server | ---------> |  ports   |
                              |  mode)  |            |          |
                              +---------+            +----------+
 
@@ -71,7 +77,7 @@ request of each connection and all subsequent requests will not have it. One
 solution could be to improve the patch to make it support keep-alive and parse
 all forwarded data, whether they're announced with a Content-Length or with a
 Transfer-Encoding, taking care of special methods such as HEAD which announce
-data without transfering them, etc... In fact, it would require implementing a
+data without transferring them, etc... In fact, it would require implementing a
 full HTTP stack in Stunnel. It would then become a lot more complex, a lot less
 reliable and would not anymore be the "dumb proxy" that fits every purposes.
 
@@ -188,9 +194,9 @@ address.
 2.1. Human-readable header format (Version 1)
 
 This is the format specified in version 1 of the protocol. It consists in one
-line of ASCII text matching exactly the following block, sent immediately and
-at once upon the connection establishment and prepended before any data flowing
-from the sender to the receiver :
+line of US-ASCII text matching exactly the following block, sent immediately
+and at once upon the connection establishment and prepended before any data
+flowing from the sender to the receiver :
 
   - a string identifying the protocol : "PROXY" ( \x50 \x52 \x4F \x58 \x59 )
     Seeing this string indicates that this is version 1 of the protocol.
@@ -246,19 +252,19 @@ from the sender to the receiver :
 The maximum line lengths the receiver must support including the CRLF are :
   - TCP/IPv4 :
       "PROXY TCP4 255.255.255.255 255.255.255.255 65535 65535\r\n"
-    =&gt; 5 + 1 + 4 + 1 + 15 + 1 + 15 + 1 + 5 + 1 + 5 + 2 = 56 chars
+    => 5 + 1 + 4 + 1 + 15 + 1 + 15 + 1 + 5 + 1 + 5 + 2 = 56 chars
 
   - TCP/IPv6 :
       "PROXY TCP6 ffff:f...f:ffff ffff:f...f:ffff 65535 65535\r\n"
-    =&gt; 5 + 1 + 4 + 1 + 39 + 1 + 39 + 1 + 5 + 1 + 5 + 2 = 104 chars
+    => 5 + 1 + 4 + 1 + 39 + 1 + 39 + 1 + 5 + 1 + 5 + 2 = 104 chars
 
   - unknown connection (short form) :
       "PROXY UNKNOWN\r\n"
-    =&gt; 5 + 1 + 7 + 2 = 15 chars
+    => 5 + 1 + 7 + 2 = 15 chars
 
   - worst case (optional fields set to 0xff) :
       "PROXY UNKNOWN ffff:f...f:ffff ffff:f...f:ffff 65535 65535\r\n"
-    =&gt; 5 + 1 + 7 + 1 + 39 + 1 + 39 + 1 + 5 + 1 + 5 + 2 = 107 chars
+    => 5 + 1 + 7 + 1 + 39 + 1 + 39 + 1 + 5 + 1 + 5 + 2 = 107 chars
 
 So a 108-byte buffer is always enough to store all the line and a trailing zero
 for string processing.
@@ -376,7 +382,7 @@ matching the values internally used by the system. It may be one of :
   - other values are unspecified and must not be emitted in version 2 of this
     protocol and must be rejected as invalid by receivers.
 
-The transport protocol is specified in the lowest 4 bits of the the 14th byte :
+The transport protocol is specified in the lowest 4 bits of the 14th byte :
 
   - 0x0 : UNSPEC : the connection is forwarded for an unknown, unspecified
     or unsupported protocol. The sender should use this family when sending
@@ -426,11 +432,12 @@ In practice, the following protocol bytes are expected :
     AF_UNIX protocol family. Address length is 2*108 = 216 bytes.
 
 
-Only the UNSPEC protocol byte (\x00) is mandatory. A receiver is not required
-to implement other ones, provided that it automatically falls back to the
-UNSPEC mode for the valid combinations above that it does not support.
+Only the UNSPEC protocol byte (\x00) is mandatory to implement on the receiver.
+A receiver is not required to implement other ones, provided that it
+automatically falls back to the UNSPEC mode for the valid combinations above
+that it does not support.
 
-The 15th and 16th bytes is the address length in bytes in network endien order.
+The 15th and 16th bytes is the address length in bytes in network endian order.
 It is used so that the receiver knows how many address bytes to skip even when
 it does not implement the presented protocol. Thus the length of the protocol
 header in bytes is always exactly 16 + this value. When a sender presents a
@@ -495,7 +502,7 @@ protocol. Identifying the protocol version is easy :
            \x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A\x02
 
     - otherwise, if the incoming byte count is 8 or above, and the 5 first
-      characters match the ASCII representation of "PROXY" then the protocol
+      characters match the US-ASCII representation of "PROXY" then the protocol
       must be parsed as version 1 :
 
            \x50\x52\x4F\x58\x59
@@ -521,16 +528,83 @@ bytes specified by the length.
             uint8_t value[0];
         };
 
-The following types have already been registered for the &lt;type&gt; field :
+A receiver may choose to skip over and ignore the TLVs he is not interested in
+or he does not understand. Senders can generate the TLVs only for
+the information they choose to publish.
 
-        #define PP2_TYPE_ALPN          0x01
-        #define PP2_TYPE_AUTHORITY     0x02
-        #define PP2_TYPE_SSL           0x20
-        #define PP2_TYPE_SSL_VERSION   0x21
-        #define PP2_TYPE_SSL_CN        0x22
-        #define PP2_TYPE_NETNS         0x30
+The following types have already been registered for the <type> field :
 
-For the type PP2_TYPE_SSL, the value is itselv a defined like this :
+        #define PP2_TYPE_ALPN           0x01
+        #define PP2_TYPE_AUTHORITY      0x02
+        #define PP2_TYPE_CRC32C         0x03
+        #define PP2_TYPE_NOOP           0x04
+        #define PP2_TYPE_SSL            0x20
+        #define PP2_SUBTYPE_SSL_VERSION 0x21
+        #define PP2_SUBTYPE_SSL_CN      0x22
+        #define PP2_SUBTYPE_SSL_CIPHER  0x23
+        #define PP2_SUBTYPE_SSL_SIG_ALG 0x24
+        #define PP2_SUBTYPE_SSL_KEY_ALG 0x25
+        #define PP2_TYPE_NETNS          0x30
+
+
+2.2.1 PP2_TYPE_ALPN
+
+Application-Layer Protocol Negotiation (ALPN). It is a byte sequence defining
+the upper layer protocol in use over the connection. The most common use case
+will be to pass the exact copy of the ALPN extension of the Transport Layer
+Security (TLS) protocol as defined by RFC7301 [9].
+
+
+2.2.2 PP2_TYPE_AUTHORITY
+
+Contains the host name value passed by the client, as an UTF8-encoded string.
+In case of TLS being used on the client connection, this is the exact copy of
+the "server_name" extension as defined by RFC3546 [10], section 3.1, often
+referred to as "SNI". There are probably other situations where an authority
+can be mentionned on a connection without TLS being involved at all.
+
+
+2.2.3. PP2_TYPE_CRC32C
+
+The value of the type PP2_TYPE_CRC32C is a 32-bit number storing the CRC32c
+checksum of the PROXY protocol header.
+
+When the checksum is supported by the sender after constructing the header
+the sender MUST:
+
+ - initialize the checksum field to '0's.
+
+ - calculate the CRC32c checksum of the PROXY header as described in RFC4960,
+   Appendix B [8].
+
+ - put the resultant value into the checksum field, and leave the rest of
+   the bits unchanged.
+
+If the checksum is provided as part of the PROXY header and the checksum
+functionality is supported by the receiver, the receiver MUST:
+
+ - store the received CRC32c checksum value aside.
+
+ - replace the 32 bits of the checksum field in the received PROXY header with
+   all '0's and calculate a CRC32c checksum value of the whole PROXY header.
+
+ - verify that the calculated CRC32c checksum is the same as the received
+   CRC32c checksum. If it is not, the receiver MUST treat the TCP connection
+   providing the header as invalid.
+
+The default procedure for handling an invalid TCP connection is to abort it.
+
+
+2.2.4. PP2_TYPE_NOOP
+
+The TLV of this type should be ignored when parsed. The value is zero or more
+bytes. Can be used for data padding or alignment. Note that it can be used
+to align only by 3 or more bytes because a TLV can not be smaller than that.
+
+
+2.2.5. The PP2_TYPE_SSL type and subtypes
+
+For the type PP2_TYPE_SSL, the value is itself a defined like this :
 
         struct pp2_tlv_ssl {
                 uint8_t  client;
@@ -538,30 +612,76 @@ For the type PP2_TYPE_SSL, the value is itselv a defined like this :
                 struct pp2_tlv sub_tlv[0];
         };
 
-And the &lt;client&gt; field is made of a bit field from the following values,
+The <verify> field will be zero if the client presented a certificate
+and it was successfully verified, and non-zero otherwise.
+
+The <client> field is made of a bit field from the following values,
 indicating which element is present :
 
 	#define PP2_CLIENT_SSL           0x01
 	#define PP2_CLIENT_CERT_CONN     0x02
 	#define PP2_CLIENT_CERT_SESS     0x04
 
-Each of these elements may lead to extra data being appended to this TLV using
-a second level of TLV encapsulation. It is thus possible to find multiple TLV
-values after this field. The total length of the upper TLV will reflect this.
+Note, that each of these elements may lead to extra data being appended to
+this TLV using a second level of TLV encapsulation. It is thus possible to
+find multiple TLV values after this field. The total length of the pp2_tlv_ssl
+TLV will reflect this.
 
-PP2_CLIENT_SSL indicates that the client connected over SSL/TLS. When this
-field is present, the string representation of the TLS version is appended at
-the end of the field in the TLV format using the type PP2_TYPE_SSL_VERSION.
+The PP2_CLIENT_SSL flag indicates that the client connected over SSL/TLS. When
+this field is present, the US-ASCII string representation of the TLS version is
+appended at the end of the field in the TLV format using the type
+PP2_SUBTYPE_SSL_VERSION.
 
 PP2_CLIENT_CERT_CONN indicates that the client provided a certificate over the
 current connection. PP2_CLIENT_CERT_SESS indicates that the client provided a
-certificate at least once over the TLS session this connection belongs to. In
-both cases, the string representation of the client certificate's CN may be
-appended after the SSL/TLS version using the TLV format using the type
-PP2_TYPE_SSL_CN.
+certificate at least once over the TLS session this connection belongs to.
 
-The type PP2_TYPE_NETNS defines the value as the string representation of the
-namespace's name.
+The second level TLV PP2_SUBTYPE_SSL_CIPHER provides the US-ASCII string name
+of the used cipher, for example "ECDHE-RSA-AES128-GCM-SHA256".
+
+The second level TLV PP2_SUBTYPE_SSL_SIG_ALG provides the US-ASCII string name
+of the algorithm used to sign the certificate presented by the frontend when
+the incoming connection was made over an SSL/TLS transport layer, for example
+"SHA256".
+
+The second level TLV PP2_SUBTYPE_SSL_KEY_ALG provides the US-ASCII string name
+of the algorithm used to generate the key of the certificate presented by the
+frontend when the incoming connection was made over an SSL/TLS transport layer,
+for example "RSA2048".
+
+In all cases, the string representation (in UTF8) of the Common Name field
+(OID: 2.5.4.3) of the client certificate's Distinguished Name, is appended
+using the TLV format and the type PP2_SUBTYPE_SSL_CN. E.g. "example.com".
+
+
+2.2.6. The PP2_TYPE_NETNS type
+
+The type PP2_TYPE_NETNS defines the value as the US-ASCII string representation
+of the namespace's name.
+
+
+2.2.7. Reserved type ranges
+
+The following range of 16 type values is reserved for application-specific
+data and will be never used by the PROXY Protocol. If you need more values
+consider extending the range with a type field in your TLVs.
+
+        #define PP2_TYPE_MIN_CUSTOM    0xE0
+        #define PP2_TYPE_MAX_CUSTOM    0xEF
+
+This range of 8 values is reserved for temporary experimental use by
+application developers and protocol designers. The values from the range will
+never be used by the PROXY protocol and should not be used by production
+functionality.
+
+        #define PP2_TYPE_MIN_EXPERIMENT 0xF0
+        #define PP2_TYPE_MAX_EXPERIMENT 0xF7
+
+The following range of 8 values is reserved for future use, potentially to
+extend the protocol with multibyte type values.
+
+        #define PP2_TYPE_MIN_FUTURE    0xF8
+        #define PP2_TYPE_MAX_FUTURE    0xFF
 
 
 3. Implementations
@@ -603,6 +723,9 @@ connections on 2014/05/13, and will be released as part of version 4.83.
 Squid added support for versions 1 and 2 of the protocol in version 3.5 [7].
 
 Jetty 9.3.0 supports protocol version 1.
+
+lighttpd added support for versions 1 and 2 of the protocol for incoming
+connections in version 1.4.46 [11].
 
 The protocol is simple enough that it is expected that other implementations
 will appear, especially in environments such as SMTP, IMAP, FTP, RDP where the
@@ -657,7 +780,7 @@ default route.
 
 The protocol also eases IPv4 and IPv6 integration : if only the first layer
 (FW1 and PX1) is IPv6-capable, it is still possible to present the original
-client's IPv6 address to the target server eventhough the whole chain is only
+client's IPv6 address to the target server even though the whole chain is only
 connected via IPv4.
 
 
@@ -728,37 +851,37 @@ number of known sources should be safe.
 
 The version 2 protocol signature has been sent to a wide variety of protocols
 and implementations including old ones. The following protocol and products
-have been tested to ensure the best possible behaviour when the signature was
+have been tested to ensure the best possible behavior when the signature was
 presented, even with minimal implementations :
 
   - HTTP :
-    - Apache 1.3.33    : connection abort        =&gt; pass/optimal
-    - Nginx 0.7.69     : 400 Bad Request + abort =&gt; pass/optimal
-    - lighttpd 1.4.20  : 400 Bad Request + abort =&gt; pass/optimal
-    - thttpd 2.20c     : 400 Bad Request + abort =&gt; pass/optimal
-    - mini-httpd-1.19  : 400 Bad Request + abort =&gt; pass/optimal
-    - haproxy 1.4.21   : 400 Bad Request + abort =&gt; pass/optimal
-    - Squid 3          : 400 Bad Request + abort =&gt; pass/optimal
+    - Apache 1.3.33    : connection abort        => pass/optimal
+    - Nginx 0.7.69     : 400 Bad Request + abort => pass/optimal
+    - lighttpd 1.4.20  : 400 Bad Request + abort => pass/optimal
+    - thttpd 2.20c     : 400 Bad Request + abort => pass/optimal
+    - mini-httpd-1.19  : 400 Bad Request + abort => pass/optimal
+    - haproxy 1.4.21   : 400 Bad Request + abort => pass/optimal
+    - Squid 3          : 400 Bad Request + abort => pass/optimal
   - SSL :
-    - stud 0.3.47      : connection abort        =&gt; pass/optimal
-    - stunnel 4.45     : connection abort        =&gt; pass/optimal
-    - nginx 0.7.69     : 400 Bad Request + abort =&gt; pass/optimal
+    - stud 0.3.47      : connection abort        => pass/optimal
+    - stunnel 4.45     : connection abort        => pass/optimal
+    - nginx 0.7.69     : 400 Bad Request + abort => pass/optimal
   - FTP :
-    - Pure-ftpd 1.0.20 : 3*500 then 221 Goodbye  =&gt; pass/optimal
-    - vsftpd 2.0.1     : 3*530 then 221 Goodbye  =&gt; pass/optimal
+    - Pure-ftpd 1.0.20 : 3*500 then 221 Goodbye  => pass/optimal
+    - vsftpd 2.0.1     : 3*530 then 221 Goodbye  => pass/optimal
   - SMTP :
-    - postfix 2.3      : 3*500 + 221 Bye         =&gt; pass/optimal
-    - exim 4.69        : 554 + connection abort  =&gt; pass/optimal
+    - postfix 2.3      : 3*500 + 221 Bye         => pass/optimal
+    - exim 4.69        : 554 + connection abort  => pass/optimal
   - POP :
-    - dovecot 1.0.10   : 3*ERR + Logout          =&gt; pass/optimal
+    - dovecot 1.0.10   : 3*ERR + Logout          => pass/optimal
   - IMAP :
-    - dovecot 1.0.10   : 5*ERR + hang            =&gt; pass/non-optimal
+    - dovecot 1.0.10   : 5*ERR + hang            => pass/non-optimal
   - LDAP :
-    - openldap 2.3     : abort                   =&gt; pass/optimal
+    - openldap 2.3     : abort                   => pass/optimal
   - SSH :
-    - openssh 3.9p1    : abort                   =&gt; pass/optimal
+    - openssh 3.9p1    : abort                   => pass/optimal
   - RDP :
-    - Windows XP SP3   : abort                   =&gt; pass/optimal
+    - Windows XP SP3   : abort                   => pass/optimal
 
 This means that most protocols and implementations will not be confused by an
 incoming connection exhibiting the protocol signature, which avoids issues when
@@ -771,7 +894,7 @@ It is possible that the protocol may slightly evolve to present other
 information such as the incoming network interface, or the origin addresses in
 case of network address translation happening before the first proxy, but this
 is not identified as a requirement right now. Some deep thinking has been spent
-on this and it appears that trying to add a few more information open a pandora
+on this and it appears that trying to add a few more information open a Pandora
 box with many information from MAC addresses to SSL client certificates, which
 would make the protocol much more complex. So at this point it is not planned.
 Suggestions on improvements are welcome.
@@ -790,7 +913,10 @@ The following links were referenced in the document.
 [5] https://github.com/bumptech/stud/pull/81
 [6] https://www.varnish-cache.org/docs/trunk/phk/ssl_again.html
 [7] http://wiki.squid-cache.org/Squid-3.5
-
+[8] https://tools.ietf.org/html/rfc4960#appendix-B
+[9] https://tools.ietf.org/rfc/rfc7301.txt
+[10] https://www.ietf.org/rfc/rfc3546.txt
+[11] https://redmine.lighttpd.net/issues/2804
 
 9. Sample code
 
@@ -804,7 +930,7 @@ side is even simpler and can easily be deduced from this sample code.
   struct sockaddr_storage to;   /* already filled by getsockname() */
   const char v2sig[12] = "\x0D\x0A\x0D\x0A\x00\x0D\x0A\x51\x55\x49\x54\x0A";
 
-  /* returns 0 if needs to poll, &lt;0 upon error or &gt;0 if it did the job */
+  /* returns 0 if needs to poll, <0 upon error or >0 if it did the job */
   int read_evt(int fd)
   {
       union {
@@ -840,43 +966,43 @@ side is even simpler and can easily be deduced from this sample code.
       int size, ret;
 
       do {
-          ret = recv(fd, &amp;hdr, sizeof(hdr), MSG_PEEK);
-      } while (ret == -1 &amp;&amp; errno == EINTR);
+          ret = recv(fd, &hdr, sizeof(hdr), MSG_PEEK);
+      } while (ret == -1 && errno == EINTR);
 
       if (ret == -1)
           return (errno == EAGAIN) ? 0 : -1;
 
-      if (ret &gt;= 16 &amp;&amp; memcmp(&amp;hdr.v2, v2sig, 12) == 0 &amp;&amp;
-          (hdr.v2.ver_cmd &amp; 0xF0) == 0x20) {
-          size = 16 + hdr.v2.len;
-          if (ret &lt; size)
+      if (ret >= 16 && memcmp(&hdr.v2, v2sig, 12) == 0 &&
+          (hdr.v2.ver_cmd & 0xF0) == 0x20) {
+          size = 16 + ntohs(hdr.v2.len);
+          if (ret < size)
               return -1; /* truncated or too large header */
 
-          switch (hdr.v2.ver_cmd &amp; 0xF) {
+          switch (hdr.v2.ver_cmd & 0xF) {
           case 0x01: /* PROXY command */
               switch (hdr.v2.fam) {
               case 0x11:  /* TCPv4 */
-                  ((struct sockaddr_in *)&amp;from)-&gt;sin_family = AF_INET;
-                  ((struct sockaddr_in *)&amp;from)-&gt;sin_addr.s_addr =
+                  ((struct sockaddr_in *)&from)->sin_family = AF_INET;
+                  ((struct sockaddr_in *)&from)->sin_addr.s_addr =
                       hdr.v2.addr.ip4.src_addr;
-                  ((struct sockaddr_in *)&amp;from)-&gt;sin_port =
+                  ((struct sockaddr_in *)&from)->sin_port =
                       hdr.v2.addr.ip4.src_port;
-                  ((struct sockaddr_in *)&amp;to)-&gt;sin_family = AF_INET;
-                  ((struct sockaddr_in *)&amp;to)-&gt;sin_addr.s_addr =
+                  ((struct sockaddr_in *)&to)->sin_family = AF_INET;
+                  ((struct sockaddr_in *)&to)->sin_addr.s_addr =
                       hdr.v2.addr.ip4.dst_addr;
-                  ((struct sockaddr_in *)&amp;to)-&gt;sin_port =
+                  ((struct sockaddr_in *)&to)->sin_port =
                       hdr.v2.addr.ip4.dst_port;
                   goto done;
               case 0x21:  /* TCPv6 */
-                  ((struct sockaddr_in6 *)&amp;from)-&gt;sin6_family = AF_INET6;
-                  memcpy(&amp;((struct sockaddr_in6 *)&amp;from)-&gt;sin6_addr,
+                  ((struct sockaddr_in6 *)&from)->sin6_family = AF_INET6;
+                  memcpy(&((struct sockaddr_in6 *)&from)->sin6_addr,
                       hdr.v2.addr.ip6.src_addr, 16);
-                  ((struct sockaddr_in6 *)&amp;from)-&gt;sin6_port =
+                  ((struct sockaddr_in6 *)&from)->sin6_port =
                       hdr.v2.addr.ip6.src_port;
-                  ((struct sockaddr_in6 *)&amp;to)-&gt;sin6_family = AF_INET6;
-                  memcpy(&amp;((struct sockaddr_in6 *)&amp;to)-&gt;sin6_addr,
+                  ((struct sockaddr_in6 *)&to)->sin6_family = AF_INET6;
+                  memcpy(&((struct sockaddr_in6 *)&to)->sin6_addr,
                       hdr.v2.addr.ip6.dst_addr, 16);
-                  ((struct sockaddr_in6 *)&amp;to)-&gt;sin6_port =
+                  ((struct sockaddr_in6 *)&to)->sin6_port =
                       hdr.v2.addr.ip6.dst_port;
                   goto done;
               }
@@ -889,7 +1015,7 @@ side is even simpler and can easily be deduced from this sample code.
               return -1; /* not a supported command */
           }
       }
-      else if (ret &gt;= 8 &amp;&amp; memcmp(hdr.v1.line, "PROXY", 5) == 0) {
+      else if (ret >= 8 && memcmp(hdr.v1.line, "PROXY", 5) == 0) {
           char *end = memchr(hdr.v1.line, '\r', ret - 1);
           if (!end || end[1] != '\n')
               return -1; /* partial or invalid header */
@@ -907,7 +1033,7 @@ side is even simpler and can easily be deduced from this sample code.
   done:
       /* we need to consume the appropriate amount of data from the socket */
       do {
-          ret = recv(fd, &amp;hdr, size, 0);
-      } while (ret == -1 &amp;&amp; errno == EINTR);
-      return (ret &gt;= 0) ? 1 : -1;
+          ret = recv(fd, &hdr, size, 0);
+      } while (ret == -1 && errno == EINTR);
+      return (ret >= 0) ? 1 : -1;
   }
