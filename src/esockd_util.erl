@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2016-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal

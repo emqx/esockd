@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2016 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -181,20 +181,24 @@ parse_pp2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_C
      %% and it was successfully verified, and non-zero otherwise.
      {pp2_ssl_verify, ssl_certificate_verified(PP2_SSL_VERIFY)}
      
-     | parse_pp2_tlv(fun pp2_ssl_field/1, SubFields)
+     | parse_pp2_tlv(fun pp2_additional_ssl_field/1, SubFields)
     ].
 
-pp2_ssl_field({?PP2_SUBTYPE_SSL_VERSION, PP2_SSL_VERSION}) ->
+pp2_additional_ssl_field({?PP2_SUBTYPE_SSL_VERSION, PP2_SSL_VERSION}) ->
     {pp2_ssl_version, PP2_SSL_VERSION};
-pp2_ssl_field({?PP2_SUBTYPE_SSL_CN, PP2_SSL_CN}) ->
+
+%% In all cases, the string representation (in UTF8) of the Common Name field
+%% (OID: 2.5.4.3) of the client certificate's Distinguished Name, is appended
+%% using the TLV format and the type PP2_SUBTYPE_SSL_CN. E.g. "example.com".
+pp2_additional_ssl_field({?PP2_SUBTYPE_SSL_CN, PP2_SSL_CN}) ->
     {pp2_ssl_cn, PP2_SSL_CN};
-pp2_ssl_field({?PP2_SUBTYPE_SSL_CIPHER, PP2_SSL_CIPHER}) ->
+pp2_additional_ssl_field({?PP2_SUBTYPE_SSL_CIPHER, PP2_SSL_CIPHER}) ->
     {pp2_ssl_cipher, PP2_SSL_CIPHER};
-pp2_ssl_field({?PP2_SUBTYPE_SSL_SIG_ALG, PP2_SSL_SIG_ALG}) ->
+pp2_additional_ssl_field({?PP2_SUBTYPE_SSL_SIG_ALG, PP2_SSL_SIG_ALG}) ->
     {pp2_ssl_sig_alg, PP2_SSL_SIG_ALG};
-pp2_ssl_field({?PP2_SUBTYPE_SSL_KEY_ALG, PP2_SSL_KEY_ALG}) ->
+pp2_additional_ssl_field({?PP2_SUBTYPE_SSL_KEY_ALG, PP2_SSL_KEY_ALG}) ->
     {pp2_ssl_key_alg, PP2_SSL_KEY_ALG};
-pp2_ssl_field({Field, Val}) ->
+pp2_additional_ssl_field({Field, Val}) ->
     {{pp2_ssl_raw, Field}, Val}.
 
 ssl_certificate_verified(0) -> success;

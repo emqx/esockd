@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -38,7 +38,10 @@
 
 -export([getopts/2, setopts/2, getstat/2]).
 
--export([sockname/1, peername/1, peercert/1, shutdown/2]).
+-export([sockname/1, peername/1, shutdown/2]).
+
+%% Peercert
+-export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1]).
 
 -export([gc/1]).
 
@@ -250,6 +253,24 @@ peercert(#ssl_socket{ssl = SslSock}) ->
     ssl:peercert(SslSock);
 peercert(#proxy_socket{socket = Sock}) ->
     ssl:peercert(Sock).
+
+%% @doc Peercert subject
+-spec(peer_cert_subject(Sock :: sock()) -> undefined | binary()).
+peer_cert_subject(Sock) when is_port(Sock) ->
+    undefined;
+peer_cert_subject(#ssl_socket{ssl = SslSock}) ->
+    esockd_ssl:peer_cert_subject(ssl:peercert(SslSock));
+peer_cert_subject(Sock) when ?IS_PROXY(Sock) ->
+    peer_cert_subject(Sock). %% Common Name?
+
+%% @doc Peercert common name
+-spec(peer_cert_common_name(Sock :: sock()) -> undefined | binary()).
+peer_cert_common_name(Sock) when is_port(Sock) ->
+    undefined;
+peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
+    esockd_ssl:peer_cert_common_name(ssl:peercert(SslSock));
+peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+    properlists:get_value(pp2_ssl_cn, proplists:get_value(pp2_ssl, AdditionalInfo, [])).
 
 %% @doc Shutdown socket
 -spec(shutdown(sock(), How) -> ok | {error, Reason :: inet:posix()} when

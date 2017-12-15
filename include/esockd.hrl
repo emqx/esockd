@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -41,7 +41,7 @@
 %% Proxy-Protocol Socket Wrapper
 %%------------------------------------------------------------------------------
 
--type(pp2_additional_ssl_field() :: {pp2_ssl_client, boolean()}
+-type(pp2_additional_ssl_field() :: {pp2_ssl_client,           boolean()}
                                   | {pp2_ssl_client_cert_conn, boolean()}
                                   | {pp2_ssl_client_cert_sess, boolean()}
                                   | {pp2_ssl_verify,  success | failed}
@@ -65,4 +65,6 @@
                        dst_port :: inet:port_number(),
                        %% Proxy protocol v2 addtional fields
                        pp2_additional_info = [] :: list(pp2_additional_field())}).
+
+-define(IS_PROXY(Sock), is_record(Sock, proxy_socket)).
 

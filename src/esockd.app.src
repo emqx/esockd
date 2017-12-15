@@ -1,14 +1,10 @@
 {application, esockd, [
   {id, "esockd"},
-  {vsn, "5.1"},
-  {description, "Erlang General Non-blocking TCP/SSL Server"},
+  {vsn, "5.2"},
+  {description, "General Non-blocking TCP/SSL Server"},
   {modules, []},
   {registered, []},
-  {applications, [
-                  kernel,
-                  stdlib,
-                  gen_logger
-                 ]},
+  {applications, [kernel, stdlib, gen_logger]},
   {mod, {esockd_app, []}},
   {env, [{logger, {error_logger, info}}]},
   {maintainers, ["Feng Lee <feng@emqtt.io>"]},
