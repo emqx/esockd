@@ -270,7 +270,7 @@ peer_cert_common_name(Sock) when is_port(Sock) ->
 peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
     esockd_ssl:peer_cert_common_name(ssl:peercert(SslSock));
 peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
-    properlists:get_value(pp2_ssl_cn, proplists:get_value(pp2_ssl, AdditionalInfo, [])).
+    proplists:get_value(pp2_ssl_cn, proplists:get_value(pp2_ssl, AdditionalInfo, [])).
 
 %% @doc Shutdown socket
 -spec(shutdown(sock(), How) -> ok | {error, Reason :: inet:posix()} when
