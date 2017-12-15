@@ -62,6 +62,8 @@ groups() ->
      {proxy_protocol, [sequence],
       [parse_proxy_info_v1,
        parse_proxy_info_v2,
+       parse_proxy_pp2_tlv,
+       parse_proxy_info_v2_additional_info,
        new_connection_tcp4,
        new_connection_tcp6,
        new_connection_v2,
@@ -319,22 +321,46 @@ udp_echo_loop(Socket, {Address, Port} = Peer) ->
 parse_proxy_info_v1(Config) ->
     ?assertEqual({ok, #proxy_socket{src_addr = {192,168,1,30}, src_port = 45420,
                                     dst_addr = {192,168,1,2}, dst_port = 1883}},
-                 esockd_proxy_proto:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>, #proxy_socket{})),
+                 esockd_proxy_protocol:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>, #proxy_socket{})),
     ?assertEqual({ok, #proxy_socket{src_addr = {255,255,255,255}, src_port = 65535,
                                     dst_addr = {255,255,255,255}, dst_port = 65535}},
-                 esockd_proxy_proto:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>, #proxy_socket{})),
+                 esockd_proxy_protocol:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>, #proxy_socket{})),
     Config.
 
 parse_proxy_info_v2(Config) ->
     ?assertEqual({ok, #proxy_socket{src_addr = {104,199,189,98}, src_port = 6000,
                                     dst_addr = {106,185,34,253}, dst_port = 8883,
                                     inet = inet4}},
-                 esockd_proxy_proto:parse_v2(16#1, 16#1, <<104,199,189,98,106,185,34,253,6000:16,8883:16>>,
+                 esockd_proxy_protocol:parse_v2(16#1, 16#1, <<104,199,189,98,106,185,34,253,6000:16,8883:16>>,
                                              #proxy_socket{inet = inet4})),
     ?assertEqual({ok, #proxy_socket{src_addr = {0,0,0,0,0,0,0,1}, src_port = 6000,
                                     dst_addr = {0,0,0,0,0,0,0,1}, dst_port = 5000,
                                     inet = inet6}},
-                 esockd_proxy_proto:parse_v2(16#1, 16#1, <<1:128, 1:128, 6000:16, 5000:16>>, #proxy_socket{inet = inet6})),
+                 esockd_proxy_protocol:parse_v2(16#1, 16#1, <<1:128, 1:128, 6000:16, 5000:16>>, #proxy_socket{inet = inet6})),
+    Config.
+
+parse_proxy_pp2_tlv(Config) ->
+    Bin = <<01,00,05,"29zka",02,00,06,"219a3k",16#30,00,07,"abc.com",16#20,00,05,03,00,00,00,01>>,
+    ?assertEqual([{1, <<"29zka">>}, {2, <<"219a3k">>}, {16#30, <<"abc.com">>}, {16#20, <<3,0,0,0,1>>}],
+                 esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin)).
+
+parse_proxy_info_v2_additional_info(Config) ->
+    AdditionalInfo = [{pp2_alpn, <<"29zka">>},
+                      {pp2_authority, <<"219a3k">>},
+                      {pp2_netns, <<"abc.com">>},
+                      {pp2_ssl,
+                       [{pp2_ssl_client, true},
+                        {pp2_ssl_client_cert_conn, true},
+                        {pp2_ssl_client_cert_sess, true},
+                        {pp2_ssl_verify, success}]
+                      }],
+    ?assertEqual({ok, #proxy_socket{src_addr = {104,199,189,98}, src_port = 6000,
+                                    dst_addr = {106,185,34,253}, dst_port = 8883,
+                                    inet = inet4, pp2_additional_info = AdditionalInfo}},
+                 esockd_proxy_protocol:parse_v2(16#1, 16#1, <<104,199,189,98,106,185,34,253,6000:16,8883:16,
+                                                              01,00,05,"29zka",02,00,06,"219a3k",16#30,00,07,"abc.com",
+                                                              16#20,00,05,07,00,00,00,00>>,
+                                                #proxy_socket{inet = inet4})),
     Config.
 
 new_connection_tcp4(Config) ->
