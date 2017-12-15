@@ -34,7 +34,7 @@
 -export([recv/2]).
 
 -ifdef(TEST).
--export([parse_v1/2, parse_v2/4]).
+-export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2]).
 -endif.
 
 %% Protocol Command
@@ -146,7 +146,7 @@ parse_pp2_additional(Bytes, ProxySock) when is_binary(Bytes) ->
 parse_pp2_tlv(Fun, Bytes) ->
     parse_pp2_tlv(Fun, Bytes, fun(_Any) -> true end).
 parse_pp2_tlv(Fun, Bytes, Guard) ->
-    [Fun({Type, Val}) || <<Type:8, Len:16, Val:Len>> <= Bytes, Guard(Type)].
+    [Fun({Type, Val}) || <<Type:8, Len:16, Val:Len/binary>> <= Bytes, Guard(Type)].
 
 pp2_additional_field({?PP2_TYPE_ALPN, PP2_ALPN}) ->
     {pp2_alpn, PP2_ALPN};
