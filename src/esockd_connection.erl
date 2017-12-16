@@ -35,7 +35,7 @@
 
 -export([transport/1, sock/1, opts/1, type/1, getopts/2, setopts/2,
          getstat/2, controlling_process/2, peername/1, sockname/1,
-         peercert/1]).
+         peercert/1, peer_cert_subject/1, peer_cert_common_name/1]).
 
 -export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
          shutdown/2, close/1, fast_close/1]).
@@ -113,7 +113,7 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
     case SockFun(Sock) of
         {ok, NewSock} ->
             case proplists:get_bool(proxy_protocol, Opts)
-                 andalso esockd_proxy_proto:recv(NewSock, Opts) of
+                 andalso esockd_proxy_protocol:recv(NewSock, Opts) of
                 false ->
                     {ok, {?MODULE, [NewSock, SockFun, Opts]}};
                 {ok, ProxySock} ->
@@ -168,6 +168,14 @@ peername(?CONN_MOD(Sock)) ->
 -spec(peercert(connection()) -> nossl | {ok, Cert :: binary()} | {error, term()}).
 peercert(?CONN_MOD(Sock)) ->
     ?Transport:peercert(Sock).
+
+-spec(peer_cert_subject(connection()) -> undefined | binary()).
+peer_cert_subject(?CONN_MOD(Sock)) ->
+    ?Transport:peer_cert_subejct(Sock).
+
+-spec(peer_cert_common_name(connection()) -> undefined | binary()).
+peer_cert_common_name(?CONN_MOD(Sock)) ->
+    ?Transport:peer_cert_common_name(Sock).
 
 %% @doc Get socket options
 -spec(getopts([inet:socket_getopt()], connection())

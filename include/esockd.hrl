@@ -1,5 +1,5 @@
 %%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
 %%%
 %%% Permission is hereby granted, free of charge, to any person obtaining a copy
 %%% of this software and associated documentation files (the "Software"), to deal
@@ -31,6 +31,7 @@
 %%------------------------------------------------------------------------------
 %% SSL Socket Wrapper.
 %%------------------------------------------------------------------------------
+
 -record(ssl_socket, {tcp :: inet:socket(),
                      ssl :: ssl:sslsocket()}).
 
@@ -40,10 +41,30 @@
 %% Proxy-Protocol Socket Wrapper
 %%------------------------------------------------------------------------------
 
+-type(pp2_additional_ssl_field() :: {pp2_ssl_client,           boolean()}
+                                  | {pp2_ssl_client_cert_conn, boolean()}
+                                  | {pp2_ssl_client_cert_sess, boolean()}
+                                  | {pp2_ssl_verify,  success | failed}
+                                  | {pp2_ssl_version, binary()}  % US-ASCII string
+                                  | {pp2_ssl_cn,      binary()}  % UTF8-encoded string
+                                  | {pp2_ssl_cipher,  binary()}  % US-ASCII string
+                                  | {pp2_ssl_sig_alg, binary()}  % US-ASCII string
+                                  | {pp2_ssl_key_alg, binary()}).% US-ASCII string
+
+-type(pp2_additional_field() :: {pp2_alpn,      binary()}  % byte sequence
+                              | {pp2_authority, binary()}  % UTF8-encoded string
+                              | {pp2_crc32c,    integer()} % 32-bit number
+                              | {pp2_netns,     binary()}  % US-ASCII string
+                              | {pp2_ssl,       list(pp2_additional_ssl_field())}).
+
 -record(proxy_socket, {inet     :: inet4 | inet6,
                        socket   :: inet:socket() | #ssl_socket{},
                        src_addr :: inet:ip_address(),
                        dst_addr :: inet:ip_address(),
                        src_port :: inet:port_number(),
-                       dst_port :: inet:port_number()}).
+                       dst_port :: inet:port_number(),
+                       %% Proxy protocol v2 addtional fields
+                       pp2_additional_info = [] :: list(pp2_additional_field())}).
+
+-define(IS_PROXY(Sock), is_record(Sock, proxy_socket)).
 
