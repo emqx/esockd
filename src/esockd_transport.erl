@@ -261,7 +261,7 @@ peer_cert_subject(Sock) when is_port(Sock) ->
 peer_cert_subject(#ssl_socket{ssl = SslSock}) ->
     esockd_ssl:peer_cert_subject(ssl:peercert(SslSock));
 peer_cert_subject(Sock) when ?IS_PROXY(Sock) ->
-    peer_cert_subject(Sock). %% Common Name?
+    peer_cert_common_name(Sock). %% Common Name?? PP2 will not pass subject.
 
 %% @doc Peercert common name
 -spec(peer_cert_common_name(Sock :: sock()) -> undefined | binary()).
