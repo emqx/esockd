@@ -46,7 +46,16 @@
 -spec(server(atom(), inet:port() | {inet:ip_address(), inet:port()},
              list(gen_udp:option()), mfa()) -> {ok, pid()}).
 server(Protocol, Port, Opts, MFA) when is_integer(Port) ->
-    gen_server:start_link(?MODULE, [Protocol, Port, Opts, MFA], []).
+    gen_server:start_link(?MODULE, [Protocol, Port, Opts, MFA], []);
+
+server(Protocol, {Address, Port}, Opts, MFA) when is_integer(Port) ->
+    {IPAddr, _Port}  = fixaddr({Address, Port}),
+    OptAddr = proplists:get_value(ip, proplists:get_value(sockopts, Opts, [])),
+    if
+        (OptAddr == undefined) or (OptAddr == IPAddr) -> ok;
+        true -> error(badmatch_ipaddress)
+    end,
+    gen_server:start_link(?MODULE, [Protocol, Port, merge_addr(IPAddr, Opts), MFA], []).
 
 stop(Server) ->
     gen_server:call(Server, stop).
@@ -133,6 +142,24 @@ noreply(State) -> {noreply, State, hibernate}.
 log_error(Logger, Peer, Reason) ->
     Logger:error("Failed to start client for udp ~s, reason: ~p",
                  [esockd_net:format(Peer), Reason]).
+
+
+%% @doc Parse Address
+%% @private
+fixaddr(Port) when is_integer(Port) ->
+    Port;
+fixaddr({Addr, Port}) when is_list(Addr) and is_integer(Port) ->
+    {ok, IPAddr} = inet:parse_address(Addr), {IPAddr, Port};
+fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
+    case esockd_cidr:is_ipv6(Addr) or esockd_cidr:is_ipv4(Addr) of
+        true  -> {Addr, Port};
+        false -> error(invalid_ipaddress)
+    end.
+
+
+merge_addr(Addr, SockOpts) ->
+    lists:keystore(ip, 1, SockOpts, {ip, Addr}).
+
 
 -ifdef(TEST).
 
