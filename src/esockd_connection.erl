@@ -136,7 +136,7 @@ upgrade({?MODULE, [Sock, SockFun, Opts]}) ->
 transport({?MODULE, [_Sock, _SockFun, _Opts]}) ->
     ?Transport.
 
-%% @doc Socket of the connection. 
+%% @doc Socket of the connection.
 -spec(sock(connection()) -> inet:socket() | esockd:ssl_socket()).
 sock({?MODULE, [Sock, _SockFun, _Opts]}) ->
     Sock.

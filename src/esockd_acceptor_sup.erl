@@ -1,62 +1,46 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd TCP/SSL Acceptor Supervisor.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
+
 -module(esockd_acceptor_sup).
 
 -author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(supervisor).
 
--export([start_link/4, start_acceptor/3, count_acceptors/1]).
+-export([start_link/3, start_acceptor/3, count_acceptors/1]).
 
 -export([init/1]).
 
-%%%-----------------------------------------------------------------------------
+%%%-------------------------------------------------------------------
 %%% API
-%%%-----------------------------------------------------------------------------
+%%%-------------------------------------------------------------------
 
 %% @doc Start Acceptor Supervisor.
--spec(start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) -> {ok, pid()} when
-      ConnSup        :: pid(),
-      AcceptStatsFun :: fun(),
-      BufferTuneFun  :: esockd:tune_fun(),
-      Logger         :: gen_logger:logmod()).
-start_link(ConnSup, AcceptStatsFun, BufferTuneFun, Logger) ->
-    supervisor:start_link(?MODULE, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]).
+-spec(start_link(pid(), fun(), esockd:tune_fun()) -> {ok, pid()}).
+start_link(ConnSup, StatsFun, BufferTuneFun) ->
+    supervisor:start_link(?MODULE, [ConnSup, StatsFun, BufferTuneFun]).
 
 %% @doc Start a acceptor.
--spec(start_acceptor(AcceptorSup, LSock, SockFun) -> {ok, pid()} | {error, term()} | ignore when
-      AcceptorSup :: pid(),
-      LSock       :: inet:socket(),
-      SockFun     :: esockd:sock_fun()).
+-spec(start_acceptor(pid(), inet:socket(), esockd:sock_fun())
+      -> {ok, pid()} | ignore | {error, term()}).
 start_acceptor(AcceptorSup, LSock, SockFun) ->
     supervisor:start_child(AcceptorSup, [LSock, SockFun]).
 
 %% @doc Count Acceptors.
--spec count_acceptors(AcceptorSup :: pid()) -> pos_integer().
+-spec(count_acceptors(AcceptorSup :: pid()) -> pos_integer()).
 count_acceptors(AcceptorSup) ->
     length(supervisor:which_children(AcceptorSup)).
 
@@ -64,8 +48,9 @@ count_acceptors(AcceptorSup) ->
 %%% Supervisor callbacks
 %%%-----------------------------------------------------------------------------
 
-init([ConnSup, AcceptStatsFun, BufferTuneFun, Logger]) ->
-    {ok, {{simple_one_for_one, 1000, 3600},
-          [{acceptor, {esockd_acceptor, start_link, [ConnSup, AcceptStatsFun, BufferTuneFun, Logger]},
+init([ConnSup, StatsFun, BufferTuneFun]) ->
+    {ok, {{simple_one_for_one, 100, 3600},
+          [{acceptor, {esockd_acceptor, start_link,
+                       [ConnSup, StatsFun, BufferTuneFun]},
             transient, 5000, worker, [esockd_acceptor]}]}}.
 

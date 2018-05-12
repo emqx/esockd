@@ -1,29 +1,18 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd UDP Server.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 
 -module(esockd_udp).
 
@@ -58,7 +47,7 @@ server(Protocol, {Address, Port}, Opts, MFA) when is_integer(Port) ->
     gen_server:start_link(?MODULE, [Protocol, Port, merge_addr(IPAddr, Opts), MFA], []).
 
 stop(Server) ->
-    gen_server:call(Server, stop).
+    gen_server:stop(Server, normal, infinity).
 
 %%--------------------------------------------------------------------
 %% gen_server Callbacks
@@ -66,24 +55,14 @@ stop(Server) ->
 
 init([Protocol, Port, Opts, MFA]) ->
     process_flag(trap_exit, true),
-    Logger = init_logger(Opts),
-    %% Delete {logger, LogMod}, {active, false}
-    Opts1 = proplists:delete(logger, proplists:delete(active, Opts)),
+    Opts1 = proplists:delete(active, Opts),
     case gen_udp:open(Port, esockd_util:merge_opts(?SOCKOPTS, Opts1)) of
         {ok, Sock} ->
             io:format("~s opened on udp ~p~n", [Protocol, Port]),
             {ok, #state{proto = Protocol, sock = Sock, mfa = MFA,
-                        peers = dict:new(), logger = Logger}};
-        {error, Reason} ->
-            {stop, Reason}
+                        peers = dict:new()}};
+        {error, Reason} -> {stop, Reason}
     end.
-
-init_logger(Opts) ->
-    Default = application:get_env(esockd, logger, {error_logger, info}),
-    gen_logger:new(proplists:get_value(logger, Opts, Default)).
-
-handle_call(stop, _From, State) ->
-	{stop, normal, ok, State};
 
 handle_call(_Req, _From, State) ->
 	{reply, ignored, State}.
@@ -92,7 +71,7 @@ handle_cast(_Msg, State) ->
 	{noreply, State}.
 
 handle_info({udp, Socket, IP, InPortNo, Packet},
-            State = #state{peers = Peers,mfa = {M, F, Args}, logger = Logger}) ->
+            State = #state{peers = Peers, mfa = {M, F, Args}}) ->
     Peer = {IP, InPortNo},
     inet:setopts(Socket, [{active, once}]),
     case dict:find(Peer, Peers) of
@@ -106,7 +85,8 @@ handle_info({udp, Socket, IP, InPortNo, Packet},
                     Pid ! {datagram, self(),Packet},
                     noreply(store_peer(Peer, Pid, State));
                 {Err, Reason} when Err == error orelse Err == 'EXIT' ->
-                    log_error(Logger, Peer, Reason), 
+                    error_logger:error_msg("Failed to start client for udp ~s, reason: ~p",
+                                           [esockd_net:format(Peer), Reason]),
                     noreply(State)
             end
     end;
@@ -139,11 +119,6 @@ erase_peer(Peer, State = #state{peers = Peers}) ->
 
 noreply(State) -> {noreply, State, hibernate}.
 
-log_error(Logger, Peer, Reason) ->
-    Logger:error("Failed to start client for udp ~s, reason: ~p",
-                 [esockd_net:format(Peer), Reason]).
-
-
 %% @doc Parse Address
 %% @private
 fixaddr(Port) when is_integer(Port) ->
@@ -159,22 +134,4 @@ fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
 
 merge_addr(Addr, SockOpts) ->
     lists:keystore(ip, 1, SockOpts, {ip, Addr}).
-
-
--ifdef(TEST).
-
--include_lib("eunit/include/eunit.hrl").
-
-store_peer_test() ->
-    Peer = {{127,0,0,1}, 9000},
-    State = store_peer(Peer, self(), #state{peers = dict:new()}),
-    ?assertEqual({ok, self()}, dict:find(Peer, State#state.peers)),
-    State1 = erase_peer(Peer, State),
-    ?assertEqual(error, dict:find(Peer, State1#state.peers)).
-
-log_error_test() ->
-    Logger = gen_logger:new({console, info}),
-    log_error(Logger, {{127,0,0,1}, 18381}, badmatch).
-
--endif.
 

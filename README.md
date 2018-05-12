@@ -25,7 +25,7 @@ A Simple Echo Server:
 
     start_link(Conn) ->
        {ok, spawn_link(?MODULE, init, [Conn])}.
-          
+
     init(Conn) ->
         {ok, NewConn} = Conn:wait(), loop(NewConn).
 
@@ -153,28 +153,14 @@ Connecting to ssl_echo_server:
 
     openssl s_client -connect 127.0.0.1:5000 -tls1
 
-### Logger
-
-eSockd depends [gen_logger](https://github.com/emqtt/gen_logger).
-
-Logger environment:
-
-     {esockd, [
-        {logger, {lager, info}}
-     ]},
-
-Logger option:
-
-    esockd:open(echo, 5000, [{logger, {error_logger, info}}], {echo_server, start_link, []}).
-
 ## Design
 
 ### Supervisor Tree
 
-    esockd_sup 
-        -> esockd_listener_sup 
+    esockd_sup
+        -> esockd_listener_sup
             -> esockd_listener
-            -> esockd_acceptor_sup 
+            -> esockd_acceptor_sup
                 -> esockd_acceptor
                 -> esockd_acceptor
                 -> ......
@@ -211,7 +197,7 @@ Benchmark 2.1.0-alpha release on one 8 cores, 32G memory ubuntu/14.04 server::
 
 ## License
 
-The MIT License (MIT)
+Apache License Version 2.0
 
 ## Author
 

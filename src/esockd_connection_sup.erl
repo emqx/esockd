@@ -1,41 +1,29 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd connection supervisor. As you know, I love process dictionary...
-%%% Notice: Some code is copied from OTP supervisor.erl.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 
 -module(esockd_connection_sup).
 
--behaviour(gen_server).
+-author("Feng Lee <feng@emqx.io>").
 
--author("Feng Lee <feng@emqtt.io>").
+-behaviour(gen_server).
 
 -import(proplists, [get_value/3]).
 
 %% API Exports
--export([start_link/3, start_connection/4, count_connections/1]).
+-export([start_link/2, start_connection/4, count_connections/1]).
 
 %% Max Clients
 -export([get_max_clients/1, set_max_clients/2]).
@@ -54,27 +42,22 @@
 -define(SETS, sets).
 -define(MAX_CLIENTS, 1024).
 
--record(state,
-        { curr_clients = 0,
-          max_clients  = ?MAX_CLIENTS,
-          conn_opts    = [],
-          access_rules = [],
-          shutdown     = brutal_kill,
-          mfargs,
-          logger
-        }).
+-record(state, {curr_clients = 0,
+                max_clients  = ?MAX_CLIENTS,
+                conn_opts    = [],
+                access_rules = [],
+                shutdown     = brutal_kill,
+                mfargs}).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 %% @doc Start connection supervisor.
--spec(start_link(Options, MFArgs, Logger) -> {ok, pid()} | ignore | {error, term()} when
-    Options :: [esockd:option()],
-    MFArgs  :: esockd:mfargs(),
-    Logger  :: gen_logger:logmod()).
-start_link(Options, MFArgs, Logger) ->
-    gen_server:start_link(?MODULE, [Options, MFArgs, Logger], []).
+-spec(start_link([esockd:option()], esockd:mfargs())
+      -> {ok, pid()} | ignore | {error, term()}).
+start_link(Options, MFArgs) ->
+    gen_server:start_link(?MODULE, [Options, MFArgs], []).
 
 %% @doc Start connection.
 start_connection(Sup, Mod, Sock, SockFun) ->
@@ -112,11 +95,11 @@ deny(Sup, CIDR) ->
 call(Sup, Req) ->
     gen_server:call(Sup, Req, infinity).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
-init([Options, MFArgs, Logger]) ->
+init([Options, MFArgs]) ->
     process_flag(trap_exit, true),
     Shutdown    = get_value(shutdown, Options, brutal_kill),
     MaxClients  = get_value(max_clients, Options, ?MAX_CLIENTS),
@@ -127,15 +110,14 @@ init([Options, MFArgs, Logger]) ->
                 conn_opts    = ConnOpts,
                 access_rules = AccessRules,
                 shutdown     = Shutdown,
-                mfargs       = MFArgs,
-                logger       = Logger}}.
+                mfargs       = MFArgs}}.
 
 handle_call({start_connection, _Sock, _SockFun}, _From,
             State = #state{curr_clients = CurrClients, max_clients = MaxClients})
         when CurrClients >= MaxClients ->
     {reply, {error, maxlimit}, State};
 
-handle_call({start_connection, Sock, SockFun}, _From, 
+handle_call({start_connection, Sock, SockFun}, _From,
             State = #state{conn_opts = ConnOpts, mfargs = MFArgs,
                            curr_clients = Count, access_rules = Rules}) ->
     case inet:peername(Sock) of
@@ -178,9 +160,9 @@ handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
 
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     case catch esockd_access:compile(RawRule) of
-        {'EXIT', _Error} -> 
+        {'EXIT', _Error} ->
             {reply, {error, bad_access_rule}, State};
-        Rule -> 
+        Rule ->
             case lists:member(Rule, Rules) of
                 true ->
                     {reply, {error, alread_existed}, State};
@@ -192,22 +174,22 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
 handle_call(_Req, _From, State) ->
     {stop, {error, badreq}, State}.
 
-handle_cast(Msg, State = #state{logger = Logger}) ->
-    Logger:error("Bad MSG: ~p", [Msg]),
+handle_cast(Msg, State) ->
+    error_logger:error_msg("Unexpected Msg: ~p", [Msg]),
     {noreply, State}.
 
-handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count, logger = Logger}) ->
+handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count}) ->
     case erase(Pid) of
         true ->
             connection_crashed(Pid, Reason, State),
             {noreply, State#state{curr_clients = Count-1}};
         undefined ->
-            Logger:error("'EXIT' from unkown ~p: ~p", [Pid, Reason]),
+            error_logger:error_msg("~p 'EXIT' for ~p", [Pid, Reason]),
             {noreply, State}
     end;
 
-handle_info(Info, State = #state{logger = Logger}) ->
-    Logger:error("Bad INFO: ~p", [Info]),
+handle_info(Info, State) ->
+    error_logger:error_msg("Unexpected Info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->
@@ -216,9 +198,9 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%%=============================================================================
-%%% Internal functions
-%%%=============================================================================
+%%--------------------------------------------------------------------
+%% Internal functions
+%%--------------------------------------------------------------------
 
 allowed(Addr, Rules) ->
     case esockd_access:match(Addr, Rules) of
@@ -287,7 +269,7 @@ monitor_children() ->
 
 %% Help function to shutdown/2 switches from link to monitor approach
 monitor_child(Pid) ->
-    %% Do the monitor operation first so that if the child dies 
+    %% Do the monitor operation first so that if the child dies
     %% before the monitoring is done causing a 'DOWN'-message with
     %% reason noproc, we will get the real reason in the 'EXIT'-message
     %% unless a naughty child has already done unlink...
@@ -297,19 +279,19 @@ monitor_child(Pid) ->
     receive
 	%% If the child dies before the unlik we must empty
 	%% the mail-box of the 'EXIT'-message and the 'DOWN'-message.
-	{'EXIT', Pid, Reason} -> 
-	    receive 
+	{'EXIT', Pid, Reason} ->
+	    receive
 		{'DOWN', _, process, Pid, _} ->
 		    {error, Reason}
 	    end
-    after 0 -> 
+    after 0 ->
 	    %% If a naughty child did unlink and the child dies before
-	    %% monitor the result will be that shutdown/2 receives a 
+	    %% monitor the result will be that shutdown/2 receives a
 	    %% 'DOWN'-message with reason noproc.
 	    %% If the child should die after the unlink there
 	    %% will be a 'DOWN'-message with a correct reason
-	    %% that will be handled in shutdown/2. 
-	    ok   
+	    %% that will be handled in shutdown/2.
+	    ok
     end.
 
 wait_children(_Shutdown, _Pids, 0, undefined, EStack) ->

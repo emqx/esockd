@@ -1,29 +1,18 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd Listener.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 
 -module(esockd_listener).
 
@@ -33,7 +22,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/5, options/1, get_port/1]).
+-export([start_link/4, options/1, get_port/1]).
 
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
@@ -43,8 +32,7 @@
                 options   :: [esockd:option()],
                 lsock     :: inet:socket(),
                 laddress  :: inet:ip_address(),
-                lport     :: inet:port_number(),
-                logger    :: gen_logger:logmod()}).
+                lport     :: inet:port_number()}).
 
 -define(ACCEPTOR_POOL, 16).
 
@@ -55,14 +43,10 @@
          {send_timeout_close, true}]).
 
 %% @doc Start Listener
--spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, term()} | ignore when 
-    Protocol    :: atom(),
-    ListenOn    :: esockd:listen_on(),
-    Options	    :: [esockd:option()],
-    AcceptorSup :: pid(),
-    Logger      :: gen_logger:logmod()).
-start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
-    gen_server:start_link(?MODULE, {Protocol, ListenOn, Options, AcceptorSup, Logger}, []).
+-spec(start_link(atom(), esockd:listen_on(), [esockd:option()], pid())
+      -> {ok, pid()} | ignore | {error, term()}).
+start_link(Protocol, ListenOn, Options, AcceptorSup) ->
+    gen_server:start_link(?MODULE, {Protocol, ListenOn, Options, AcceptorSup}, []).
 
 -spec(options(pid()) -> [esockd:option()]).
 options(Listener) ->
@@ -72,11 +56,11 @@ options(Listener) ->
 get_port(Listener) ->
     gen_server:call(Listener, get_port).
 
-%%------------------------------------------------------------------------------
-%% gen_server Callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
+%% gen_server callbacks
+%%--------------------------------------------------------------------
 
-init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
+init({Protocol, ListenOn, Options, AcceptorSup}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     %% Don't active the socket...
@@ -92,10 +76,10 @@ init({Protocol, ListenOn, Options, AcceptorSup, Logger}) ->
             io:format("~s listen on ~s:~p with ~p acceptors.~n",
                       [Protocol, esockd_net:ntoab(LAddress), LPort, AcceptorNum]),
             {ok, #state{protocol = Protocol, listen_on = ListenOn, options = Options,
-                        lsock = LSock, laddress = LAddress, lport = LPort, logger = Logger}};
+                        lsock = LSock, laddress = LAddress, lport = LPort}};
         {error, Reason} ->
-            Logger:error("~s failed to listen on ~p - ~p (~s)~n",
-                         [Protocol, Port, Reason, inet:format_error(Reason)]),
+            error_logger:error_msg("~s failed to listen on ~p - ~p (~s)",
+                                   [Protocol, Port, Reason, inet:format_error(Reason)]),
             {stop, {cannot_listen, Port, Reason}}
     end.
 
