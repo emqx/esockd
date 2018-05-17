@@ -75,8 +75,8 @@
       {ok, #proxy_socket{}} | {error, term()}).
 recv(Sock, Opts) ->
     Timeout = proplists:get_value(proxy_protocol_timeout, Opts, ?TIMEOUT),
-    {ok, OriginOpts} = esockd_transport:getopts(Sock, [active, packet]),
-    ok = esockd_transport:setopts(Sock, [{active, once}, {packet, line}]),
+    {ok, OriginOpts} = esockd_transport:getopts(Sock, [mode, active, packet]),
+    ok = esockd_transport:setopts(Sock, [binary, {active, once}, {packet, line}]),
     receive
         %% V1 TCP
         {_, _Sock, <<"PROXY TCP", Proto, ?SPACE, ProxyInfo/binary>>} ->
@@ -168,11 +168,11 @@ parse_pp2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_C
      %% this field is present, the US-ASCII string representation of the TLS version is
      %% appended at the end of the field in the TLV format using the type PP2_SUBTYPE_SSL_VERSION.
      {pp2_ssl_client, bool(PP2_CLIENT_SSL)},
-     
+
      %% PP2_CLIENT_CERT_CONN indicates that the client provided a certificate over the
      %% current connection.
      {pp2_ssl_client_cert_conn, bool(PP2_CLIENT_CERT_CONN)},
-     
+
      %% PP2_CLIENT_CERT_SESS indicates that the client provided a
      %% certificate at least once over the TLS session this connection belongs to.
      {pp2_ssl_client_cert_sess, bool(PP2_CLIENT_CERT_SESS)},
@@ -180,7 +180,7 @@ parse_pp2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_C
      %% The <verify> field will be zero if the client presented a certificate
      %% and it was successfully verified, and non-zero otherwise.
      {pp2_ssl_verify, ssl_certificate_verified(PP2_SSL_VERIFY)}
-     
+
      | parse_pp2_tlv(fun pp2_additional_ssl_field/1, SubFields)
     ].
 
@@ -216,4 +216,3 @@ inet_family(?UNIX)   -> unix.
 
 bool(1) -> true;
 bool(_) -> false.
-
