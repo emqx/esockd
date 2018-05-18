@@ -1,88 +1,83 @@
-%%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2017, Feng Lee <feng@emqtt.io>
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 %%% @doc
+%%%
 %%% Echo Test Client.
 %%%
 %%% @end
-%%%-----------------------------------------------------------------------------
+%%%===================================================================
+
 -module(echo_client).
 
 -export([start/1, start/3, send/2, run/4, connect/4, loop/2]).
 
--define(TCP_OPTIONS, [binary,
-                      {packet, raw},
-                      {buffer, 1024},
-                      {active, true}]).
+-define(TCP_OPTIONS, [binary, {packet, raw}, {active, true}]).
 
-start([Port, Host, N]) when is_atom(Port), is_atom(Host), is_atom(N) ->
-	start(a2i(Port), atom_to_list(Host), a2i(N)).
+%%shell
+start([Host, Port, Num]) when is_atom(Host),
+                              is_atom(Port),
+                              is_atom(Num) ->
+    start(atom_to_list(Host), a2i(Port), a2i(Num)).
 
-start(Port, Host, N) ->
-	spawn(?MODULE, run, [self(), Host, Port, N]),
-	mainloop(1).
+start(Host, Port, Num) ->
+    spawn(?MODULE, run, [self(), Host, Port, Num]),
+    mainloop(1).
 
 mainloop(Count) ->
-	receive
-		{connected, _Sock} -> 
-			io:format("conneted: ~p~n", [Count]),
-			mainloop(Count+1)
-	end.
-
-run(_Parent, _Host, _Port, 0) ->
-	ok;
-run(Parent, Host, Port, N) ->
-	spawn(?MODULE, connect, [Parent, Host, Port, N]),
-	timer:sleep(5),
-	run(Parent, Host, Port, N-1).
-
-connect(Parent, Host, Port, N) ->
-	case gen_tcp:connect(Host, Port, ?TCP_OPTIONS, 60000) of
-    {ok, Sock} -> 
-        Parent ! {connected, Sock},
-        random:seed(erlang:timestamp()),
-        loop(N, Sock);
-    {error, Error} ->
-        io:format("client ~p connect error: ~p~n", [N, Error])
+    receive
+        {connected, _Sock} ->
+            io:format("conneted: ~p~n", [Count]),
+            mainloop(Count+1)
     end.
 
-loop(N, Sock) ->
-	Timeout = 5000+random:uniform(5000),
-	receive
-		{tcp, Sock, Data} -> 
-            io:format("client ~p received: ~s~n", [N, Data]), 
-            loop(N, Sock);
-		{tcp_closed, Sock} -> 
-			io:format("client ~p socket closed~n", [N]);
-		{tcp_error, Sock, Reason} -> 
-			io:format("client ~p socket error: ~p~n", [N, Reason]);
-		Other -> 
-			io:format("client ~p unexpected: ~p", [N, Other])
-	after
-		Timeout -> send(N, Sock), loop(N, Sock)
-	end.
+run(_Parent, _Host, _Port, 0) ->
+    ok;
+run(Parent, Host, Port, Num) ->
+    spawn(?MODULE, connect, [Parent, Host, Port, Num]),
+    timer:sleep(5),
+    run(Parent, Host, Port, Num-1).
+
+connect(Parent, Host, Port, Num) ->
+    case gen_tcp:connect(Host, Port, ?TCP_OPTIONS, 6000) of
+        {ok, Sock} ->
+            Parent ! {connected, Sock},
+            loop(Num, Sock);
+        {error, Reason} ->
+            io:format("Client ~p connect error: ~p~n", [Num, Reason])
+    end.
+
+loop(Num, Sock) ->
+    Timeout = 5000 + rand:uniform(5000),
+    receive
+        {tcp, Sock, Data} ->
+            io:format("Client ~w received: ~s~n", [Num, Data]),
+            loop(Num, Sock);
+        {tcp_closed, Sock} ->
+            io:format("Client ~w socket closed~n", [Num]);
+        {tcp_error, Sock, Reason} ->
+            io:format("Client ~w socket error: ~p~n", [Num, Reason]);
+        Other ->
+            io:format("Client ~w unexpected: ~p", [Num, Other])
+    after
+        Timeout ->
+            send(Num, Sock), loop(Num, Sock)
+    end.
 
 send(N, Sock) ->
-	%Data = iolist_to_binary(lists:duplicate(128, "00000000")),
-	gen_tcp:send(Sock, [integer_to_list(N), ":", <<"Hello, eSockd!">>]).
-	 
+    gen_tcp:send(Sock, [integer_to_list(N), ":", <<"Hello, eSockd!">>]).
+
 a2i(A) -> list_to_integer(atom_to_list(A)).
 

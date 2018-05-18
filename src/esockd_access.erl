@@ -44,7 +44,8 @@ compile(Type, CIDR) when is_list(CIDR) ->
     {Type, esockd_cidr:parse(CIDR, true)}. %% Adjust???
 
 %% @doc Match Addr with Access Rules.
--spec(match(inet:ip_address(), [compiled_rule()]) -> {matched, allow} | {matched, deny} | nomatch).
+-spec(match(inet:ip_address(), [compiled_rule()])
+      -> {matched, allow} | {matched, deny} | nomatch).
 match(Addr, Rules) when is_tuple(Addr) ->
     match2(Addr, Rules).
 
@@ -55,7 +56,7 @@ match2(_Addr, [{allow, all} | _]) ->
 match2(_Addr, [{deny, all} | _]) ->
     {matched, deny};
 match2(Addr, [{Access, CIDR = {_StartAddr, _EndAddr, _Len}} | Rules])
-        when Access == allow orelse Access == deny ->
+    when Access == allow orelse Access == deny ->
     case esockd_cidr:match(Addr, CIDR) of
         true  -> {matched, Access};
         false -> match2(Addr, Rules)

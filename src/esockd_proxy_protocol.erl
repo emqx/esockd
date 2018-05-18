@@ -26,7 +26,7 @@
 
 -include("esockd.hrl").
 
--export([recv/2]).
+-export([recv/3]).
 
 -ifdef(TEST).
 -export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2]).
@@ -66,36 +66,32 @@
 %% 16#0D,16#0A,16#00,16#0D,16#0A,16#51,16#55,16#49,16#54,16#0A
 -define(SIG, "\r\n\0\r\nQUIT\n").
 
--spec(recv(inet:socket() | #ssl_socket{}, list(tuple())) ->
+-spec(recv(module(), inet:socket() | #ssl_socket{}, timeout()) ->
       {ok, #proxy_socket{}} | {error, term()}).
-recv(Sock, Opts) ->
-    Timeout = proplists:get_value(proxy_protocol_timeout, Opts, ?TIMEOUT),
-    {ok, OriginOpts} = esockd_transport:getopts(Sock, [active, packet]),
-    ok = esockd_transport:setopts(Sock, [{active, once}, {packet, line}]),
+recv(Transport, Sock, Timeout) ->
+    {ok, OriginOpts} = Transport:getopts(Sock, [mode, active, packet]),
+    ok = Transport:setopts(Sock, [binary, {active, once}, {packet, line}]),
     receive
         %% V1 TCP
         {_, _Sock, <<"PROXY TCP", Proto, ?SPACE, ProxyInfo/binary>>} ->
-            esockd_transport:setopts(Sock, OriginOpts),
+            Transport:setopts(Sock, OriginOpts),
             parse_v1(ProxyInfo, #proxy_socket{inet = inet_family(Proto), socket = Sock});
         %% V1 Unknown
         {_, _Sock, <<"PROXY UNKNOWN", _ProxyInfo/binary>>} ->
-            esockd_transport:setopts(Sock, OriginOpts),
+            Transport:setopts(Sock, OriginOpts),
             {ok, Sock};
         %% V2 TCP
         {_, _Sock, <<"\r\n">>} ->
-            esockd_transport:setopts(Sock, [{active, false}, {packet, raw}]),
-            {ok, Header} = esockd_transport:recv(Sock, 14, 1000),
+            Transport:setopts(Sock, [{active, false}, {packet, raw}]),
+            {ok, Header} = Transport:recv(Sock, 14, 1000),
             <<?SIG, 2:4, Cmd:4, AF:4, Trans:4, Len:16>> = Header,
-            {ok, ProxyInfo} = esockd_transport:recv(Sock, Len, 1000),
-            esockd_transport:setopts(Sock, OriginOpts),
-            %%io:format("ProxyInfo V2: ~p~n", [ProxyInfo]),
+            {ok, ProxyInfo} = Transport:recv(Sock, Len, 1000),
+            Transport:setopts(Sock, OriginOpts),
             parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
         {_, _Sock, ProxyInfo} ->
-            esockd_transport:fast_close(Sock),
             {error, {invalid_proxy_info, ProxyInfo}}
     after
         Timeout ->
-            esockd_transport:fast_close(Sock),
             {error, proxy_proto_timeout}
     end.
 
@@ -127,8 +123,7 @@ parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet6}) ->
         src_addr = {A, B, C, D, E, F, G, H}, src_port = SrcPort,
         dst_addr = {R, S, T, U, V, W, X, Y}, dst_port = DstPort});
 
-parse_v2(_, _, _, #proxy_socket{socket = Sock}) ->
-    esockd_transport:fast_close(Sock),
+parse_v2(_, _, _, #proxy_socket{socket = _Sock}) ->
     {error, unsupported_proto_v2}.
 
 parse_pp2_additional(<<>>, ProxySock) ->
@@ -163,11 +158,11 @@ parse_pp2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_C
      %% this field is present, the US-ASCII string representation of the TLS version is
      %% appended at the end of the field in the TLV format using the type PP2_SUBTYPE_SSL_VERSION.
      {pp2_ssl_client, bool(PP2_CLIENT_SSL)},
-     
+
      %% PP2_CLIENT_CERT_CONN indicates that the client provided a certificate over the
      %% current connection.
      {pp2_ssl_client_cert_conn, bool(PP2_CLIENT_CERT_CONN)},
-     
+
      %% PP2_CLIENT_CERT_SESS indicates that the client provided a
      %% certificate at least once over the TLS session this connection belongs to.
      {pp2_ssl_client_cert_sess, bool(PP2_CLIENT_CERT_SESS)},
@@ -175,7 +170,7 @@ parse_pp2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_C
      %% The <verify> field will be zero if the client presented a certificate
      %% and it was successfully verified, and non-zero otherwise.
      {pp2_ssl_verify, ssl_certificate_verified(PP2_SSL_VERIFY)}
-     
+
      | parse_pp2_tlv(fun pp2_additional_ssl_field/1, SubFields)
     ].
 

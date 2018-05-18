@@ -1,84 +1,66 @@
-%%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2017, Feng Lee <feng@emqtt.io>
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 %%% @doc
 %%% Simple Echo Server.
 %%%
 %%% @end
-%%%-----------------------------------------------------------------------------
+%%%===================================================================
+
 -module(echo_server).
 
 -export([start/0, start/1]).
+-export([accept/2, recvloop/1]).
 
-%%callback 
--export([accept/2, loop/1]).
-
--define(TCP_OPTIONS, [
-		%binary,
-		%{packet, raw},
-		{reuseaddr, true},
-		{backlog, 1024},
-		{nodelay, false}]).
-
-%%------------------------------------------------------------------------------
-%% @doc
-%% Start echo server.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-start() ->
-    start(5000).
+%% @doc Start echo server.
+start() -> start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    application:start(sasl),
-    {ok, LSock} = gen_tcp:listen(Port, [{active, false} | ?TCP_OPTIONS]),
+    _ = application:start(sasl),
+    {ok, LSock} = gen_tcp:listen(Port, [{active, false}]),
     io:format("Listening on ~p~n", [Port]),
-    spawn(?MODULE, accept, [self(), LSock]),
-    mainloop().
+    self() ! accept,
+    mainloop(self(), LSock).
 
-mainloop() ->
-    receive 
-        {accecpted, PeerName} -> 
-            io:format("Accept from ~p~n", [PeerName]),
-            mainloop()
+mainloop(Parent, LSock) ->
+    receive
+        accept ->
+            spawn(?MODULE, accept, [Parent, LSock]),
+            mainloop(Parent, LSock);
+        stop -> stop
     end.
 
 accept(Parent, LSock) ->
     {ok, Sock} = gen_tcp:accept(LSock),
-    {ok, PeerName} = inet:peername(Sock),
-    Parent ! {accepted, PeerName},
-    spawn(?MODULE, accept, [Parent, LSock]),
-    loop(Sock).
+    {ok, Peername} = inet:peername(Sock),
+    io:format("Connection from ~p~n", [Peername]),
+    Parent ! accept,
+    recvloop(Sock).
 
-loop(Sock) ->
+recvloop(Sock) ->
 	case gen_tcp:recv(Sock, 0, 30000) of
 		{ok, Data} ->
-			{ok, PeerName} = inet:peername(Sock),
-			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
+			{ok, Peername} = inet:peername(Sock),
+            io:format("Data from ~s: ~s~n",
+                      [esockd_net:format(peername, Peername), Data]),
 			gen_tcp:send(Sock, Data),
-			loop(Sock);
+			recvloop(Sock);
 		{error, Reason} ->
-			io:format("tcp ~s~n", [Reason]),
+			io:format("TCP closed for ~s~n", [Reason]),
 			{stop, Reason}
 	end.
-    
+

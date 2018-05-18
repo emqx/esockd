@@ -1,32 +1,35 @@
-%%--------------------------------------------------------------------
-%% Copyright (c) 2016-2017 Feng Lee <feng@emqtt.io>.
-%%
-%% Licensed under the Apache License, Version 2.0 (the "License");
-%% you may not use this file except in compliance with the License.
-%% You may obtain a copy of the License at
-%%
-%%     http://www.apache.org/licenses/LICENSE-2.0
-%%
-%% Unless required by applicable law or agreed to in writing, software
-%% distributed under the License is distributed on an "AS IS" BASIS,
-%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%% See the License for the specific language governing permissions and
-%% limitations under the License.
-%%--------------------------------------------------------------------
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
+%%%
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
+%%%
+%%%     http://www.apache.org/licenses/LICENSE-2.0
+%%%
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 
 -module(esockd_SUITE).
 
 -include("esockd.hrl").
 
 -include_lib("eunit/include/eunit.hrl").
-
 -include_lib("common_test/include/ct.hrl").
 
-%% Common Test
 -compile(export_all).
+-compile(nowarn_export_all).
 
 all() ->
-    [{group, esockd}, {group, cidr}, {group, access}, {group, udp}, {group, proxy_protocol}].
+    [{group, esockd},
+     {group, cidr},
+     {group, access},
+     {group, udp},
+     {group, proxy_protocol}].
 
 groups() ->
     [{esockd, [sequence],
@@ -42,9 +45,8 @@ groups() ->
        esockd_get_shutdown_count,
        esockd_get_access_rules,
        esockd_fixaddr,
-       esockd_to_string
-      ]},
-     {cidr, [],
+       esockd_to_string]},
+     {cidr, [parallel],
       [parse_ipv4_cidr,
        parse_ipv6_cidr,
        cidr_to_string,
@@ -52,7 +54,7 @@ groups() ->
        ipv6_address_count,
        ipv4_cidr_match,
        ipv6_cidr_match]},
-     {access, [],
+     {access, [parallel],
       [access_match,
        access_match_localhost,
        access_match_allow,
@@ -69,35 +71,34 @@ groups() ->
        new_connection_v2,
        unknow_data,
        garbage_date,
-       reuse_socket
-       ]}
+       reuse_socket]}
     ].
 
 init_per_suite(Config) ->
-    application:start(lager),
-    application:start(gen_logger),
-    esockd:start(),
+    ok = esockd:start(),
     Config.
 
 end_per_suite(_Config) ->
     application:stop(esockd).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% eSockd
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 esockd_child_spec(_) ->
     Spec = esockd:child_spec(echo, 5000, [binary, {packet, raw}], echo_mfa()),
     ?assertEqual({listener_sup, {echo, 5000}}, element(1, Spec)).
 
 esockd_open_close(_) ->
-    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 3000}, [binary, {packet, raw}], echo_mfa()),
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 3000},
+                              [binary, {packet, raw}], echo_mfa()),
     {ok, Sock} = gen_tcp:connect("127.0.0.1", 3000, []),
     ok = gen_tcp:send(Sock, <<"Hello">>),
     ok = esockd:close(echo, {"127.0.0.1", 3000}).
 
 esockd_reopen(_) ->
-    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 3000}, [binary, {packet, raw}], echo_mfa()),
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 3000},
+                              [binary, {packet, raw}], echo_mfa()),
     {ok, Sock} = gen_tcp:connect("127.0.0.1", 3000, []),
     ok = gen_tcp:send(Sock, <<"Hello">>),
     timer:sleep(10),
@@ -108,7 +109,8 @@ esockd_reopen(_) ->
     esockd:close(echo, {"127.0.0.1", 3000}).
 
 esockd_reopen1(_) ->
-    {ok, _LSup} = esockd:open(echo, 7000, [{max_clients, 4}, {acceptors, 4}], echo_mfa()),
+    {ok, _LSup} = esockd:open(echo, 7000, [{max_clients, 4},
+                                           {acceptors, 4}], echo_mfa()),
     timer:sleep(10),
     {ok, _ReopnLSup} = esockd:reopen({echo, 7000}),
     ?assertEqual(4, esockd:get_max_clients({echo, 7000})),
@@ -116,7 +118,8 @@ esockd_reopen1(_) ->
     esockd:close(echo, 7000).
 
 esockd_reopen_fail(_) ->
-    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 4000}, [{acceptors, 4}], echo_mfa()),
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 4000},
+                              [{acceptors, 4}], echo_mfa()),
     {error, _Reson} = esockd:reopen({echo, 4000}),
     ?assertEqual(4, esockd:get_acceptors({echo, {"127.0.0.1", 4000}})),
     {ok, Sock} = gen_tcp:connect("127.0.0.1", 4000, []),
@@ -143,7 +146,8 @@ esockd_get_stats(_) ->
     esockd:close(echo, 6000).
 
 esockd_get_acceptors(_) ->
-    {ok, _LSup} = esockd:open(echo, {{127,0,0,1}, 6000}, [{acceptors, 4}], echo_mfa()),
+    {ok, _LSup} = esockd:open(echo, {{127,0,0,1}, 6000},
+                              [{acceptors, 4}], echo_mfa()),
     ?assertEqual(4, esockd:get_acceptors({echo, {{127,0,0,1}, 6000}})),
     esockd:close(echo, 6000).
 
@@ -165,11 +169,12 @@ esockd_get_shutdown_count(_) ->
     esockd:close(echo, 7000).
 
 esockd_get_access_rules(_) ->
-    {ok, _LSup} = esockd:open(echo, 7000, [{access, [{allow, "192.168.1.0/24"}]}], echo_mfa()),
+    AccessRules = [{allow, "192.168.1.0/24"}],
+    {ok, _LSup} = esockd:open(echo, 7000, [{access_rules, AccessRules}], echo_mfa()),
     ?assertEqual([{allow, "192.168.1.0/24"}], esockd:get_access_rules({echo, 7000})),
     ok = esockd:allow({echo, 7000}, "10.10.0.0/16"),
     ?assertEqual([{allow, "10.10.0.0/16"},
-                 {allow, "192.168.1.0/24"}],
+                  {allow, "192.168.1.0/24"}],
                  esockd:get_access_rules({echo, 7000})),
     ok = esockd:deny({echo, 7000}, "172.16.1.1/16"),
     ?assertEqual([{deny,  "172.16.0.0/16"},
@@ -191,48 +196,55 @@ esockd_to_string(_) ->
 
 echo_mfa() -> {echo_server, start_link, []}.
 pp_mfa() -> {pp_server, start_link, []}.
- 
-%%------------------------------------------------------------------------------
+
+%%--------------------------------------------------------------------
 %% CIDR
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 parse_ipv4_cidr(_) ->
-	?assert(esockd_cidr:parse("192.168.0.0") == {{192,168,0,0}, {192,168,0,0}, 32}),
-	?assert(esockd_cidr:parse("1.2.3.4") == {{1,2,3,4}, {1,2,3,4}, 32}),
-	?assert(esockd_cidr:parse("192.168.0.0/0", true) == {{0,0,0,0}, {255,255,255,255}, 0}),
-	?assert(esockd_cidr:parse("192.168.0.0/8", true) == {{192,0,0,0}, {192,255,255,255}, 8}),
-	?assert(esockd_cidr:parse("192.168.0.0/15", true) == {{192,168,0,0}, {192,169,255,255}, 15}),
-	?assert(esockd_cidr:parse("192.168.0.0/16") == {{192,168,0,0}, {192,168,255,255}, 16}),
-	?assert(esockd_cidr:parse("192.168.0.0/17") == {{192,168,0,0}, {192,168,127,255}, 17}),
-	?assert(esockd_cidr:parse("192.168.0.0/18") == {{192,168,0,0}, {192,168,63,255}, 18}),
-	?assert(esockd_cidr:parse("192.168.0.0/19") == {{192,168,0,0}, {192,168,31,255}, 19}),
-	?assert(esockd_cidr:parse("192.168.0.0/20") == {{192,168,0,0}, {192,168,15,255}, 20}),
-	?assert(esockd_cidr:parse("192.168.0.0/21") == {{192,168,0,0}, {192,168,7,255}, 21}),
-	?assert(esockd_cidr:parse("192.168.0.0/22") == {{192,168,0,0}, {192,168,3,255}, 22}),
-	?assert(esockd_cidr:parse("192.168.0.0/23") == {{192,168,0,0}, {192,168,1,255}, 23}),
-	?assert(esockd_cidr:parse("192.168.0.0/24") == {{192,168,0,0}, {192,168,0,255}, 24}),
-	?assert(esockd_cidr:parse("192.168.0.0/31") == {{192,168,0,0}, {192,168,0,1}, 31}),
-	?assert(esockd_cidr:parse("192.168.0.0/32") == {{192,168,0,0}, {192,168,0,0}, 32}).
+	?assertEqual({{192,168,0,0}, {192,168,0,0}, 32}, esockd_cidr:parse("192.168.0.0")),
+	?assertEqual({{1,2,3,4}, {1,2,3,4}, 32}, esockd_cidr:parse("1.2.3.4")),
+	?assertEqual({{0,0,0,0}, {255,255,255,255}, 0}, esockd_cidr:parse("192.168.0.0/0", true)),
+	?assertEqual({{192,0,0,0}, {192,255,255,255}, 8}, esockd_cidr:parse("192.168.0.0/8", true)),
+	?assertEqual({{192,168,0,0}, {192,169,255,255}, 15}, esockd_cidr:parse("192.168.0.0/15", true)),
+	?assertEqual({{192,168,0,0}, {192,168,255,255}, 16}, esockd_cidr:parse("192.168.0.0/16")),
+	?assertEqual({{192,168,0,0}, {192,168,127,255}, 17}, esockd_cidr:parse("192.168.0.0/17")),
+	?assertEqual({{192,168,0,0}, {192,168,63,255}, 18}, esockd_cidr:parse("192.168.0.0/18")),
+	?assertEqual({{192,168,0,0}, {192,168,31,255}, 19}, esockd_cidr:parse("192.168.0.0/19")),
+	?assertEqual({{192,168,0,0}, {192,168,15,255}, 20}, esockd_cidr:parse("192.168.0.0/20")),
+	?assertEqual({{192,168,0,0}, {192,168,7,255}, 21}, esockd_cidr:parse("192.168.0.0/21")),
+	?assertEqual({{192,168,0,0}, {192,168,3,255}, 22}, esockd_cidr:parse("192.168.0.0/22")),
+	?assertEqual({{192,168,0,0}, {192,168,1,255}, 23}, esockd_cidr:parse("192.168.0.0/23")),
+	?assertEqual({{192,168,0,0}, {192,168,0,255}, 24}, esockd_cidr:parse("192.168.0.0/24")),
+	?assertEqual({{192,168,0,0}, {192,168,0,1}, 31}, esockd_cidr:parse("192.168.0.0/31")),
+	?assertEqual({{192,168,0,0}, {192,168,0,0}, 32}, esockd_cidr:parse("192.168.0.0/32")).
 
 parse_ipv6_cidr(_) ->
-	?assert(esockd_cidr:parse("2001:abcd::/0", true) == {{0, 0, 0, 0, 0, 0, 0, 0}, {65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535}, 0}),
-	?assert(esockd_cidr:parse("2001:abcd::/32") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 65535, 65535, 65535, 65535, 65535, 65535}, 32}),
-	?assert(esockd_cidr:parse("2001:abcd::/33") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 32767, 65535, 65535, 65535, 65535, 65535}, 33}),
-	?assert(esockd_cidr:parse("2001:abcd::/34") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 16383, 65535, 65535, 65535, 65535, 65535}, 34}),
-	?assert(esockd_cidr:parse("2001:abcd::/35") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 8191, 65535, 65535, 65535, 65535, 65535}, 35}),
-	?assert(esockd_cidr:parse("2001:abcd::/36") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 4095, 65535, 65535, 65535, 65535, 65535}, 36}),
-	?assert(esockd_cidr:parse("2001:abcd::/128") == {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 0, 0, 0, 0, 0, 0}, 128}).
+	?assertEqual({{0, 0, 0, 0, 0, 0, 0, 0}, {65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535}, 0},
+                esockd_cidr:parse("2001:abcd::/0", true)),
+	?assertEqual({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 65535, 65535, 65535, 65535, 65535, 65535}, 32},
+                esockd_cidr:parse("2001:abcd::/32")),
+	?assertEqual({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 32767, 65535, 65535, 65535, 65535, 65535}, 33},
+                esockd_cidr:parse("2001:abcd::/33")),
+	?assertEqual({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 16383, 65535, 65535, 65535, 65535, 65535}, 34},
+                 esockd_cidr:parse("2001:abcd::/34")),
+	?assertEqual({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 8191, 65535, 65535, 65535, 65535, 65535}, 35},
+                esockd_cidr:parse("2001:abcd::/35")),
+	?assertEqual({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 4095, 65535, 65535, 65535, 65535, 65535}, 36},
+                esockd_cidr:parse("2001:abcd::/36")),
+	?assertEqual({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 0, 0, 0, 0, 0, 0}, 128},
+                esockd_cidr:parse("2001:abcd::/128")).
 
 cidr_to_string(_) ->
     ?assertEqual("192.168.0.0/16", esockd_cidr:to_string({{192,168,0,0}, {192,168,255,255}, 16})),
 	?assertEqual("2001:abcd::/32", esockd_cidr:to_string({{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 65535, 65535, 65535, 65535, 65535, 65535}, 32})).
 
 ipv4_address_count(_) ->
-	?assert(esockd_cidr:count(esockd_cidr:parse("192.168.0.0/0", true))  == 4294967296),
-	?assert(esockd_cidr:count(esockd_cidr:parse("192.168.0.0/16", true)) == 65536),
-	?assert(esockd_cidr:count(esockd_cidr:parse("192.168.0.0/17", true)) == 32768),
-	?assert(esockd_cidr:count(esockd_cidr:parse("192.168.0.0/24", true)) == 256),
-	?assert(esockd_cidr:count(esockd_cidr:parse("192.168.0.0/32", true)) == 1).
+	?assertEqual(4294967296, esockd_cidr:count(esockd_cidr:parse("192.168.0.0/0", true))),
+	?assertEqual(65536, esockd_cidr:count(esockd_cidr:parse("192.168.0.0/16", true))),
+	?assertEqual(32768, esockd_cidr:count(esockd_cidr:parse("192.168.0.0/17", true))),
+	?assertEqual(256, esockd_cidr:count(esockd_cidr:parse("192.168.0.0/24", true))),
+	?assertEqual(1, esockd_cidr:count(esockd_cidr:parse("192.168.0.0/32", true))).
 
 ipv6_address_count(_) ->
     ?assert(esockd_cidr:count(esockd_cidr:parse("2001::abcd/0", true)) == math:pow(2, 128)),
@@ -241,24 +253,24 @@ ipv6_address_count(_) ->
 
 ipv4_cidr_match(_) ->
     CIDR = esockd_cidr:parse("192.168.0.0/16"),
-	?assert(esockd_cidr:match({192,168,0,0}, CIDR) == true),
-    ?assert(esockd_cidr:match({192,168,0,1}, CIDR) == true),
-    ?assert(esockd_cidr:match({192,168,1,0}, CIDR) == true),
-    ?assert(esockd_cidr:match({192,168,0,255}, CIDR) == true),
-    ?assert(esockd_cidr:match({192,168,255,0}, CIDR) == true),
-    ?assert(esockd_cidr:match({192,168,255,255}, CIDR) == true),
-    ?assert(esockd_cidr:match({192,168,255,256}, CIDR) == false),
-    ?assert(esockd_cidr:match({192,169,0,0}, CIDR) == false),
-    ?assert(esockd_cidr:match({192,167,255,255}, CIDR) == false).
+	?assert(esockd_cidr:match({192,168,0,0}, CIDR)),
+    ?assert(esockd_cidr:match({192,168,0,1}, CIDR)),
+    ?assert(esockd_cidr:match({192,168,1,0}, CIDR)),
+    ?assert(esockd_cidr:match({192,168,0,255}, CIDR)),
+    ?assert(esockd_cidr:match({192,168,255,0}, CIDR)),
+    ?assert(esockd_cidr:match({192,168,255,255}, CIDR)),
+    ?assertNot(esockd_cidr:match({192,168,255,256}, CIDR)),
+    ?assertNot(esockd_cidr:match({192,169,0,0}, CIDR)),
+    ?assertNot(esockd_cidr:match({192,167,255,255}, CIDR)).
 
 ipv6_cidr_match(_) ->
 	CIDR = {{8193, 43981, 0, 0, 0, 0, 0, 0}, {8193, 43981, 8191, 65535, 65535, 65535, 65535, 65535}, 35},
-    ?assert(esockd_cidr:match({8193, 43981, 0, 0, 0, 0, 0, 0}, CIDR) == true),
-    ?assert(esockd_cidr:match({8193, 43981, 0, 0, 0, 0, 0, 1}, CIDR) == true),
-    ?assert(esockd_cidr:match({8193, 43981, 8191, 65535, 65535, 65535, 65535, 65534}, CIDR) == true),
-    ?assert(esockd_cidr:match({8193, 43981, 8191, 65535, 65535, 65535, 65535, 65535}, CIDR) == true),
-    ?assert(esockd_cidr:match({8193, 43981, 8192, 65535, 65535, 65535, 65535, 65535}, CIDR) == false),
-    ?assert(esockd_cidr:match({65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535}, CIDR) == false).
+    ?assert(esockd_cidr:match({8193, 43981, 0, 0, 0, 0, 0, 0}, CIDR)),
+    ?assert(esockd_cidr:match({8193, 43981, 0, 0, 0, 0, 0, 1}, CIDR)),
+    ?assert(esockd_cidr:match({8193, 43981, 8191, 65535, 65535, 65535, 65535, 65534}, CIDR)),
+    ?assert(esockd_cidr:match({8193, 43981, 8191, 65535, 65535, 65535, 65535, 65535}, CIDR)),
+    ?assertNot(esockd_cidr:match({8193, 43981, 8192, 65535, 65535, 65535, 65535, 65535}, CIDR)),
+    ?assertNot(esockd_cidr:match({65535, 65535, 65535, 65535, 65535, 65535, 65535, 65535}, CIDR)).
 
 %%--------------------------------------------------------------------
 %% Access
@@ -274,7 +286,8 @@ access_match(_) ->
     ?assertEqual({matched, deny}, esockd_access:match({10,10,10,10}, Rules)).
 
 access_match_localhost(_) ->
-    Rules = [esockd_access:compile({allow, "127.0.0.1"}), esockd_access:compile({deny, all})],
+    Rules = [esockd_access:compile({allow, "127.0.0.1"}),
+             esockd_access:compile({deny, all})],
     ?assertEqual({matched, allow}, esockd_access:match({127,0,0,1}, Rules)),
     ?assertEqual({matched, deny}, esockd_access:match({192,168,0,1}, Rules)).
 
@@ -306,28 +319,29 @@ esockd_udp_server(_) ->
     {ok, {_Addr, _Port, <<"world">>}} = gen_udp:recv(Sock, 5, 3000),
     ok = esockd_udp:stop(Srv).
 
-udp_echo_server(Socket, Peer) ->
-    {ok, spawn(fun() -> udp_echo_loop(Socket, Peer) end)}.
+udp_echo_server(Sock, Peer) ->
+    {ok, spawn(fun() -> udp_echo_loop(Sock, Peer) end)}.
 
-udp_echo_loop(Socket, {Address, Port} = Peer) ->
+udp_echo_loop(Sock, {Address, Port} = Peer) ->
     receive
         {datagram, _Server, Packet} ->
-            ok = gen_udp:send(Socket, Address, Port, Packet),
-            udp_echo_loop(Socket, Peer);
+            ok = gen_udp:send(Sock, Address, Port, Packet),
+            udp_echo_loop(Sock, Peer);
          _Any ->
             ok
     end.
 
-parse_proxy_info_v1(Config) ->
+parse_proxy_info_v1(_Config) ->
     ?assertEqual({ok, #proxy_socket{src_addr = {192,168,1,30}, src_port = 45420,
                                     dst_addr = {192,168,1,2}, dst_port = 1883}},
-                 esockd_proxy_protocol:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>, #proxy_socket{})),
+                 esockd_proxy_protocol:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>,
+                                                #proxy_socket{})),
     ?assertEqual({ok, #proxy_socket{src_addr = {255,255,255,255}, src_port = 65535,
                                     dst_addr = {255,255,255,255}, dst_port = 65535}},
-                 esockd_proxy_protocol:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>, #proxy_socket{})),
-    Config.
+                 esockd_proxy_protocol:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>,
+                                                #proxy_socket{})).
 
-parse_proxy_info_v2(Config) ->
+parse_proxy_info_v2(_Config) ->
     ?assertEqual({ok, #proxy_socket{src_addr = {104,199,189,98}, src_port = 6000,
                                     dst_addr = {106,185,34,253}, dst_port = 8883,
                                     inet = inet4}},
@@ -336,15 +350,15 @@ parse_proxy_info_v2(Config) ->
     ?assertEqual({ok, #proxy_socket{src_addr = {0,0,0,0,0,0,0,1}, src_port = 6000,
                                     dst_addr = {0,0,0,0,0,0,0,1}, dst_port = 5000,
                                     inet = inet6}},
-                 esockd_proxy_protocol:parse_v2(16#1, 16#1, <<1:128, 1:128, 6000:16, 5000:16>>, #proxy_socket{inet = inet6})),
-    Config.
+                 esockd_proxy_protocol:parse_v2(16#1, 16#1, <<1:128, 1:128, 6000:16, 5000:16>>,
+                                                #proxy_socket{inet = inet6})).
 
-parse_proxy_pp2_tlv(Config) ->
+parse_proxy_pp2_tlv(_Config) ->
     Bin = <<01,00,05,"29zka",02,00,06,"219a3k",16#30,00,07,"abc.com",16#20,00,05,03,00,00,00,01>>,
     ?assertEqual([{1, <<"29zka">>}, {2, <<"219a3k">>}, {16#30, <<"abc.com">>}, {16#20, <<3,0,0,0,1>>}],
                  esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin)).
 
-parse_proxy_info_v2_additional_info(Config) ->
+parse_proxy_info_v2_additional_info(_Config) ->
     AdditionalInfo = [{pp2_alpn, <<"29zka">>},
                       {pp2_authority, <<"219a3k">>},
                       {pp2_netns, <<"abc.com">>},
@@ -360,79 +374,53 @@ parse_proxy_info_v2_additional_info(Config) ->
                  esockd_proxy_protocol:parse_v2(16#1, 16#1, <<104,199,189,98,106,185,34,253,6000:16,8883:16,
                                                               01,00,05,"29zka",02,00,06,"219a3k",16#30,00,07,"abc.com",
                                                               16#20,00,05,07,00,00,00,00>>,
-                                                #proxy_socket{inet = inet4})),
-    Config.
+                                                #proxy_socket{inet = inet4})).
 
-new_connection_tcp4(Config) ->
+new_connection_tcp4(_) ->
     {ok, _LSup} = proxy_protocol_server:start(5000),
-    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
-    ok = gen_tcp:send(Socket, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
-    ok = gen_tcp:send(Socket, <<"v1 tcp4">>),
-    receive
-        {tcp, Sock, Data} ->
-            "v1 tcp4" = Data
-    end,
-    Config.
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Sock, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
+    ok = gen_tcp:send(Sock, <<"v1 tcp4">>),
+    receive {tcp, Sock, Data} -> ?assertEqual("v1 tcp4", Data) end.
 
-new_connection_tcp6(Config) ->
-    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
-    ok = gen_tcp:send(Socket, <<"PROXY TCP4 ::1 ::1 6000 50000\r\n">>),
-    ok = gen_tcp:send(Socket, <<"v1 tcp6">>),
-    receive
-        {tcp, Sock, Data} ->
-            "v1 tcp6" = Data
-    end,
-    Config.
+new_connection_tcp6(_) ->
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Sock, <<"PROXY TCP4 ::1 ::1 6000 50000\r\n">>),
+    ok = gen_tcp:send(Sock, <<"v1 tcp6">>),
+    receive {tcp, Sock, Data} -> ?assertEqual("v1 tcp6", Data) end.
 
-
-new_connection_v2(Config) ->
-    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
+new_connection_v2(_) ->
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, []),
     Bin = <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,12,127,
             50,210,1,210,21,16,142,250,32,1,181>>,
-    ok = gen_tcp:send(Socket, Bin),
-    ok = gen_tcp:send(Socket, <<"v2">>),
-    receive
-        {tcp, Sock, Data} ->
-            "v2" = Data
-    end,
-    Config.
+    ok = gen_tcp:send(Sock, Bin),
+    ok = gen_tcp:send(Sock, <<"v2">>),
+    receive {tcp, Sock, Data} -> ?assertEqual("v2", Data) end.
 
-unknow_data(Config) ->
-    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
-    ok = gen_tcp:send(Socket, "PROXY UNKNOWN\r\n"),
-    ok = gen_tcp:send(Socket, <<"unknow">>),
-    receive
-        {tcp, Sock, Data} ->
-            ct:log("Data:~p~n", [Data]),
-            "unknow" = Data
-    end,
-    Config.
+unknow_data(_) ->
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Sock, "PROXY UNKNOWN\r\n"),
+    ok = gen_tcp:send(Sock, <<"unknown">>),
+    receive {tcp, Sock, Data} -> ?assertEqual("unknown", Data) end.
 
-garbage_date(Config) ->
-    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
-    ok = gen_tcp:send(Socket, "************\r\n"),
-    ok = gen_tcp:send(Socket, <<"garbage_date">>),
-    Config.
+garbage_date(_) ->
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Sock, "************\r\n"),
+    ok = gen_tcp:send(Sock, <<"garbage_date">>).
 
-
-reuse_socket(Config) ->
-    {ok, Socket} = gen_tcp:connect({127,0,0,1}, 5000, []),
-    ok = gen_tcp:send(Socket, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
-    ok = gen_tcp:send(Socket, <<"m1">>),
+reuse_socket(_) ->
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Sock, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
+    ok = gen_tcp:send(Sock, <<"m1">>),
+    receive {tcp, _Sock1, Data} -> ?assertEqual("m1", Data) end,
+    esockd_transport:close(Sock),
+    {ok, Sock1} = gen_tcp:connect({127,0,0,1}, 5000, []),
+    ok = gen_tcp:send(Sock1, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
+    ok = gen_tcp:send(Sock1, <<"m2">>),
     receive
-        {tcp, _Sock, Data} ->
-            "m1" = Data
-    end,
-    esockd_transport:close(Socket),
-    {ok, Socket1} = gen_tcp:connect({127,0,0,1}, 5000, []),
-    ok = gen_tcp:send(Socket1, "PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n"),
-    ok = gen_tcp:send(Socket1, <<"m2">>),
-    receive
-        {tcp, _Sock, Data1} ->
-            "m2" = Data1
+        {tcp, _Sock2, Data1} ->
+            ?assertEqual("m2", Data1)
     after 1000 ->
-          ct:log("timeout:~p~n", [timeout]),
           ok
     end,
-    esockd_transport:close(Socket1),
-    Config.
+    esockd_transport:close(Sock1).

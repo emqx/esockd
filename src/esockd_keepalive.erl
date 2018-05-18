@@ -18,62 +18,62 @@
 
 -author("Feng Lee <feng@emqtt.io>").
 
--export([start/3, resume/1, cancel/1]).
+-export([start/4, resume/1, cancel/1]).
 
--record(keepalive, {connection,
-                    recv_oct,
-                    timeout_msec,
-                    timeout_msg,
-                    timer_ref}).
+-record(keepalive, {transport, socket, recv_oct,
+                    timeout_msec, timeout_msg, timer_ref}).
 
 -type(keepalive() :: #keepalive{}).
 
 %% @doc Start keepalive
--spec(start(esockd_connection:connection(), pos_integer(), any()) ->
+-spec(start(atom(), esockd_transport:sock(), timeout(), any()) ->
       {ok, keepalive()} | {error, term()}).
-start(Connection, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
-    with_sock_stats(Connection, fun(RecvOct) ->
-        Ms = timer:seconds(TimeoutSec),
-        Ref = erlang:send_after(Ms, self(), TimeoutMsg),
-        {ok, #keepalive {connection   = Connection,
-                         recv_oct     = RecvOct,
-                         timeout_msec = Ms,
-                         timeout_msg  = TimeoutMsg,
-                         timer_ref    = Ref}}
-    end).
+start(Transport, Socket, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
+    with_sock_stats(
+      Transport, Socket,
+      fun(RecvOct) ->
+          Ms = timer:seconds(TimeoutSec),
+          Ref = erlang:send_after(Ms, self(), TimeoutMsg),
+          {ok, #keepalive{transport    = Transport,
+                          socket       = Socket,
+                          recv_oct     = RecvOct,
+                          timeout_msec = Ms,
+                          timeout_msg  = TimeoutMsg,
+                          timer_ref    = Ref}}
+      end).
 
 %% @doc Try to resume keepalive, called when timeout
 -spec(resume(keepalive()) -> timeout | {resumed, keepalive()}).
-resume(KeepAlive = #keepalive {connection   = Connection,
-                               recv_oct     = RecvOct,
-                               timeout_msec = Ms,
-                               timeout_msg  = TimeoutMsg,
-                               timer_ref    = Ref}) ->
-    with_sock_stats(Connection, fun(NewRecvOct) ->
-        case NewRecvOct =:= RecvOct of
-            false ->
-                cancel(Ref), %% need?
-                NewRef = erlang:send_after(Ms, self(), TimeoutMsg),
-                {resumed, KeepAlive#keepalive{recv_oct = NewRecvOct, timer_ref = NewRef}};
-            true ->
-                {error, timeout}
-        end
-    end).
+resume(KeepAlive = #keepalive{transport    = Transport,
+                              socket       = Socket,
+                              recv_oct     = RecvOct,
+                              timeout_msec = Ms,
+                              timeout_msg  = TimeoutMsg,
+                              timer_ref    = Ref}) ->
+    with_sock_stats(
+      Transport, Socket,
+      fun(NewRecvOct) ->
+          case NewRecvOct =:= RecvOct of
+              false -> cancel(Ref), %% need?
+                       NewRef = erlang:send_after(Ms, self(), TimeoutMsg),
+                       {resumed, KeepAlive#keepalive{recv_oct = NewRecvOct, timer_ref = NewRef}};
+              true  -> {error, timeout}
+          end
+      end).
 
-%% @doc Cancel Keepalive
+%% @doc Cancel keepalive
 -spec(cancel(keepalive()) -> any()).
 cancel(#keepalive{timer_ref = Ref}) ->
     cancel(Ref);
-cancel(undefined) -> 
+cancel(undefined) ->
 	undefined;
-cancel(Ref) -> 
+cancel(Ref) ->
 	catch erlang:cancel_timer(Ref).
 
-with_sock_stats(Connection, SuccFun) ->
-    case Connection:getstat([recv_oct]) of
+with_sock_stats(Transport, Socket, SuccFun) ->
+    case Transport:getstat(Socket, [recv_oct]) of
         {ok, [{recv_oct, RecvOct}]} ->
             SuccFun(RecvOct);
-        {error, Error} ->
-            {error, Error}
+        Error -> Error
     end.
 

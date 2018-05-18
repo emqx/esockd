@@ -23,7 +23,7 @@
 -import(proplists, [get_value/3]).
 
 %% API Exports
--export([start_link/2, start_connection/4, count_connections/1]).
+-export([start_link/2, start_connection/3, count_connections/1]).
 
 %% Max Clients
 -export([get_max_clients/1, set_max_clients/2]).
@@ -38,9 +38,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--define(DICT, dict).
--define(SETS, sets).
 -define(MAX_CLIENTS, 1024).
+-define(Transport, esockd_transport).
 
 -record(state, {curr_clients = 0,
                 max_clients  = ?MAX_CLIENTS,
@@ -57,19 +56,32 @@
 -spec(start_link([esockd:option()], esockd:mfargs())
       -> {ok, pid()} | ignore | {error, term()}).
 start_link(Options, MFArgs) ->
-    gen_server:start_link(?MODULE, [Options, MFArgs], []).
+    gen_server:start_link(?MODULE, [Options, MFArgs], [{hibernate_after, 20000}]).
 
 %% @doc Start connection.
-start_connection(Sup, Mod, Sock, SockFun) ->
-    case call(Sup, {start_connection, Sock, SockFun}) of
-        {ok, Pid, Conn} ->
-            % transfer controlling from acceptor to connection
-            Mod:controlling_process(Sock, Pid),
-            Conn:go(Pid),
+start_connection(Sup, Sock, UpgradeFuns) ->
+    case call(Sup, {start_connection, Sock}) of
+        {ok, Pid} ->
+            %% transfer controlling from acceptor to connection
+            _ = ?Transport:controlling_process(Sock, Pid),
+            _ = ?Transport:ready(Pid, Sock, UpgradeFuns),
             {ok, Pid};
-        {error, Error} ->
-            {error, Error}
+        ignore ->
+            ignore;
+        {error, Reason} ->
+            {error, Reason}
     end.
+
+%% @doc Start the connection process.
+-spec(start_connection_proc(esockd:mfargs(), inet:socket())
+      -> {ok, pid()} | ignore | {error, term()}).
+start_connection_proc(M, Sock) when is_atom(M) ->
+    M:start_link(?Transport, Sock);
+start_connection_proc({M, F}, Sock) when is_atom(M), is_atom(F) ->
+    M:F(?Transport, Sock);
+start_connection_proc({M, F, Args}, Sock)
+    when is_atom(M), is_atom(F), is_list(Args) ->
+    erlang:apply(M, F, [?Transport, Sock | Args]).
 
 count_connections(Sup) ->
     call(Sup, count_connections).
@@ -103,32 +115,29 @@ init([Options, MFArgs]) ->
     process_flag(trap_exit, true),
     Shutdown    = get_value(shutdown, Options, brutal_kill),
     MaxClients  = get_value(max_clients, Options, ?MAX_CLIENTS),
-    ConnOpts    = get_value(connopts, Options, []),
-    RawRules    = get_value(access, Options, [{allow, all}]),
+    RawRules    = get_value(access_rules, Options, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
     {ok, #state{max_clients  = MaxClients,
-                conn_opts    = ConnOpts,
                 access_rules = AccessRules,
                 shutdown     = Shutdown,
                 mfargs       = MFArgs}}.
 
-handle_call({start_connection, _Sock, _SockFun}, _From,
-            State = #state{curr_clients = CurrClients, max_clients = MaxClients})
-        when CurrClients >= MaxClients ->
+handle_call({start_connection, _Sock}, _From,
+            State = #state{curr_clients = CurrClients,
+                           max_clients  = MaxClients})
+    when CurrClients >= MaxClients ->
     {reply, {error, maxlimit}, State};
 
-handle_call({start_connection, Sock, SockFun}, _From,
-            State = #state{conn_opts = ConnOpts, mfargs = MFArgs,
-                           curr_clients = Count, access_rules = Rules}) ->
-    case inet:peername(Sock) of
+handle_call({start_connection, Sock}, _From,
+            State = #state{mfargs = MFArgs, curr_clients = Count, access_rules = Rules}) ->
+    case esockd_transport:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
                 true ->
-                    Conn = esockd_connection:new(Sock, SockFun, ConnOpts),
-                    case catch Conn:start_link(MFArgs) of
+                    case catch start_connection_proc(MFArgs, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
                             put(Pid, true),
-                            {reply, {ok, Pid, Conn}, State#state{curr_clients = Count+1}};
+                            {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
                         ignore ->
                             {reply, ignore, State};
                         {error, Reason} ->
@@ -237,35 +246,35 @@ count_shutdown(Reason) ->
 
 terminate_children(State = #state{shutdown = Shutdown}) ->
     {Pids, EStack0} = monitor_children(),
-    Sz = ?SETS:size(Pids),
+    Sz = sets:size(Pids),
     EStack = case Shutdown of
                  brutal_kill ->
-                     ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
+                     sets:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
                      wait_children(Shutdown, Pids, Sz, undefined, EStack0);
                  infinity ->
-                     ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
+                     sets:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
                      wait_children(Shutdown, Pids, Sz, undefined, EStack0);
                  Time when is_integer(Time) ->
-                     ?SETS:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
+                     sets:fold(fun(P, _) -> exit(P, shutdown) end, ok, Pids),
                      TRef = erlang:start_timer(Time, self(), kill),
                      wait_children(Shutdown, Pids, Sz, TRef, EStack0)
              end,
     %% Unroll stacked errors and report them
-    ?DICT:fold(fun(Reason, Pid, _) ->
-        report_error(connection_shutdown_error, Reason, Pid, State)
-    end, ok, EStack).
+    dict:fold(fun(Reason, Pid, _) ->
+                  report_error(connection_shutdown_error, Reason, Pid, State)
+              end, ok, EStack).
 
 monitor_children() ->
     lists:foldl(fun(P, {Pids, EStack}) ->
         case monitor_child(P) of
             ok ->
-                {?SETS:add_element(P, Pids), EStack};
+                {sets:add_element(P, Pids), EStack};
             {error, normal} ->
                 {Pids, EStack};
             {error, Reason} ->
-                {Pids, ?DICT:append(Reason, P, EStack)}
+                {Pids, dict:append(Reason, P, EStack)}
         end
-    end, {?SETS:new(), ?DICT:new()}, get_keys(true)).
+    end, {sets:new(), dict:new()}, get_keys(true)).
 
 %% Help function to shutdown/2 switches from link to monitor approach
 monitor_child(Pid) ->
@@ -307,7 +316,7 @@ wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
             EStack
     end;
 
-%%TODO: copied from supervisor.erl, rewrite it later.
+%%TODO: Copied from supervisor.erl, rewrite it later.
 wait_children(brutal_kill, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, killed} ->
@@ -315,7 +324,7 @@ wait_children(brutal_kill, Pids, Sz, TRef, EStack) ->
 
         {'DOWN', _MRef, process, Pid, Reason} ->
             wait_children(brutal_kill, del(Pid, Pids),
-                          Sz-1, TRef, ?DICT:append(Reason, Pid, EStack))
+                          Sz-1, TRef, dict:append(Reason, Pid, EStack))
     end;
 
 wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
@@ -326,9 +335,9 @@ wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
             wait_children(Shutdown, del(Pid, Pids), Sz-1, TRef, EStack);
         {'DOWN', _MRef, process, Pid, Reason} ->
             wait_children(Shutdown, del(Pid, Pids), Sz-1,
-                          TRef, ?DICT:append(Reason, Pid, EStack));
+                          TRef, dict:append(Reason, Pid, EStack));
         {timeout, TRef, kill} ->
-            ?SETS:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
+            sets:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
             wait_children(Shutdown, Pids, Sz-1, undefined, EStack)
     end.
 
@@ -343,5 +352,5 @@ report_error(Error, Reason, Pid, #state{mfargs = MFArgs}) ->
     error_logger:error_report(supervisor_report, ErrorMsg).
 
 del(Pid, Pids) ->
-    erase(Pid), ?SETS:del_element(Pid, Pids).
+    erase(Pid), sets:del_element(Pid, Pids).
 

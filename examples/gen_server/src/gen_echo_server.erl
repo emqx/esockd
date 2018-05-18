@@ -1,29 +1,24 @@
-%%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2017, Feng Lee <feng@emqtt.io>
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
 %%% @doc
 %%% Simple Echo Server.
 %%%
 %%% @end
-%%%-----------------------------------------------------------------------------
+%%%===================================================================
+
 -module(gen_echo_server).
 
 -include("../../../include/esockd.hrl").
@@ -33,43 +28,38 @@
 %% start
 -export([start/0, start/1]).
 
-%% esockd callback 
--export([start_link/1]).
+%% esockd callback
+-export([start_link/2]).
 
 %% gen_server Function Exports
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, {conn}).
+-record(state, {transport, socket}).
 
--define(TCP_OPTIONS, [
-        binary,
-        %{buffer, 1024},
-        {reuseaddr, true},
-        {backlog, 512},
-        {nodelay, false}]).
-
-start() ->
-    start(5000).
+start() -> start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    application:start(sasl),
     ok = esockd:start(),
-    SockOpts = [{acceptors, 32},
-                {max_clients, 1000000},
-                {sockopts, ?TCP_OPTIONS}],
+    Options = [{acceptors, 32},
+               {max_clients, 100000}],
     MFArgs = {?MODULE, start_link, []},
-    esockd:open(echo, Port, SockOpts, MFArgs).
+    esockd:open(echo, Port, Options, MFArgs).
 
-start_link(Conn) ->
-    {ok, proc_lib:spawn_link(?MODULE, init, [Conn])}.
+start_link(Transport, Sock) ->
+    {ok, proc_lib:spawn_link(?MODULE, init, [[Transport, Sock]])}.
 
-init(Conn) ->
-    {ok, Conn1} = Conn:wait(),
-    Conn1:setopts([{active, once}]),
-    gen_server:enter_loop(?MODULE, [], #state{conn = Conn1}).
+init([Transport, Sock]) ->
+    case Transport:wait(Sock) of
+        {ok, NewSock} ->
+            Transport:setopts(Sock, [{active, once}]),
+            State = #state{transport = Transport, socket = NewSock},
+            gen_server:enter_loop(?MODULE, [], State);
+        {error, Reason} ->
+            {stop, Reason}
+    end.
 
 handle_call(_Request, _From, State) ->
     {reply, ok, State}.
@@ -77,20 +67,20 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, State=#state{conn = ?ESOCK(Sock) = Conn}) ->
-    io:format("Data from: ~p~n", [Sock]),
-    {ok, PeerName} = Conn:peername(),
-    io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-    Conn:send(Data),
-    Conn:setopts([{active, once}]),
+handle_info({tcp, Sock, Data}, State=#state{transport = Transport, socket = Sock}) ->
+    {ok, Peername} = Transport:peername(Sock),
+    io:format("Data from ~s: ~s~n",
+              [esockd_net:format(peername, Peername), Data]),
+    Transport:send(Sock, Data),
+    Transport:setopts(Sock, [{active, once}]),
     {noreply, State};
 
-handle_info({tcp_error, Sock, Reason}, State=#state{conn = ?ESOCK(Sock)}) ->
+handle_info({tcp_error, Sock, Reason}, State=#state{socket = Sock}) ->
     io:format("Error from: ~p~n", [Sock]),
     io:format("tcp_error: ~s~n", [Reason]),
-    {stop, {shutdown, {tcp_error, Reason}}, State};
+    {stop, {shutdown, Reason}, State};
 
-handle_info({tcp_closed, Sock}, State=#state{conn = ?ESOCK(Sock)}) ->
+handle_info({tcp_closed, Sock}, State=#state{socket = Sock}) ->
     io:format("tcp_closed~n"),
     {stop, normal, State};
 
@@ -102,3 +92,4 @@ terminate(_Reason, _State) ->
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
+

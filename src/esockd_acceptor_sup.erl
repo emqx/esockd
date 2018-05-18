@@ -20,37 +20,38 @@
 
 -behaviour(supervisor).
 
--export([start_link/3, start_acceptor/3, count_acceptors/1]).
+-export([start_link/4, start_acceptor/2, count_acceptors/1]).
 
 -export([init/1]).
 
-%%%-------------------------------------------------------------------
-%%% API
-%%%-------------------------------------------------------------------
+%%--------------------------------------------------------------------
+%% API
+%%--------------------------------------------------------------------
 
 %% @doc Start Acceptor Supervisor.
--spec(start_link(pid(), fun(), esockd:tune_fun()) -> {ok, pid()}).
-start_link(ConnSup, StatsFun, BufferTuneFun) ->
-    supervisor:start_link(?MODULE, [ConnSup, StatsFun, BufferTuneFun]).
+-spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun())
+      -> {ok, pid()}).
+start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun) ->
+    supervisor:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun]).
 
 %% @doc Start a acceptor.
--spec(start_acceptor(pid(), inet:socket(), esockd:sock_fun())
+-spec(start_acceptor(pid(), inet:socket())
       -> {ok, pid()} | ignore | {error, term()}).
-start_acceptor(AcceptorSup, LSock, SockFun) ->
-    supervisor:start_child(AcceptorSup, [LSock, SockFun]).
+start_acceptor(AcceptorSup, LSock) ->
+    supervisor:start_child(AcceptorSup, [LSock]).
 
 %% @doc Count Acceptors.
 -spec(count_acceptors(AcceptorSup :: pid()) -> pos_integer()).
 count_acceptors(AcceptorSup) ->
     length(supervisor:which_children(AcceptorSup)).
 
-%%%-----------------------------------------------------------------------------
-%%% Supervisor callbacks
-%%%-----------------------------------------------------------------------------
+%%--------------------------------------------------------------------
+%% Supervisor callbacks
+%%--------------------------------------------------------------------
 
-init([ConnSup, StatsFun, BufferTuneFun]) ->
+init([ConnSup, TuneFun, UpgradeFuns, StatsFun]) ->
     {ok, {{simple_one_for_one, 100, 3600},
           [{acceptor, {esockd_acceptor, start_link,
-                       [ConnSup, StatsFun, BufferTuneFun]},
+                       [ConnSup, TuneFun, UpgradeFuns, StatsFun]},
             transient, 5000, worker, [esockd_acceptor]}]}}.
 

@@ -18,166 +18,135 @@
 
 -author("Feng Lee <feng@emqtt.io>").
 
--include("esockd.hrl").
+-behaviour(gen_statem).
 
--behaviour(gen_server).
+-include("esockd.hrl").
 
 -export([start_link/5]).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([accepting/3, suspending/3]).
 
--record(state, {lsock       :: inet:socket(),
-                sockfun     :: esockd:sock_fun(),
-                tunefun     :: esockd:tune_fun(),
-                sockname    :: iolist(),
-                conn_sup    :: pid(),
-                statsfun    :: fun(),
-                ref         :: reference(),
-                emfile_count = 0}).
+%% gen_statem Callbacks
+-export([init/1, callback_mode/0, terminate/3, code_change/4]).
 
-%% @doc Start Acceptor
--spec(start_link(pid(), fun(), esockd:tune_fun(), inet:socket(), esockd:sock_fun())
+-record(state, {lsock        :: inet:socket(),
+                sockname     :: iolist(),
+                tune_fun     :: esockd:sock_fun(),
+                upgrade_funs :: [esockd:sock_fun()],
+                stats_fun    :: fun(),
+                conn_sup     :: pid(),
+                accept_ref   :: term() }).
+
+%% @doc Start an acceptor
+-spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), inet:socket())
       -> {ok, pid()} | {error, term()}).
-start_link(ConnSup, StatsFun, BufTuneFun, LSock, SockFun) ->
-    gen_server:start_link(?MODULE, {ConnSup, StatsFun, BufTuneFun, LSock, SockFun}, []).
+start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock) ->
+    Args = [ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock],
+    gen_statem:start_link(?MODULE, Args, [{hibernate_after, 5000}]).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
-init({ConnSup, StatsFun, BufferTuneFun, LSock, SockFun}) ->
-    {ok, SockName} = inet:sockname(LSock),
-    gen_server:cast(self(), accept),
-    {ok, #state{lsock    = LSock,
-                sockfun  = SockFun,
-                tunefun  = BufferTuneFun,
-                sockname = esockd_net:format(sockname, SockName),
-                conn_sup = ConnSup,
-                statsfun = StatsFun}}.
+init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock]) ->
+    rand:seed(exsplus, erlang:timestamp()),
+    {ok, Sockname} = inet:sockname(LSock),
+    {ok, accepting, #state{lsock        = LSock,
+                           sockname     = Sockname,
+                           tune_fun     = TuneFun,
+                           upgrade_funs = UpgradeFuns,
+                           stats_fun    = StatsFun,
+                           conn_sup     = ConnSup},
+     {next_event, internal, accept}}.
 
-handle_call(_Request, _From, State) ->
-    {noreply, State}.
+callback_mode() -> state_functions.
 
-handle_cast(accept, State) ->
-    accept(State);
+accepting(internal, accept, State = #state{lsock = LSock}) ->
+    case prim_inet:async_accept(LSock, -1) of
+        {ok, Ref} ->
+            {keep_state, State#state{accept_ref = Ref}};
+        {error, Reason} when Reason =:= emfile;
+                             Reason =:= enfile ->
+            {next_state, suspending, State, 1000};
+        {error, closed} ->
+            {stop, normal, State};
+        {error, Reason} ->
+            {stop, Reason, State}
+    end;
 
-handle_cast(_Msg, State) ->
-    {noreply, State}.
-
-handle_info({inet_async, LSock, Ref, {ok, Sock}}, State = #state{lsock    = LSock,
-                                                                 sockfun  = SockFun,
-                                                                 tunefun  = BufferTuneFun,
-                                                                 sockname = SockName,
-                                                                 conn_sup = ConnSup,
-                                                                 statsfun = StatsFun,
-                                                                 ref      = Ref}) ->
-
-    %% patch up the socket so it looks like one we got from gen_tcp:accept/1
+accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
+          #state{lsock        = LSock,
+                 sockname     = Sockname,
+                 tune_fun     = TuneFun,
+                 upgrade_funs = UpgradeFuns,
+                 stats_fun    = StatsFun,
+                 conn_sup     = ConnSup,
+                 accept_ref   = Ref}) ->
+    %% Make it look like the socket we got from gen_tcp:accept/1
     {ok, Mod} = inet_db:lookup_socket(LSock),
     inet_db:register_socket(Sock, Mod),
 
     %% accepted stats.
     StatsFun({inc, 1}),
 
-    %% Fix issues#9: enotconn error occured...
-	%% {ok, Peername} = inet:peername(Sock),
-    case BufferTuneFun(Sock) of
-        ok ->
-            case esockd_connection_sup:start_connection(ConnSup, Mod, Sock, SockFun) of
-                {ok, _Pid}        -> ok;
-                {error, enotconn} -> catch port_close(Sock); %% quiet...issue #10
-                {error, einval}   -> catch port_close(Sock); %% quiet... haproxy check
-                {error, Reason}   ->
-                    catch port_close(Sock),
-                    error_logger:error_msg("Failed to start connection on ~s - ~p",
-                                           [SockName, Reason])
-            end;
+    case TuneFun(Sock) of
+        {ok, Sock} ->
+            case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
+                {ok, _Pid} -> ok;
+                {error, enotconn} ->
+                    close(Sock); %% quiet...issue #10
+                {error, einval} ->
+                    close(Sock); %% quiet... haproxy check
+                {error, Reason} ->
+                    error_logger:error_msg("Failed to start connection on ~s: ~p",
+                                           [esockd_net:format(sockname, Sockname), Reason]),
+                    close(Sock)
+                end;
         {error, enotconn} ->
-			catch port_close(Sock);
-        {error, Err} ->
-            error_logger:error_msg("Failed to tune buffer of socket accepted on ~s - ~s",
-                                   [SockName, Err]),
-            catch port_close(Sock)
+            close(Sock);
+        {error, einval} ->
+            close(Sock);
+        {error, closed} ->
+            close(Sock);
+        {error, Reason} ->
+            error_logger:error_msg("Tune buffer failed on ~s: ~s",
+                                   [esockd_net:format(sockname, Sockname), Reason]),
+            close(Sock)
     end,
-    %% accept more
-    accept(State);
+    {keep_state_and_data, {next_event, internal, accept}};
 
-handle_info({inet_async, LSock, Ref, {error, closed}},
-            State=#state{lsock=LSock, ref=Ref}) ->
-    %% It would be wrong to attempt to restart the acceptor when we
-    %% know this will fail.
+accepting(info, {inet_async, LSock, Ref, {error, closed}},
+          State = #state{lsock = LSock, accept_ref = Ref}) ->
     {stop, normal, State};
 
 %% {error, econnaborted} -> accept
-handle_info({inet_async, LSock, Ref, {error, econnaborted}},
-            State=#state{lsock = LSock, ref = Ref}) ->
-    accept(State);
-
-%% {error, esslaccept} -> accept
-handle_info({inet_async, LSock, Ref, {error, esslaccept}},
-            State=#state{lsock = LSock, ref = Ref}) ->
-    accept(State);
-
-%% async accept errors...
-%% {error, timeout} ->
-%% {error, e{n,m}file} -> suspend 100??
-handle_info({inet_async, LSock, Ref, {error, Error}},
-            State=#state{lsock = LSock, ref = Ref}) ->
-	sockerr(Error, State);
-
-handle_info(resume, State) ->
-    accept(State);
-
-handle_info(_Info, State) ->
-    {noreply, State}.
-
-terminate(_Reason, _State) ->
-    ok.
-
-code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
-
-%%--------------------------------------------------------------------
-%% accept...
-%%--------------------------------------------------------------------
-
-accept(State = #state{lsock = LSock}) ->
-    case prim_inet:async_accept(LSock, -1) of
-        {ok, Ref} ->
-			{noreply, State#state{ref = Ref}};
-		{error, Error} ->
-			sockerr(Error, State)
-    end.
-
-%%--------------------------------------------------------------------
-%% error happened...
-%%--------------------------------------------------------------------
+%% {error, esslaccept}   -> accept
+accepting(info, {inet_async, LSock, Ref, {error, Reason}},
+          #state{lsock = LSock, accept_ref = Ref})
+    when Reason =:= econnaborted; Reason =:= esslaccept ->
+    {keep_state_and_data, {next_event, internal, accept}};
 
 %% emfile: The per-process limit of open file descriptors has been reached.
-sockerr(emfile, State = #state{sockname = SockName, emfile_count = Count}) ->
-	%% Avoid too many error log.. stupid??
-	case Count rem 100 of
-        0 -> error_logger:error_msg("Acceptor on ~s suspend 100(ms) for ~p emfile errors!!!",
-                                    [SockName, Count]);
-        _ -> ignore
-	end,
-	suspend(100, State#state{emfile_count = Count+1});
+%% enfile: The system limit on the total number of open files has been reached.
+accepting(info, {inet_async, LSock, Ref, {error, Reason}},
+          State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
+    when Reason =:= emfile; Reason =:= enfile ->
+    error_logger:error_msg("Accept error on ~s: ~s",
+                           [esockd_net:format(sockname, Sockname), Reason]),
+    {next_state, suspending, State, 1000};
 
-%% enfile: The system limit on the total number of open files has been reached. usually OS's limit.
-sockerr(enfile, State = #state{sockname = SockName}) ->
-	error_logger:error_msg("Accept error on ~s - !!!enfile!!!", [SockName]),
-	suspend(100, State);
+accepting(info, {inet_async, LSock, Ref, {error, Reason}},
+          State = #state{lsock = LSock, accept_ref = Ref}) ->
+    {stop, Reason, State}.
 
-sockerr(Error, State = #state{sockname = SockName}) ->
-	error_logger:error_msg("accept error on ~s - ~s", [SockName, Error]),
-	{stop, {accept_error, Error}, State}.
+suspending(timeout, _Timeout, State) ->
+    {next_state, accepting, State, {next_event, internal, accept}}.
 
-%%--------------------------------------------------------------------
-%% suspend for a while...
-%%--------------------------------------------------------------------
+terminate(_Reason, _StateName, _State) ->
+    ok.
 
-suspend(Time, State) ->
-    erlang:send_after(Time, self(), resume),
-	{noreply, State#state{ref = undefined}, hibernate}.
+code_change(_OldVsn, StateName, State, _Extra) ->
+    {ok, StateName, State}.
+
+close(Sock) -> catch port_close(Sock).
 

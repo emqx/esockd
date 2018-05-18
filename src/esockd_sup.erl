@@ -20,98 +20,76 @@
 
 -behaviour(supervisor).
 
-%% API
 -export([start_link/0]).
 
 -export([start_listener/4, stop_listener/2, listeners/0, listener/1,
          child_spec/4, start_child/1, restart_listener/2]).
 
-%% Supervisor callbacks
+%% callback
 -export([init/1]).
 
-%% Helper macro for declaring children of supervisor
--define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
-
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
-%% @doc Start the supervisor.
--spec(start_link() -> {ok, pid()} | {error, term()}).
+-spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
-%% @doc Child Spec
--spec(child_spec(Protocol, ListenOn, Options, MFArgs) -> supervisor:child_spec() when
-      Protocol :: atom(),
-      ListenOn :: esockd:listen_on(),
-      Options  :: [esockd:option()],
-      MFArgs   :: esockd:mfargs()).
-child_spec(Protocol, ListenOn, Options, MFArgs) ->
-	{child_id(Protocol, ListenOn),
-        {esockd_listener_sup, start_link,
-            [Protocol, ListenOn, Options, MFArgs]},
-                transient, infinity, supervisor, [esockd_listener_sup]}.
+-spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+      -> supervisor:child_spec()).
+child_spec(Proto, ListenOn, Options, MFArgs) when is_atom(Proto) ->
+	{child_id(Proto, ListenOn),
+     {esockd_listener_sup, start_link, [Proto, ListenOn, Options, MFArgs]},
+     transient, infinity, supervisor, [esockd_listener_sup]}.
 
-%% @doc Start a Listener.
--spec(start_listener(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, term()} when
-      Protocol :: atom(),
-      ListenOn :: esockd:listen_on(),
-      Options  :: [esockd:option()],
-      MFArgs   :: esockd:mfargs()).
-start_listener(Protocol, ListenOn, Options, MFArgs) ->
-    start_child(child_spec(Protocol, ListenOn, Options, MFArgs)).
+-spec(start_listener(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+      -> {ok, pid()} | {error, term()}).
+start_listener(Proto, ListenOn, Options, MFArgs) ->
+    start_child(child_spec(Proto, ListenOn, Options, MFArgs)).
 
 -spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, term()}).
 start_child(ChildSpec) ->
 	supervisor:start_child(?MODULE, ChildSpec).
 
-%% @doc Stop the listener.
 -spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
-stop_listener(Protocol, ListenOn) ->
-    ChildId = child_id(Protocol, ListenOn),
+stop_listener(Proto, ListenOn) ->
+    ChildId = child_id(Proto, ListenOn),
 	case supervisor:terminate_child(?MODULE, ChildId) of
-    ok ->
-        supervisor:delete_child(?MODULE, ChildId);
-    {error, Reason} ->
-        {error, Reason}
+        ok    -> supervisor:delete_child(?MODULE, ChildId);
+        Error -> Error
 	end.
 
-%% @doc Get Listeners.
 -spec(listeners() -> [{term(), pid()}]).
 listeners() ->
-    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _} <- supervisor:which_children(?MODULE)].
+    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _}
+                  <- supervisor:which_children(?MODULE)].
 
-%% @doc Get Listener Pid.
 -spec(listener({atom(), esockd:listen_on()}) -> undefined | pid()).
-listener({Protocol, ListenOn}) ->
-    ChildId = child_id(Protocol, ListenOn),
-    case [Pid || {Id, Pid, supervisor, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
+listener({Proto, ListenOn}) ->
+    ChildId = child_id(Proto, ListenOn),
+    case [Pid || {Id, Pid, supervisor, _}
+                 <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
     end.
 
 -spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
-restart_listener(Protocol, ListenOn) ->
-    ChildId = child_id(Protocol, ListenOn),
+restart_listener(Proto, ListenOn) ->
+    ChildId = child_id(Proto, ListenOn),
     case supervisor:terminate_child(?MODULE, ChildId) of
         ok    -> supervisor:restart_child(?MODULE, ChildId);
         Error -> Error
     end.
 
-%%------------------------------------------------------------------------------
+child_id(Proto, ListenOn) -> {listener_sup, {Proto, ListenOn}}.
+
+%%--------------------------------------------------------------------
 %% Supervisor callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([]) ->
-    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]}}.
-
-%%------------------------------------------------------------------------------
-%% Internal functions
-%%------------------------------------------------------------------------------
-
-%% @doc Listener ChildId.
-%% @private
-child_id(Protocol, ListenOn) ->
-    {listener_sup, {Protocol, ListenOn}}.
+    Server = {esockd_server, {esockd_server, start_link, []},
+              permanent, 5000, worker, [esockd_server]},
+    {ok, {{one_for_one, 10, 100}, [Server]}}.
 

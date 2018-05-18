@@ -7,7 +7,6 @@ Erlang General Non-blocking TCP/SSL Socket Server.
 
 * General Non-blocking TCP/SSL Socket Server
 * Acceptor Pool and Asynchronous TCP Accept
-* Parameterized Connection Module
 * Max connections management
 * Allow/Deny by peer address
 * Proxy Protocol V1/V2
@@ -21,23 +20,27 @@ A Simple Echo Server:
 
     -module(echo_server).
 
-    -export([start_link/1]).
+    -export([start_link/2, init/2]).
 
-    start_link(Conn) ->
-       {ok, spawn_link(?MODULE, init, [Conn])}.
+    start_link(Transport, Sock) ->
+        {ok, spawn_link(?MODULE, init, [Transport, Sock])}.
 
-    init(Conn) ->
-        {ok, NewConn} = Conn:wait(), loop(NewConn).
+    init(Transport, Sock) ->
+        case Transport:wait(Sock) of
+            {ok, NewSock} ->
+                loop(Transport, NewSock);
+            Error -> Error
+        end.
 
-    loop(Conn) ->
-        case Conn:recv(0) of
+    loop(Transport, Sock) ->
+        case Transport:recv(Sock, 0) of
             {ok, Data} ->
-                {ok, PeerName} = Conn:peername(),
-                io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-                Conn:send(Data),
-                loop(Conn);
+                {ok, Peername} = Transport:peername(Sock),
+                io:format("RECV from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
+                Transport:send(Sock, Data),
+                loop(Transport, Sock);
             {error, Reason} ->
-                io:format("tcp ~s~n", [Reason]),
+                io:format("TCP Error: ~s~n", [Reason]),
                 {stop, Reason}
         end.
 
@@ -45,13 +48,10 @@ Setup Echo Server:
 
     %% Start eSockd application
     ok = esockd:start().
-
     Options = [{acceptors, 10},
                {max_clients, 1024},
-               {sockopts, [binary, {reuseaddr, true}]}].
-
+               {tcp_options, [binary, {reuseaddr, true}]}].
     MFArgs = {echo_server, start_link, []},
-
     esockd:open(echo, 5000, Options, MFArgs).
 
 ## Examples
@@ -68,28 +68,32 @@ examples/proxy_protocol | proxy protocol v1/2
 
 ### Open a Listener
 
-    esockd:open(echo, 5000, [{sockopts, [binary, {reuseaddr, true}]}], {echo_server, start_link, []}).
+    esockd:open(echo, 5000, [{tcp_options, [binary, {reuseaddr, true}]}],
+                {echo_server, start_link, []}).
 
-    esockd:open(echo, {"127.0.0.1", 6000}, [{sockopts, [binary, {reuseaddr, true}]}], {echo_server, start_link, []}).
+    esockd:open(echo, {"127.0.0.1", 6000}, [{tcp_options, [binary, {reuseaddr, true}]}],
+                {echo_server, start_link, []}).
 
 Spec:
 
-    -spec(open(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, any()} when
+    -spec(open(Protocol, ListenOn, Options, MFArgs) -> {ok, pid()} | {error, term()} when
                Protocol :: atom(),
-               ListenOn :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}),
+               ListenOn :: inet:port_number() | {host(), inet:port_number()}),
                Options  :: [option()],
                MFArgs   :: esockd:mfargs()).
 
-Options:
+Option:
 
     -type(option() :: {acceptors, pos_integer()}
                     | {max_clients, pos_integer()}
-                    | {tune_buffer, false | true}
-                    | {access, [esockd_access:rule()]}
-                    | {logger, atom() | {atom(), atom()}}
-                    | {ssl, [ssl:ssloption()]}
-                    | {connopts, [connopt()]}
-                    | {sockopts, [gen_tcp:listen_option()]}).
+                    | {access_rules, [esockd_access:rule()]}
+                    | {shutdown, brutal_kill | infinity | pos_integer()}
+                    | tune_buffer | {tune_buffer, boolean()}
+                    | proxy_protocol | {proxy_protocol, boolean()}
+                    | {proxy_protocol_timeout, timeout()}
+                    | {ssl_options, [ssl:ssl_option()]}
+                    | {tcp_options, [gen_tcp:listen_option()]}
+                    | {udp_options, [gen_udp:option()]}).
 
 MFArgs:
 
@@ -132,7 +136,7 @@ allow/deny by API:
     esockd:deny({echo, 5000}, all).
     esockd:deny({echo, 5000}, "10.10.0.0/16").
 
-### Close a Listener
+### Close a listener
 
 .. code:: erlang
 
@@ -143,7 +147,7 @@ Spec:
 
     -spec(close(Protocol, ListenOn) -> ok when
                 Protocol :: atom(),
-                ListenOn :: inet:port_number() | {inet:ip_address() | string(), inet:port_number()}).
+                ListenOn :: inet:port_number() | {host(), inet:port_number()}).
 
 ### SSL
 
@@ -173,13 +177,13 @@ Connecting to ssl_echo_server:
 
 1. Acceptor Pool
 
-2. Sleep for a while when e{n, m}file errors happened
+2. Suspend for one second when e{n, m}file errors happened
 
 ### Connection Sup
 
 1. Create a connection, and let it run...
 
-2. Control max connections
+2. Control maximum connections
 
 3. Count active connections
 

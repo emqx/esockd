@@ -1,90 +1,66 @@
-%%%-----------------------------------------------------------------------------
-%%% @Copyright (C) 2014-2017, Feng Lee <feng@emqtt.io>
+%%%===================================================================
+%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
 %%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
+%%% Licensed under the Apache License, Version 2.0 (the "License");
+%%% you may not use this file except in compliance with the License.
+%%% You may obtain a copy of the License at
 %%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
+%%%     http://www.apache.org/licenses/LICENSE-2.0
 %%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% Simple Echo Server.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%%% Unless required by applicable law or agreed to in writing, software
+%%% distributed under the License is distributed on an "AS IS" BASIS,
+%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%%% See the License for the specific language governing permissions and
+%%% limitations under the License.
+%%%===================================================================
+
 -module(simple_echo_server).
 
 -export([start/0, start/1]).
 
-%%callback 
--export([start_link/1, init/1, loop/1]).
+-export([start_link/2, init/2, loop/2]).
 
--define(TCP_OPTIONS, [
-        %%{ip, {0,0,0,0,0,0,0,1}},
-		binary,
-		{packet, raw},
-		%{buffer, 1024},
-		{reuseaddr, true},
-		{backlog, 1024},
-		{nodelay, false}]).
+-define(TCP_OPTIONS, [binary, {reuseaddr, true}, {nodelay, false}]).
 
-%%------------------------------------------------------------------------------
-%% @doc
-%% Start echo server.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-start() ->
-    start(5000).
+%% @doc Start echo server.
+start() -> start(5000).
 %% shell
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    [ok = application:start(App) || App <- [sasl, gen_logger, esockd]],
+    [ok = application:start(App) || App <- [sasl, esockd]],
     Access = application:get_env(esockd, access, [{allow, all}]),
-    SockOpts = [{access, Access},
-                {acceptors, 32}, 
+    SockOpts = [{access_rules, Access},
+                {acceptors, 8},
                 {shutdown, infinity},
                 {max_clients, 1000000},
-                {sockopts, ?TCP_OPTIONS}],
+                {tcp_options, ?TCP_OPTIONS}],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 
-%%------------------------------------------------------------------------------
-%% @doc
-%% eSockd callback.
-%%
-%% @end
-%%------------------------------------------------------------------------------
-start_link(Conn) ->
-	{ok, spawn_link(?MODULE, init, [Conn])}.
+%%--------------------------------------------------------------------
+%% eSockd callback
+%%--------------------------------------------------------------------
 
-init(Conn) ->
-    {ok, NewConn} = Conn:wait(),
-	loop(NewConn).
+start_link(Transport, Sock) ->
+	{ok, spawn_link(?MODULE, init, [Transport, Sock])}.
 
-loop(Conn) ->
-	case Conn:recv(0) of
+init(Transport, Sock) ->
+    case Transport:wait(Sock) of
+        {ok, NewSock} ->
+            loop(Transport, NewSock);
+        Error -> Error
+    end.
+
+loop(Transport, Sock) ->
+	case Transport:recv(Sock, 0) of
 		{ok, Data} ->
-			{ok, PeerName} = Conn:peername(),
-			io:format("~s - ~s~n", [esockd_net:format(peername, PeerName), Data]),
-			Conn:send(Data),
-			loop(Conn);
+			{ok, Peername} = Transport:peername(Sock),
+			io:format("~s - ~s~n", [esockd_net:format(peername, Peername), Data]),
+			Transport:send(Sock, Data),
+            loop(Transport, Sock);
 		{error, Reason} ->
-			io:format("tcp ~s~n", [Reason]),
+			io:format("TCP ~s~n", [Reason]),
 			{stop, Reason}
 	end.
-
 
