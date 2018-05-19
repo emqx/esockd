@@ -110,12 +110,11 @@ handle_info(Info, State) ->
     error_logger:error_msg("Unexpected info: ~p", [Info]),
     {noreply, State}.
 
-terminate(_Reason, #state{proto = Proto, listen_on = ListenOn, lsock = LSock}) ->
+terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,
+                          lsock = LSock, laddr = Addr, lport = Port}) ->
     esockd_server:del_stats({Proto, ListenOn}),
     esockd_transport:fast_close(LSock),
-    {ok, {IPAddr, Port}} = esockd_transport:sockname(LSock),
-    io:format("stopped ~s on ~s:~p~n",
-              [Proto, esockd_net:ntoab(IPAddr), Port]).
+    io:format("stopped ~s on ~s:~p~n", [Proto, Addr, Port]).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
