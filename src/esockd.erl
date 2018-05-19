@@ -37,6 +37,10 @@
 %% Utility functions...
 -export([ulimit/0, fixaddr/1, to_string/1]).
 
+-type(transport() :: module()).
+
+-type(sock() :: esockd_transport:sock()).
+
 -type(sock_fun() :: fun((esockd_transport:sock())
                         -> {ok, esockd_transport:sock()} | {error, term()})).
 
@@ -57,7 +61,7 @@
 
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
 
--export_type([sock_fun/0, mfargs/0, option/0, listen_on/0]).
+-export_type([transport/0, sock/0, sock_fun/0, mfargs/0, option/0, listen_on/0]).
 
 %%--------------------------------------------------------------------
 %% API
