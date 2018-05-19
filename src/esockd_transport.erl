@@ -20,7 +20,7 @@
 
 -include("esockd.hrl").
 
--export([type/1]).
+-export([type/1, is_ssl/1]).
 -export([listen/2]).
 -export([ready/3, wait/1]).
 -export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3]).
@@ -45,6 +45,14 @@ type(#ssl_socket{ssl = _SslSock})  ->
     ssl;
 type(#proxy_socket{}) ->
     proxy.
+
+-spec(is_ssl(sock()) -> boolean()).
+is_ssl(Sock) when is_port(Sock) ->
+    false;
+is_ssl(#ssl_socket{})  ->
+    true;
+is_ssl(#proxy_socket{socket = Sock}) ->
+    is_ssl(Sock).
 
 -spec(ready(pid(), sock(), [esockd:sock_fun()]) -> any()).
 ready(Pid, Sock, UpgradeFuns) ->
