@@ -31,6 +31,7 @@
 -export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1]).
 -export([ssl_upgrade_fun/1]).
 -export([proxy_upgrade_fun/1]).
+-export([ensure_ok_or_exit/2]).
 -export([gc/1]).
 
 -type(ssl_socket() :: #ssl_socket{}).
@@ -298,6 +299,19 @@ proxy_upgrade_fun(Options) ->
 
 proxy_protocol_timeout(Options) ->
     proplists:get_value(proxy_protocol_timeout, Options, ?PROXY_RECV_TIMEOUT).
+
+ensure_ok_or_exit(Fun, Args) ->
+    Sock = element(1, Args),
+    case erlang:apply(?MODULE, Fun, Args) of
+        {error, Reason} when Reason =:= enotconn;
+                             Reason =:= closed ->
+            fast_close(Sock),
+            exit(normal);
+        {error, Reason} ->
+            fast_close(Sock),
+            exit({shutdown, Reason});
+         Result -> Result
+    end.
 
 gc(Sock) when is_port(Sock) ->
     ok;

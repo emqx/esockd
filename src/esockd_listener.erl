@@ -114,7 +114,7 @@ terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,
                           lsock = LSock, laddr = Addr, lport = Port}) ->
     esockd_server:del_stats({Proto, ListenOn}),
     esockd_transport:fast_close(LSock),
-    io:format("stopped ~s on ~s:~p~n", [Proto, Addr, Port]).
+    io:format("~s stopped on ~s~n", [Proto, esockd_net:format({Addr, Port})]).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
