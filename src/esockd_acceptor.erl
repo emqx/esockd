@@ -30,7 +30,7 @@
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
 
 -record(state, {lsock        :: inet:socket(),
-                sockname     :: iolist(),
+                sockname     :: {inet:ip_address(), inet:port_number()},
                 tune_fun     :: esockd:sock_fun(),
                 upgrade_funs :: [esockd:sock_fun()],
                 stats_fun    :: fun(),
@@ -41,8 +41,7 @@
 -spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), inet:socket())
       -> {ok, pid()} | {error, term()}).
 start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock) ->
-    Args = [ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock],
-    gen_statem:start_link(?MODULE, Args, [{hibernate_after, 5000}]).
+    gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock], []).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -99,7 +98,7 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
                     close(Sock); %% quiet... haproxy check
                 {error, Reason} ->
                     error_logger:error_msg("Failed to start connection on ~s: ~p",
-                                           [esockd_net:format(sockname, Sockname), Reason]),
+                                           [esockd_net:format(Sockname), Reason]),
                     close(Sock)
                 end;
         {error, enotconn} ->
@@ -110,7 +109,7 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
             close(Sock);
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
-                                   [esockd_net:format(sockname, Sockname), Reason]),
+                                   [esockd_net:format(Sockname), Reason]),
             close(Sock)
     end,
     {keep_state_and_data, {next_event, internal, accept}};
@@ -132,7 +131,7 @@ accepting(info, {inet_async, LSock, Ref, {error, Reason}},
           State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
     when Reason =:= emfile; Reason =:= enfile ->
     error_logger:error_msg("Accept error on ~s: ~s",
-                           [esockd_net:format(sockname, Sockname), Reason]),
+                           [esockd_net:format(Sockname), Reason]),
     {next_state, suspending, State, 1000};
 
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},

@@ -48,15 +48,15 @@ peer_cert_subject(Cert) ->
                       format_rdn_sequence(Subject)
               end, Cert).
 
--spec(peer_cert_common_name(certificate()) -> binary() | 'not_found').
+-spec(peer_cert_common_name(certificate()) -> binary() | undefined).
 peer_cert_common_name(Cert) ->
     case peer_cert_subject_items(Cert, ?'id-at-commonName') of
-        not_found -> not_found;
+        undefined -> undefined;
         CNs       -> iolist_to_binary(string:join(CNs, ","))
      end.
 
 %% Return the parts of the certificate's subject.
--spec(peer_cert_subject_items(certificate(), tuple()) -> [string()] | 'undefined').
+-spec(peer_cert_subject_items(certificate(), tuple()) -> [string()] | undefined).
 peer_cert_subject_items(Cert, Type) ->
     cert_info(fun(#'OTPCertificate' {
                      tbsCertificate = #'OTPTBSCertificate' {
@@ -75,17 +75,14 @@ peer_cert_validity(Cert) ->
                                            format_asn1_value(End)]))
               end, Cert).
 
-cert_info(F, {ok, Cert}) ->
-    F(case public_key:pkix_decode_cert(Cert, otp) of
-          {ok, DecCert} -> DecCert; %%pre R14B
-          DecCert       -> DecCert  %%R14B onwards
-      end).
+cert_info(F, Cert) ->
+    F(public_key:pkix_decode_cert(Cert, otp)).
 
 find_by_type(Type, {rdnSequence, RDNs}) ->
     case [V || #'AttributeTypeAndValue'{type = T, value = V}
                    <- lists:flatten(RDNs),
                T == Type] of
-        [] -> not_found;
+        [] -> undefined;
         L  -> [format_asn1_value(V) || V <- L]
     end.
 
@@ -152,7 +149,7 @@ escape_rdn_value([C | S], middle) when C < 32 ; C >= 126 ->
     %% purposes it's handy to escape all non-printable chars. All non-ASCII
     %% characters get converted to UTF-8 sequences and then escaped. We've
     %% already got a UTF-8 sequence here, so just escape it.
-    rabbit_misc:format("\\~2.16.0B", [C]) ++ escape_rdn_value(S, middle);
+    lists:flatten(io_lib:format("\\~2.16.0B", [C]) ++ escape_rdn_value(S, middle));
 escape_rdn_value([C | S], middle) ->
     [C | escape_rdn_value(S, middle)].
 

@@ -68,15 +68,15 @@ start_link(Proto, ListenOn, Options, MFArgs) ->
     {ok, Sup}.
 
 %% @doc Get listener.
--spec(listener(supervisor:sup_ref()) -> pid()).
+-spec(listener(pid()) -> pid()).
 listener(Sup) -> child_pid(Sup, listener).
 
 %% @doc Get connection supervisor.
--spec(connection_sup(supervisor:sup_ref()) -> pid()).
+-spec(connection_sup(pid()) -> pid()).
 connection_sup(Sup) -> child_pid(Sup, connection_sup).
 
 %% @doc Get acceptor supervisor.
--spec(acceptor_sup(supervisor:sup_ref()) -> pid()).
+-spec(acceptor_sup(pid()) -> pid()).
 acceptor_sup(Sup) -> child_pid(Sup, acceptor_sup).
 
 %% @doc Get child pid with id.

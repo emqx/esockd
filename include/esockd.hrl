@@ -51,12 +51,12 @@
                               | {pp2_netns,     binary()}  % US-ASCII string
                               | {pp2_ssl,       list(pp2_additional_ssl_field())}).
 
--record(proxy_socket, {inet     :: inet4 | inet6,
+-record(proxy_socket, {inet     :: inet4 | inet6 | 'unix' | 'unspec',
                        socket   :: inet:socket() | #ssl_socket{},
-                       src_addr :: inet:ip_address(),
-                       dst_addr :: inet:ip_address(),
-                       src_port :: inet:port_number(),
-                       dst_port :: inet:port_number(),
+                       src_addr :: inet:ip_address() | undefined,
+                       dst_addr :: inet:ip_address() | undefined,
+                       src_port :: inet:port_number() | undefined,
+                       dst_port :: inet:port_number() | undefined,
                        %% Proxy protocol v2 addtional fields
                        pp2_additional_info = [] :: list(pp2_additional_field())}).
 

@@ -38,21 +38,18 @@
 
 -type(bucket() :: #bucket{}).
 
--type(ratelimit() :: {?MODULE, [bucket()]}).
-
--export_type([ratelimit/0]).
+-export_type([bucket/0]).
 
 %% @doc Create rate limiter bucket.
--spec(new(pos_integer(), pos_integer()) -> ratelimit()).
+-spec(new(pos_integer(), pos_integer()) -> bucket()).
 new(Capacity, Rate) when Capacity > Rate andalso Rate > 0 ->
-    Bucket = #bucket{capacity = Capacity, remaining = Capacity,
-                     limitrate = Rate/1000, lastime = now_ms()},
-    {?MODULE, [Bucket]}.
+    #bucket{capacity = Capacity, remaining = Capacity,
+            limitrate = Rate/1000, lastime = now_ms()}.
 
 %% @doc Check inflow bytes.
--spec(check(bucket(), pos_integer()) -> {non_neg_integer(), ratelimit()}).
-check(Bytes, {?MODULE, [Bucket = #bucket{capacity = Capacity, remaining = Remaining,
-                                         limitrate = Rate, lastime = Lastime}]}) ->
+-spec(check(pos_integer(), bucket()) -> {non_neg_integer(), bucket()}).
+check(Bytes, Bucket = #bucket{capacity = Capacity, remaining = Remaining,
+                              limitrate = Rate, lastime = Lastime}) ->
     Tokens = lists:min([Capacity, Remaining + round(Rate * (now_ms() - Lastime))]),
     {Pause1, NewBucket} =
     case Tokens >= Bytes of
@@ -62,7 +59,7 @@ check(Bytes, {?MODULE, [Bucket = #bucket{capacity = Capacity, remaining = Remain
             Pause = round((Bytes - Tokens)/Rate),
             {Pause, Bucket#bucket{remaining = 0, lastime = now_ms() + Pause}}
     end,
-    {Pause1, {?MODULE, [NewBucket]}}.
+    {Pause1, NewBucket}.
 
 now_ms() ->
     {MegaSecs, Secs, MicroSecs} = os:timestamp(),

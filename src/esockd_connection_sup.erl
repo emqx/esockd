@@ -56,7 +56,7 @@
 -spec(start_link([esockd:option()], esockd:mfargs())
       -> {ok, pid()} | ignore | {error, term()}).
 start_link(Options, MFArgs) ->
-    gen_server:start_link(?MODULE, [Options, MFArgs], [{hibernate_after, 20000}]).
+    gen_server:start_link(?MODULE, [Options, MFArgs], []).
 
 %% @doc Start connection.
 start_connection(Sup, Sock, UpgradeFuns) ->

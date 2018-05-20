@@ -32,7 +32,7 @@
 %% API
 %%--------------------------------------------------------------------
 
--spec(server(atom(), inet:port() | {inet:ip_address(), inet:port()},
+-spec(server(atom(), inet:port_number() | {inet:ip_address(), inet:port_number()},
              list(gen_udp:option()), mfa()) -> {ok, pid()} | {error, term()}).
 server(Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
     {IPAddr, _Port} = fixaddr({Addr, Port}),
@@ -44,8 +44,7 @@ server(Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
     server(Proto, Port, merge_addr(IPAddr, Opts), MFA);
 
 server(Proto, Port, Opts, MFA) when is_integer(Port) ->
-    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA],
-                          [{hibernate_after, 1000}]).
+    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []).
 
 udp_options(Opts) ->
     proplists:get_value(udp_options, Opts, []).
@@ -130,8 +129,6 @@ store_peer(Peer, Pid, State = #state{peers = Peers}) ->
 erase_peer(Peer, Pid, State = #state{peers = Peers}) ->
     State#state{peers = maps:remove(Peer, maps:remove(Pid, Peers))}.
 
-fixaddr(Port) when is_integer(Port) ->
-    Port;
 fixaddr({Addr, Port}) when is_list(Addr) and is_integer(Port) ->
     {ok, IPAddr} = inet:parse_address(Addr), {IPAddr, Port};
 fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
