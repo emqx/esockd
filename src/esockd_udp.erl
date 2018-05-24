@@ -16,11 +16,9 @@
 
 -module(esockd_udp).
 
--author("Feng Lee <feng@emqtt.io>").
+-export([server/5, server/4, count_peers/1, stop/1]).
 
--export([server/4, count_peers/1, stop/1]).
-
-%% gen_server.
+%% gen_server callbacks.
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
@@ -32,19 +30,26 @@
 %% API
 %%--------------------------------------------------------------------
 
--spec(server(atom(), inet:port_number() | {inet:ip_address(), inet:port_number()},
-             list(gen_udp:option()), mfa()) -> {ok, pid()} | {error, term()}).
-server(Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
+-spec(server(atom(), esockd:listen_on(), list(gen_udp:option()), mfa())
+      -> {ok, pid()} | {error, term()}).
+server(Proto, ListenOn, Opts, MFA) ->
+    server(undefined, Proto, ListenOn, Opts, MFA).
+
+-spec(server(atom(), atom(), esockd:listen_on(), [gen_udp:option()], mfa())
+      -> {ok, pid()} | {error, term()}).
+server(Name, Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
     {IPAddr, _Port} = fixaddr({Addr, Port}),
     IfAddr = proplists:get_value(ip, udp_options(Opts)),
     if
         (IfAddr == undefined) or (IfAddr == IPAddr) -> ok;
         true -> error(badmatch_ipaddr)
     end,
-    server(Proto, Port, merge_addr(IPAddr, Opts), MFA);
+    server(Name, Proto, Port, merge_addr(IPAddr, Opts), MFA);
 
-server(Proto, Port, Opts, MFA) when is_integer(Port) ->
-    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []).
+server(undefined, Proto, Port, Opts, MFA) when is_integer(Port) ->
+    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []);
+server(Name, Proto, Port, Opts, MFA) when is_integer(Port) ->
+    gen_server:start_link({local, Name}, ?MODULE, [Proto, Port, Opts, MFA], []).
 
 udp_options(Opts) ->
     proplists:get_value(udp_options, Opts, []).
