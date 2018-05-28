@@ -31,7 +31,7 @@
 
 -include("esockd.hrl").
 
--export([type/1]).
+-export([type/1, is_ssl/1]).
 
 -export([listen/2, send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3,
          controlling_process/2, close/1, fast_close/1]).
@@ -65,6 +65,14 @@ type(#ssl_socket{ssl = _SslSock})  ->
 type(#proxy_socket{}) ->
     proxy.
 
+-spec(is_ssl(sock()) -> boolean()).
+is_ssl(Sock) when is_port(Sock) ->
+    false;
+is_ssl(#ssl_socket{})  ->
+    true;
+is_ssl(#proxy_socket{socket = Sock}) ->
+    is_ssl(Sock).
+
 %% @doc Listen
 -spec(listen(Port, SockOpts) -> {ok, Sock} | {error, Reason} when
     Port     :: inet:port_number(),
@@ -82,10 +90,11 @@ listen(Port, SockOpts) ->
 controlling_process(Sock, NewOwner) when is_port(Sock) ->
     gen_tcp:controlling_process(Sock, NewOwner);
 controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
-    ssl:controlling_process(SslSock, NewOwner).
+    ssl:controlling_process(SslSock, NewOwner);
+controlling_process(#proxy_socket{socket = Sock}, NewOwner) ->
+    controlling_process(Sock, NewOwner).
 
-%% @doc Close Sock
--spec(close(Sock :: sock()) -> ok).
+-spec(close(sock()) -> ok | {error, term()}).
 close(Sock) when is_port(Sock) ->
     gen_tcp:close(Sock);
 close(#ssl_socket{ssl = SslSock}) ->
@@ -252,7 +261,7 @@ peercert(Sock) when is_port(Sock) ->
 peercert(#ssl_socket{ssl = SslSock}) ->
     ssl:peercert(SslSock);
 peercert(#proxy_socket{socket = Sock}) ->
-    ssl:peercert(Sock).
+    peercert(Sock).
 
 %% @doc Peercert subject
 -spec(peer_cert_subject(Sock :: sock()) -> undefined | binary()).
