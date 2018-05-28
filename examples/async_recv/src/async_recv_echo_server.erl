@@ -97,8 +97,8 @@ handle_info({inet_reply, _Sock, {error, Reason}}, State) ->
 handle_info(_Info, State) ->
     {noreply, State}.
 
-terminate(_Reason, _State) ->
-    ok.
+terminate(_Reason, #state{transport = Transport, socket = Sock}) ->
+    Transport:fast_close(Sock).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
