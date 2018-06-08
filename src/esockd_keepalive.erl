@@ -16,8 +16,6 @@
 
 -module(esockd_keepalive).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -export([start/4, resume/1, cancel/1]).
 
 -record(keepalive, {transport, socket, recv_oct,

@@ -16,8 +16,6 @@
 
 -module(esockd_connection_sup).
 
--author("Feng Lee <feng@emqx.io>").
-
 -behaviour(gen_server).
 
 -import(proplists, [get_value/3]).
@@ -55,8 +53,8 @@
 %% @doc Start connection supervisor.
 -spec(start_link([esockd:option()], esockd:mfargs())
       -> {ok, pid()} | ignore | {error, term()}).
-start_link(Options, MFArgs) ->
-    gen_server:start_link(?MODULE, [Options, MFArgs], []).
+start_link(Opts, MFA) ->
+    gen_server:start_link(?MODULE, [Opts, MFA], []).
 
 %% @doc Start connection.
 start_connection(Sup, Sock, UpgradeFuns) ->
@@ -111,16 +109,16 @@ call(Sup, Req) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init([Options, MFArgs]) ->
+init([Opts, MFA]) ->
     process_flag(trap_exit, true),
-    Shutdown    = get_value(shutdown, Options, brutal_kill),
-    MaxClients  = get_value(max_clients, Options, ?MAX_CLIENTS),
-    RawRules    = get_value(access_rules, Options, [{allow, all}]),
+    Shutdown    = get_value(shutdown, Opts, brutal_kill),
+    MaxClients  = get_value(max_clients, Opts, ?MAX_CLIENTS),
+    RawRules    = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
     {ok, #state{max_clients  = MaxClients,
                 access_rules = AccessRules,
                 shutdown     = Shutdown,
-                mfargs       = MFArgs}}.
+                mfargs       = MFA}}.
 
 handle_call({start_connection, _Sock}, _From,
             State = #state{curr_clients = CurrClients,
@@ -129,12 +127,12 @@ handle_call({start_connection, _Sock}, _From,
     {reply, {error, maxlimit}, State};
 
 handle_call({start_connection, Sock}, _From,
-            State = #state{mfargs = MFArgs, curr_clients = Count, access_rules = Rules}) ->
+            State = #state{mfargs = MFA, curr_clients = Count, access_rules = Rules}) ->
     case esockd_transport:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
                 true ->
-                    case catch start_connection_proc(MFArgs, Sock) of
+                    case catch start_connection_proc(MFA, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
                             put(Pid, true),
                             {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
@@ -341,14 +339,14 @@ wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
             wait_children(Shutdown, Pids, Sz-1, undefined, EStack)
     end.
 
-report_error(Error, Reason, Pid, #state{mfargs = MFArgs}) ->
+report_error(Error, Reason, Pid, #state{mfargs = MFA}) ->
     SupName  = list_to_atom("esockd_connection_sup - " ++ pid_to_list(self())),
     ErrorMsg = [{supervisor, SupName},
                 {errorContext, Error},
                 {reason, Reason},
                 {offender, [{pid, Pid},
                             {name, connection},
-                            {mfargs, MFArgs}]}],
+                            {mfargs, MFA}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
 
 del(Pid, Pids) ->

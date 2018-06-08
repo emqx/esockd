@@ -16,8 +16,6 @@
 
 -module(esockd_net).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -include_lib("kernel/include/inet.hrl").
 
 -export([ntoab/1, tcp_host/1, hostname/0, format/1, format/2]).

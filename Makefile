@@ -1,6 +1,6 @@
 PROJECT = esockd
 PROJECT_DESCRIPTION = Erlang General Non-blocking TCP/SSL Server
-PROJECT_VERSION = 5.3
+PROJECT_VERSION = 5.4
 
 BUILD_DEPS = hexer_mk
 dep_hexer_mk = git https://github.com/inaka/hexer.mk.git 1.1.0

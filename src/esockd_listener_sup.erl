@@ -16,8 +16,6 @@
 
 -module(esockd_listener_sup).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -behaviour(supervisor).
 
 -include("esockd.hrl").
@@ -33,20 +31,20 @@
 
 %% @doc Start listener supervisor
 -spec(start_link(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
-      -> {ok, pid()}).
-start_link(Proto, ListenOn, Options, MFArgs) ->
+      -> {ok, pid()} | {error, term()}).
+start_link(Proto, ListenOn, Opts, MFA) ->
     {ok, Sup} = supervisor:start_link(?MODULE, []),
     %% Start connection sup
     ConnSupSpec = #{id       => connection_sup,
-                    start    => {esockd_connection_sup, start_link, [Options, MFArgs]},
+                    start    => {esockd_connection_sup, start_link, [Opts, MFA]},
                     restart  => transient,
                     shutdown => brutal_kill,
                     type     => supervisor,
                     modules  => [esockd_connection_sup]},
     {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
     %% Start acceptor sup
-    TuneFun = buffer_tune_fun(Options),
-    UpgradeFuns = upgrade_funs(Options),
+    TuneFun = buffer_tune_fun(Opts),
+    UpgradeFuns = upgrade_funs(Opts),
     StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
     AcceptorSupSpec =  #{id       => acceptor_sup,
                          start    => {esockd_acceptor_sup, start_link,
@@ -59,7 +57,7 @@ start_link(Proto, ListenOn, Options, MFArgs) ->
     %% Start listener
     ListenerSpec = #{id       => listener,
                      start    => {esockd_listener, start_link,
-                                  [Proto, ListenOn, Options, AcceptorSup]},
+                                  [Proto, ListenOn, Opts, AcceptorSup]},
                      restart  => transient,
                      shutdown => 16#ffffffff,
                      type     => worker,
@@ -95,9 +93,9 @@ init([]) ->
 %% Tune and upgrade functions
 %%--------------------------------------------------------------------
 
-buffer_tune_fun(Options) ->
-    buffer_tune_fun(proplists:get_value(buffer, Options),
-                    proplists:get_bool(tune_buffer, Options)).
+buffer_tune_fun(Opts) ->
+    buffer_tune_fun(proplists:get_value(buffer, Opts),
+                    proplists:get_bool(tune_buffer, Opts)).
 
 %% when 'buffer' is undefined, and 'tune_buffer' is true...
 buffer_tune_fun(undefined, true) ->
@@ -113,18 +111,18 @@ buffer_tune_fun(undefined, true) ->
 buffer_tune_fun(_, _) ->
     fun(Sock) -> {ok, Sock} end.
 
-upgrade_funs(Options) ->
-    lists:append([ssl_upgrade_fun(Options), proxy_upgrade_fun(Options)]).
+upgrade_funs(Opts) ->
+    lists:append([ssl_upgrade_fun(Opts), proxy_upgrade_fun(Opts)]).
 
-ssl_upgrade_fun(Options) ->
-    case proplists:get_value(ssl_options, Options) of
+ssl_upgrade_fun(Opts) ->
+    case proplists:get_value(ssl_options, Opts) of
         undefined -> [];
         SslOpts   -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
-proxy_upgrade_fun(Options) ->
-    case proplists:get_bool(proxy_protocol, Options) of
+proxy_upgrade_fun(Opts) ->
+    case proplists:get_bool(proxy_protocol, Opts) of
         false -> [];
-        true  -> [esockd_transport:proxy_upgrade_fun(Options)]
+        true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
     end.
 

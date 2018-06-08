@@ -25,12 +25,10 @@
 
 -module(esockd_cidr).
 
--author("Feng Lee <feng@emqtt.io>").
-
--export([parse/1, parse/2, match/2, count/1, to_string/1, is_ipv4/1, is_ipv6/1]).
+-export([parse/1, parse/2, match/2, count/1, to_string/1]).
+-export([is_ipv4/1, is_ipv6/1]).
 
 -type(cidr_string() :: string()).
-
 -type(cidr() :: {inet:ip_address(), inet:ip_address(), 0..128}).
 
 -export_type([cidr_string/0, cidr/0]).

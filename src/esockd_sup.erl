@@ -16,14 +16,11 @@
 
 -module(esockd_sup).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -behaviour(supervisor).
 
--export([start_link/0]).
-
--export([start_listener/4, stop_listener/2, listeners/0, listener/1,
-         child_spec/4, start_child/1, restart_listener/2]).
+-export([start_link/0, child_id/2]).
+-export([start_listener/4, stop_listener/2, listeners/0, listener/1, restart_listener/2]).
+-export([child_spec/4, udp_child_spec/4, dtls_child_spec/4, start_child/1]).
 
 %% callback
 -export([init/1]).
@@ -36,17 +33,31 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
-      -> supervisor:child_spec()).
-child_spec(Proto, ListenOn, Options, MFArgs) when is_atom(Proto) ->
-	{child_id(Proto, ListenOn),
-     {esockd_listener_sup, start_link, [Proto, ListenOn, Options, MFArgs]},
-     transient, infinity, supervisor, [esockd_listener_sup]}.
-
 -spec(start_listener(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> {ok, pid()} | {error, term()}).
-start_listener(Proto, ListenOn, Options, MFArgs) ->
-    start_child(child_spec(Proto, ListenOn, Options, MFArgs)).
+start_listener(Proto, ListenOn, Opts, MFA) ->
+    start_child(child_spec(Proto, ListenOn, Opts, MFA)).
+
+-spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+      -> supervisor:child_spec()).
+child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
+	{child_id(Proto, ListenOn),
+     {esockd_listener_sup, start_link, [Proto, ListenOn, Opts, MFA]},
+     transient, infinity, supervisor, [esockd_listener_sup]}.
+
+-spec(udp_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+      -> supervisor:child_spec()).
+udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
+	{child_id(Proto, Port),
+     {esockd_udp_server, start_link, [Proto, Port, Opts, MFA]},
+     transient, 5000, worker, [udp_server]}.
+
+-spec(dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+      -> supervisor:child_spec()).
+dtls_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
+    {child_id(Proto, Port),
+     {esockd_dtls_listener_sup, start_link, [Proto, Port, Opts, MFA]},
+     transient, infinity, supervisor, [esockd_dtls_listener_sup]}.
 
 -spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, term()}).
 start_child(ChildSpec) ->

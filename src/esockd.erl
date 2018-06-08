@@ -23,7 +23,9 @@
 -export([start/0]).
 
 %% Core API
--export([open/4, child_spec/4, close/2, close/1, reopen/1, reopen/2]).
+-export([open/4, open_udp/4, open_dtls/4, close/2, close/1]).
+-export([reopen/1, reopen/2]).
+-export([child_spec/4, udp_child_spec/4, dtls_child_spec/4]).
 
 %% Management API
 -export([listeners/0, listener/1]).
@@ -75,25 +77,40 @@ start() ->
 %% @doc Open a listener
 -spec(open(atom(), listen_on(), [option()], mfargs())
       -> {ok, pid()} | {error, term()}).
-open(Proto, Port, Options, MFArgs) when is_atom(Proto), is_integer(Port) ->
-	esockd_sup:start_listener(Proto, Port, Options, MFArgs);
-open(Proto, {Host, Port}, Options, MFArgs) when is_atom(Proto), is_integer(Port) ->
+open(Proto, Port, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
+	esockd_sup:start_listener(Proto, Port, Opts, MFA);
+open(Proto, {Host, Port}, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
     {IPAddr, _Port} = fixaddr({Host, Port}),
-    case proplists:get_value(ip, tcp_options(Options)) of
+    case proplists:get_value(ip, tcp_options(Opts)) of
         undefined -> ok;
         IPAddr    -> ok;
         Other     -> error({badmatch, Other})
     end,
-	esockd_sup:start_listener(Proto, {IPAddr, Port}, Options, MFArgs).
+	esockd_sup:start_listener(Proto, {IPAddr, Port}, Opts, MFA).
 
-tcp_options(Options) ->
-    proplists:get_value(tcp_options, Options, []).
+tcp_options(Opts) ->
+    proplists:get_value(tcp_options, Opts, []).
+
+open_udp(Proto, Port, Opts, MFA) ->
+    esockd_sup:start_child(udp_child_spec(Proto, Port, Opts, MFA)).
+
+udp_child_spec(Proto, Port, Opts, MFA) ->
+    esockd_sup:udp_child_spec(Proto, fixaddr(Port), udp_options(Opts), MFA).
+
+udp_options(Opts) ->
+    proplists:get_value(udp_options, Opts, []).
+
+open_dtls(Proto, ListenOn, Opts, MFA) ->
+    esockd_sup:start_child(dtls_child_spec(Proto, ListenOn, Opts, MFA)).
+
+dtls_child_spec(Proto, ListenOn, Opts, MFA) ->
+    esockd_sup:dtls_child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
 
 %% @doc Child spec for a listener
 -spec(child_spec(atom(), listen_on(), [option()], mfargs())
       -> supervisor:child_spec()).
-child_spec(Proto, ListenOn, Options, MFArgs) when is_atom(Proto) ->
-    esockd_sup:child_spec(Proto, fixaddr(ListenOn), Options, MFArgs).
+child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
+    esockd_sup:child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
 
 %% @doc Close the listener
 -spec(close({atom(), listen_on()}) -> ok | {error, term()}).

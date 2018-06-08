@@ -16,8 +16,6 @@
 
 -module(esockd_util).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -export([merge_opts/2]).
 
 merge_opts(Defaults, Options) ->

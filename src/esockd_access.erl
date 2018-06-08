@@ -16,8 +16,6 @@
 
 -module(esockd_access).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -type(rule() :: {allow, all} | {allow, string()}
               | {deny,  all} | {deny,  string()}).
 

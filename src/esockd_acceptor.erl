@@ -16,8 +16,6 @@
 
 -module(esockd_acceptor).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -behaviour(gen_statem).
 
 -include("esockd.hrl").

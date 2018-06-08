@@ -14,9 +14,11 @@
 %%% limitations under the License.
 %%%===================================================================
 
--module(esockd_udp).
+-module(esockd_udp_server).
 
--export([server/5, server/4, count_peers/1, stop/1]).
+-behaviour(gen_server).
+
+-export([start_link/4, count_peers/1, stop/1]).
 
 %% gen_server callbacks.
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -30,29 +32,17 @@
 %% API
 %%--------------------------------------------------------------------
 
--spec(server(atom(), esockd:listen_on(), list(gen_udp:option()), mfa())
+-spec(start_link(atom(), esockd:listen_on(), [gen_udp:option()], mfa())
       -> {ok, pid()} | {error, term()}).
-server(Proto, ListenOn, Opts, MFA) ->
-    server(undefined, Proto, ListenOn, Opts, MFA).
-
--spec(server(atom(), atom(), esockd:listen_on(), [gen_udp:option()], mfa())
-      -> {ok, pid()} | {error, term()}).
-server(Name, Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
-    {IPAddr, _Port} = fixaddr({Addr, Port}),
-    IfAddr = proplists:get_value(ip, udp_options(Opts)),
+start_link(Proto, Port, Opts, MFA) when is_integer(Port) ->
+    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []);
+start_link(Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
+    IfAddr = proplists:get_value(ip, Opts),
     if
-        (IfAddr == undefined) or (IfAddr == IPAddr) -> ok;
+        (IfAddr == undefined) or (IfAddr == Addr) -> ok;
         true -> error(badmatch_ipaddr)
     end,
-    server(Name, Proto, Port, merge_addr(IPAddr, Opts), MFA);
-
-server(undefined, Proto, Port, Opts, MFA) when is_integer(Port) ->
-    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []);
-server(Name, Proto, Port, Opts, MFA) when is_integer(Port) ->
-    gen_server:start_link({local, Name}, ?MODULE, [Proto, Port, Opts, MFA], []).
-
-udp_options(Opts) ->
-    proplists:get_value(udp_options, Opts, []).
+    gen_server:start_link(?MODULE,  [Proto, Port, merge_addr(Addr, Opts), MFA], []).
 
 count_peers(Pid) ->
     gen_server:call(Pid, count_peers).
@@ -64,9 +54,9 @@ stop(Server) ->
 %% gen_server Callbacks
 %%--------------------------------------------------------------------
 
-init([Proto, Port, Options, MFA]) ->
+init([Proto, Port, Opts, MFA]) ->
     process_flag(trap_exit, true),
-    case gen_udp:open(Port, esockd_util:merge_opts(?DEFAULT_OPTS, Options)) of
+    case gen_udp:open(Port, esockd_util:merge_opts(?DEFAULT_OPTS, Opts)) of
         {ok, Sock} ->
             inet:setopts(Sock, [{active, 10}]),
             io:format("~s opened on udp ~p~n", [Proto, Port]),
@@ -84,7 +74,7 @@ handle_call(_Req, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({udp, Socket, IP, InPortNo, Packet},
+handle_info({udp, Sock, IP, InPortNo, Packet},
             State = #state{peers = Peers, mfa = {M, F, Args}}) ->
     Peer = {IP, InPortNo},
     case maps:find(Peer, Peers) of
@@ -92,12 +82,12 @@ handle_info({udp, Socket, IP, InPortNo, Packet},
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
-            case catch apply(M, F, [Socket, Peer | Args]) of
+            case catch apply(M, F, [self(), Peer, send_fun(Sock, Peer) | Args]) of
                 {ok, Pid} ->
                     link(Pid),
                     Pid ! {datagram, self(), Packet},
                     {noreply, store_peer(Peer, Pid, State)};
-                {Err, Reason} when Err == error; Err == 'EXIT' ->
+                {Err, Reason} when Err =:= error; Err =:= 'EXIT' ->
                     error_logger:error_msg("Failed to start client for udp ~s, reason: ~p",
                                            [esockd_net:format(Peer), Reason]),
                     {noreply, State}
@@ -134,14 +124,9 @@ store_peer(Peer, Pid, State = #state{peers = Peers}) ->
 erase_peer(Peer, Pid, State = #state{peers = Peers}) ->
     State#state{peers = maps:remove(Peer, maps:remove(Pid, Peers))}.
 
-fixaddr({Addr, Port}) when is_list(Addr) and is_integer(Port) ->
-    {ok, IPAddr} = inet:parse_address(Addr), {IPAddr, Port};
-fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
-    case esockd_cidr:is_ipv6(Addr) or esockd_cidr:is_ipv4(Addr) of
-        true  -> {Addr, Port};
-        false -> error(invalid_ipaddr)
-    end.
-
 merge_addr(Addr, Opts) ->
     lists:keystore(ip, 1, Opts, {ip, Addr}).
+
+send_fun(Sock, {Addr, Port}) ->
+    fun(Data) -> gen_udp:send(Sock, Addr, Port, Data) end.
 

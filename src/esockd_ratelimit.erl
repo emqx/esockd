@@ -26,8 +26,6 @@
 
 -module(esockd_ratelimit).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -export([new/2, check/2]).
 
 -record(bucket, {capacity   :: pos_integer(),     %% tokens capacity

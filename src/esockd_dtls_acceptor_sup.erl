@@ -14,19 +14,26 @@
 %%% limitations under the License.
 %%%===================================================================
 
--module(esockd_app).
+-module(esockd_dtls_acceptor_sup).
 
--behaviour(application).
+-behaviour(supervisor).
 
--export([start/2, stop/1]).
+-export([start_link/2, start_acceptor/2, count_acceptors/1]).
 
-%%--------------------------------------------------------------------
-%% Application callbacks
-%%--------------------------------------------------------------------
+-export([init/1]).
 
-start(_StartType, _StartArgs) ->
-    esockd_sup:start_link().
+start_link(Opts, MFA) ->
+    supervisor:start_link(?MODULE, [Opts, MFA]).
 
-stop(_State) ->
-    ok.
+-spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | {error, term()}).
+start_acceptor(Sup, LSock) ->
+    supervisor:start_child(Sup, [LSock]).
+
+count_acceptors(Sup) ->
+    proplists:get_value(active, supervisor:count_children(Sup), 0).
+
+init([Opts, MFA]) ->
+    {ok, {{simple_one_for_one, 0, 1},
+          [{acceptor, {esockd_dtls_acceptor, start_link, [self(), Opts, MFA]},
+            transient, 5000, worker, [esockd_dtls_acceptor]}]}}.
 

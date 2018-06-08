@@ -22,8 +22,6 @@
 
 -module(esockd_proxy_protocol).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -include("esockd.hrl").
 
 -export([recv/3]).

@@ -16,8 +16,6 @@
 
 -module(esockd_transport).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -include("esockd.hrl").
 
 -export([type/1, is_ssl/1]).
@@ -77,8 +75,8 @@ upgrade(Sock, [Upgrade | More]) ->
 
 -spec(listen(inet:port_number(), [gen_tcp:listen_option()])
       -> {ok, inet:socket()} | {error, system_limit | inet:posix()}).
-listen(Port, Options) ->
-    gen_tcp:listen(Port, Options).
+listen(Port, Opts) ->
+    gen_tcp:listen(Port, Opts).
 
 -spec(controlling_process(sock(), pid()) -> ok | {error, Reason} when
       Reason :: closed | not_owner | badarg | inet:posix()).
@@ -189,12 +187,12 @@ getopts(#proxy_socket{socket = Sock}, OptionNames) ->
 
 %% @doc Set socket options
 -spec(setopts(sock(), [inet:socket_setopt()]) -> ok | {error, inet:posix()}).
-setopts(Sock, Options) when is_port(Sock) ->
-    inet:setopts(Sock, Options);
-setopts(#ssl_socket{ssl = SslSock}, Options) ->
-    ssl:setopts(SslSock, Options);
-setopts(#proxy_socket{socket = Socket}, Options) ->
-    setopts(Socket, Options).
+setopts(Sock, Opts) when is_port(Sock) ->
+    inet:setopts(Sock, Opts);
+setopts(#ssl_socket{ssl = SslSock}, Opts) ->
+    ssl:setopts(SslSock, Opts);
+setopts(#proxy_socket{socket = Socket}, Opts) ->
+    setopts(Socket, Opts).
 
 %% @doc Get socket stats
 -spec(getstat(sock(), [inet:stat_option()])
@@ -302,8 +300,8 @@ take_handshake_timeout(SslOpts) ->
     end.
 
 %% @doc TCP | SSL -> ProxySocket
-proxy_upgrade_fun(Options) ->
-    Timeout = proxy_protocol_timeout(Options),
+proxy_upgrade_fun(Opts) ->
+    Timeout = proxy_protocol_timeout(Opts),
     fun(Sock) ->
         case esockd_proxy_protocol:recv(?MODULE, Sock, Timeout) of
             {ok, ProxySock} -> {ok, ProxySock};
@@ -311,8 +309,8 @@ proxy_upgrade_fun(Options) ->
         end
     end.
 
-proxy_protocol_timeout(Options) ->
-    proplists:get_value(proxy_protocol_timeout, Options, ?PROXY_RECV_TIMEOUT).
+proxy_protocol_timeout(Opts) ->
+    proplists:get_value(proxy_protocol_timeout, Opts, ?PROXY_RECV_TIMEOUT).
 
 -spec(ensure_ok_or_exit(atom(), list(term())) -> term()).
 ensure_ok_or_exit(Fun, Args = [Sock|_]) when is_atom(Fun), is_list(Args) ->

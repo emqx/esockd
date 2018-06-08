@@ -16,8 +16,6 @@
 
 -module(esockd_acceptor_sup).
 
--author("Feng Lee <feng@emqtt.io>").
-
 -behaviour(supervisor).
 
 -export([start_link/4, start_acceptor/2, count_acceptors/1]).
