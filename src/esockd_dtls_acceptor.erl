@@ -52,7 +52,7 @@ waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock,
     {ok, Peername} = ssl:peername(Sock),
     io:format("DTLS accept: ~p~n", [Peername]),
     case ssl:ssl_accept(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
-        ok -> case erlang:apply(M, F, [self(), Peername, send_fun(Peername) | Args]) of
+        ok -> case erlang:apply(M, F, [self(), Peername | Args]) of
                   {ok, Pid} ->
                       link(Pid),
                       {next_state, waiting_for_data,
@@ -101,9 +101,6 @@ terminate(Reason, _StateName, #state{sock = Sock}) ->
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
-
-send_fun(Peername) ->
-    Self = self(), fun(Data) -> Self ! {datagram, Peername, Data} end.
 
 shutdown(Reason, State) ->
     {stop, {shutdown, Reason}, State}.

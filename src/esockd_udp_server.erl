@@ -38,10 +38,7 @@ start_link(Proto, Port, Opts, MFA) when is_integer(Port) ->
     gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []);
 start_link(Proto, {Addr, Port}, Opts, MFA) when is_integer(Port) ->
     IfAddr = proplists:get_value(ip, Opts),
-    if
-        (IfAddr == undefined) or (IfAddr == Addr) -> ok;
-        true -> error(badmatch_ipaddr)
-    end,
+    (IfAddr == undefined) orelse (IfAddr = Addr),
     gen_server:start_link(?MODULE,  [Proto, Port, merge_addr(Addr, Opts), MFA], []).
 
 count_peers(Pid) ->
@@ -75,14 +72,14 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({udp, Sock, IP, InPortNo, Packet},
-            State = #state{peers = Peers, mfa = {M, F, Args}}) ->
+            State = #state{sock = Sock, peers = Peers, mfa = {M, F, Args}}) ->
     Peer = {IP, InPortNo},
     case maps:find(Peer, Peers) of
         {ok, Pid} ->
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
-            case catch apply(M, F, [self(), Peer, send_fun(Sock, Peer) | Args]) of
+            case catch apply(M, F, [self(), Peer | Args]) of
                 {ok, Pid} ->
                     link(Pid),
                     Pid ! {datagram, self(), Packet},
@@ -103,6 +100,10 @@ handle_info({'EXIT', Pid, _Reason}, State = #state{peers = Peers}) ->
         {ok, Peer} -> {noreply, erase_peer(Peer, Pid, State)};
         error      -> {noreply, State}
     end;
+
+handle_info({datagram, {IP, Port}, Data}, State = #state{sock = Sock}) ->
+    gen_udp:send(Sock, IP, Port, Data),
+    {noreply, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.
@@ -126,7 +127,4 @@ erase_peer(Peer, Pid, State = #state{peers = Peers}) ->
 
 merge_addr(Addr, Opts) ->
     lists:keystore(ip, 1, Opts, {ip, Addr}).
-
-send_fun(Sock, {Addr, Port}) ->
-    fun(Data) -> gen_udp:send(Sock, Addr, Port, Data) end.
 
