@@ -276,7 +276,7 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
     fun(Sock) when is_port(Sock) ->
-        case catch ssl:ssl_accept(Sock, SslOpts1, Timeout) of
+        case catch ssl:handshake(Sock, SslOpts1, Timeout) of
             {ok, SslSock} ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
             {error, Reason} when Reason =:= closed;

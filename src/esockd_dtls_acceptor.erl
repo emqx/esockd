@@ -51,7 +51,7 @@ waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock,
     esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
     {ok, Peername} = ssl:peername(Sock),
     io:format("DTLS accept: ~p~n", [Peername]),
-    case ssl:ssl_accept(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
+    case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
         ok -> case erlang:apply(M, F, [self(), Peername | Args]) of
                   {ok, Pid} ->
                       link(Pid),
