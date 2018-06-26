@@ -65,10 +65,12 @@ init([Proto, Port, Opts, MFA]) ->
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
     {reply, maps:size(Peers) div 2, State};
 
-handle_call(_Req, _From, State) ->
+handle_call(Req, _From, State) ->
+    error_logger:error_msg("[~s]: Unexpected call: ~p", [Req]),
     {reply, ignored, State}.
 
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    error_logger:error_msg("[~s]: Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
 handle_info({udp, Sock, IP, InPortNo, Packet},
@@ -105,7 +107,8 @@ handle_info({datagram, {IP, Port}, Data}, State = #state{sock = Sock}) ->
     gen_udp:send(Sock, IP, Port, Data),
     {noreply, State};
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    error_logger:error_msg("[~s]: Unexpected info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{sock = Sock}) ->
