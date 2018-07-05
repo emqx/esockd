@@ -45,24 +45,25 @@ max_clients(Opts) ->
 
 callback_mode() -> state_functions.
 
-waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock,
-                                                  mfargs = {M, F, Args}}) ->
+waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock, mfargs = {M, F, Args}}) ->
     {ok, Sock} = ssl:transport_accept(LSock),
     esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
     {ok, Peername} = ssl:peername(Sock),
     io:format("DTLS accept: ~p~n", [Peername]),
     case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
-        ok -> case erlang:apply(M, F, [self(), Peername | Args]) of
-                  {ok, Pid} ->
-                      link(Pid),
-                      {next_state, waiting_for_data,
-                       State#state{sock = Sock, peername = Peername, channel = Pid}};
-                  {error, Reason} ->
-                      {stop, Reason, State};
-                  {'EXIT', Error} ->
-                      shutdown(Error, State)
-              end;
-        {error, Reason} -> shutdown(Reason, State#state{sock = Sock})
+        {ok, SslSock} ->
+            case catch erlang:apply(M, F, [self(), Peername | Args]) of
+                {ok, Pid} ->
+                    true = link(Pid),
+                    {next_state, waiting_for_data,
+                     State#state{sock = SslSock, peername = Peername, channel = Pid}};
+                {error, Reason} ->
+                    {stop, Reason, State};
+                {'EXIT', Error} ->
+                    shutdown(Error, State)
+            end;
+        {error, Reason} ->
+            shutdown(Reason, State#state{sock = Sock})
     end;
 
 waiting_for_sock(EventType, EventContent, StateData) ->

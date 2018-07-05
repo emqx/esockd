@@ -94,6 +94,7 @@ handle_info({udp, Sock, IP, InPortNo, Packet},
     end;
 
 handle_info({udp_passive, Sock}, State) ->
+    %% TODO: Congestion Control
     inet:setopts(Sock, [{active, 100}]),
     {noreply, State, hibernate};
 

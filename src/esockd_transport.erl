@@ -279,8 +279,7 @@ ssl_upgrade_fun(SslOpts) ->
         case catch ssl:handshake(Sock, SslOpts1, Timeout) of
             {ok, SslSock} ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
-            {error, Reason} when Reason =:= closed;
-                                 Reason =:= timeout ->
+            {error, Reason} when Reason =:= closed; Reason =:= timeout ->
                 {error, Reason};
             {error, {tls_alert, _}} ->
                 {error, tls_alert};

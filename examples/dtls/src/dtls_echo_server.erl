@@ -18,7 +18,7 @@
 
 -export([start/0, start/1]).
 
--export([start_link/3, loop/3]).
+-export([start_link/2, loop/2]).
 
 start() ->
     start(5000).
@@ -35,14 +35,14 @@ start(Port) ->
             {ssl_options, SslOpts}],
     {ok, _} = esockd:open_dtls('echo/dtls', Port, Opts, {?MODULE, start_link, []}).
 
-start_link(SockPid, Peer, SendFun) ->
-    {ok, spawn_link(?MODULE, loop, [SockPid, Peer, SendFun])}.
+start_link(SockPid, Peer) ->
+    {ok, spawn_link(?MODULE, loop, [SockPid, Peer])}.
 
-loop(SockPid, Peer, SendFun) ->
+loop(SockPid, Peer) ->
     receive
         {datagram, SockPid, Data} ->
             io:format("~s - ~p~n", [esockd_net:format(peername, Peer), Data]),
-            SendFun(Data),
-            loop(SockPid, Peer, SendFun)
+            SockPid ! {datagram, Peer, Data},
+            loop(SockPid, Peer)
     end.
 
