@@ -311,24 +311,23 @@ access_ipv6_match(_) ->
 %%--------------------------------------------------------------------
 
 esockd_udp_server(_) ->
-    {ok, Srv} = esockd_udp:server(test, 9876, [], {?MODULE, udp_echo_server, []}),
+    {ok, Srv} = esockd_udp_server:start_link(test, 9876, [], {?MODULE, udp_echo_server, []}),
     {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
     ok = gen_udp:send(Sock, {127,0,0,1}, 9876, <<"hello">>),
     {ok, {_Addr, _Port, <<"hello">>}} = gen_udp:recv(Sock, 5, 3000),
     ok = gen_udp:send(Sock, {127,0,0,1}, 9876, <<"world">>),
     {ok, {_Addr, _Port, <<"world">>}} = gen_udp:recv(Sock, 5, 3000),
-    ok = esockd_udp:stop(Srv).
+    ok = esockd_udp_server:stop(Srv).
 
 udp_echo_server(Sock, Peer) ->
     {ok, spawn(fun() -> udp_echo_loop(Sock, Peer) end)}.
 
-udp_echo_loop(Sock, {Address, Port} = Peer) ->
+udp_echo_loop(Sock, Peer) ->
     receive
         {datagram, _Server, Packet} ->
-            ok = gen_udp:send(Sock, Address, Port, Packet),
+            Sock ! {datagram, Peer, Packet},
             udp_echo_loop(Sock, Peer);
-         _Any ->
-            ok
+         _Any -> ok
     end.
 
 parse_proxy_info_v1(_Config) ->

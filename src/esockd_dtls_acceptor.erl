@@ -25,8 +25,7 @@
 -export([waiting_for_sock/3, waiting_for_data/3]).
 
 %% gen_statem callbacks
--export([init/1, callback_mode/0, handle_event/4, terminate/3,
-         code_change/4]).
+-export([init/1, callback_mode/0, handle_event/4, terminate/3, code_change/4]).
 
 -record(state, {sup, mfargs, max_clients, peername, lsock, sock, channel}).
 
@@ -35,9 +34,7 @@ start_link(Sup, Opts, MFA, LSock) ->
 
 init([Sup, Opts, MFA, LSock]) ->
     process_flag(trap_exit, true),
-    State = #state{sup = Sup, mfargs = MFA,
-                   max_clients = max_clients(Opts),
-                   lsock = LSock},
+    State = #state{sup = Sup, mfargs = MFA, max_clients = max_clients(Opts), lsock = LSock},
     {ok, waiting_for_sock, State, {next_event, internal, accept}}.
 
 max_clients(Opts) ->
