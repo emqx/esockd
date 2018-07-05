@@ -57,7 +57,8 @@
                 | {proxy_protocol_timeout, timeout()}
                 | {ssl_options, [ssl:ssl_option()]}
                 | {tcp_options, [gen_tcp:listen_option()]}
-                | {udp_options, [gen_udp:option()]}).
+                | {udp_options, [gen_udp:option()]}
+                | {dtls_options, [gen_udp:option() | ssl:ssl_option()]}).
 
 -type(host() :: inet:ip_address() | string()).
 

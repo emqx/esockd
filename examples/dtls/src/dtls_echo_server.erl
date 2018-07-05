@@ -23,16 +23,10 @@
 start() ->
     start(5000).
 start(Port) ->
-    [{ok, _} = application:ensure_all_started(App)
-     || App <- [sasl, crypto, ssl, esockd]],
-    UdpOpts = [binary, {reuseaddr, true}],
-    %{cacertfile, "./crt/cacert.pem"},
-    SslOpts = [{certfile, "./crt/demo.crt"},
-               {keyfile,  "./crt/demo.key"}],
-    Opts = [{acceptors, 4},
-            {max_clients, 1000},
-            {upd_options, UdpOpts},
-            {ssl_options, SslOpts}],
+    [{ok, _} = application:ensure_all_started(App) || App <- [sasl, crypto, ssl, esockd]],
+    DtlsOpts = [{mode, binary}, {reuseaddr, true},
+                {certfile, "./crt/demo.crt"}, {keyfile, "./crt/demo.key"}],
+    Opts = [{acceptors, 4}, {max_clients, 1000}, {dtls_options, DtlsOpts}],
     {ok, _} = esockd:open_dtls('echo/dtls', Port, Opts, {?MODULE, start_link, []}).
 
 start_link(SockPid, Peer) ->

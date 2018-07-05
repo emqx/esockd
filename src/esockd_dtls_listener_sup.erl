@@ -22,8 +22,10 @@
 
 -export([init/1]).
 
+-define(DTLS_OPTS, [{protocol, dtls}, {mode, binary}, {reuseaddr, true}]).
+
 start_link(Proto, Port, Opts, MFA) ->
-    case ssl:listen(Port, options(Opts)) of
+    case ssl:listen(Port, merge_opts(?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
         {ok, LSock} ->
             io:format("~s opened on dtls ~w~n", [Proto, Port]),
             {ok, Sup} = supervisor:start_link(?MODULE, []),
@@ -38,10 +40,6 @@ start_link(Proto, Port, Opts, MFA) ->
                                    [Port, Reason, inet:format_error(Reason)]),
             {error, Reason}
     end.
-
-options(Opts) ->
-    UdpOpts = merge_opts([{mode, binary}, {reuseaddr, true}], proplists:get_value(udp_options, Opts, [])),
-    [{protocol, dtls} | merge_opts(UdpOpts, proplists:get_value(ssl_options, Opts, []))].
 
 start_acceptor_sup(Sup, Opts, MFA) ->
     Spec = #{id       => acceptor_sup,
