@@ -80,13 +80,28 @@ start_child(ChildSpec) ->
 %% @doc Stop the listener.
 -spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 stop_listener(Protocol, ListenOn) ->
-    ChildId = child_id(Protocol, ListenOn),
-	case supervisor:terminate_child(?MODULE, ChildId) of
-    ok ->
-        supervisor:delete_child(?MODULE, ChildId);
-    {error, Reason} ->
-        {error, Reason}
-	end.
+    ChildList = filter_child(Protocol, ListenOn),
+    stop_listeners(ChildList).
+
+stop_listener(Child) ->
+    {ChildId, _, _, _} = Child,
+    case supervisor:terminate_child(?MODULE, ChildId) of
+        ok ->
+            supervisor:delete_child(?MODULE, ChildId);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+
+stop_listeners([Child | LeftChilds]) ->
+    case stop_listener(Child) of
+        ok ->
+            stop_listeners(LeftChilds);
+        {error, Reason} ->
+            {error, Reason}
+    end;
+stop_listeners([]) ->
+    ok.
 
 %% @doc Get Listeners.
 -spec(listeners() -> [{term(), pid()}]).
@@ -104,11 +119,26 @@ listener({Protocol, ListenOn}) ->
 
 -spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 restart_listener(Protocol, ListenOn) ->
-    ChildId = child_id(Protocol, ListenOn),
+    ChildList = filter_child(Protocol, ListenOn),
+    restart_listeners(ChildList).
+
+restart_listener(Child) ->
+    {ChildId, _, _, _} = Child,
     case supervisor:terminate_child(?MODULE, ChildId) of
+
         ok    -> supervisor:restart_child(?MODULE, ChildId);
         Error -> Error
     end.
+
+restart_listeners([Child| LeftChilds]) ->
+    case restart_listener(Child) of
+        ok ->
+            restart_listeners(LeftChilds);
+        Error ->
+            Error
+    end;
+restart_listeners([]) ->
+    ok.
 
 %%------------------------------------------------------------------------------
 %% Supervisor callbacks
@@ -126,3 +156,23 @@ init([]) ->
 child_id(Protocol, ListenOn) ->
     {listener_sup, {Protocol, ListenOn}}.
 
+filter_child(SpecProtocol, {SpecIP, SpecPort}) ->
+    lists:filter(fun(Child) ->
+                         {ChildId, _, _, _} = Child,
+                         {_, ListenOn} = ChildId,
+                         {SpecProtocol, {SpecIP, SpecPort}} =:= ListenOn
+                 end ,
+                 lists:droplast(supervisor:which_children(?MODULE)));
+filter_child(SpecProtocol, SpecPort) ->
+    lists:filter(fun(Child) ->
+                         {ChildId, _, _, _} = Child,
+                         {_, {Protocol, ListenOn}} = ChildId,
+                         case is_tuple(ListenOn) of
+                             true ->
+                                 {_, Port} = ListenOn,
+                                 {Port, Protocol} =:= {SpecPort, SpecProtocol};
+                             false ->
+                                 ListenOn =:= SpecPort
+                         end
+                 end,
+                 lists:droplast(supervisor:which_children(?MODULE))).
