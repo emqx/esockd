@@ -1,22 +1,18 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_listener).
-
--author("Feng Lee <feng@emqtt.io>").
 
 -behaviour(gen_server).
 
@@ -24,8 +20,8 @@
 
 -export([start_link/4, options/1, get_port/1]).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+         code_change/3]).
 
 -record(state, {proto     :: atom(),
                 listen_on :: esockd:listen_on(),
@@ -35,24 +31,23 @@
                 lport     :: inet:port_number()}).
 
 -define(ACCEPTOR_POOL, 16).
+-define(DEFAULT_TCP_OPTIONS, [{nodelay, true},
+                              {reuseaddr, true},
+                              {send_timeout, 30000},
+                              {send_timeout_close, true}]).
 
--define(DEFAULT_TCP_OPTIONS,
-        [{nodelay, true},
-         {reuseaddr, true},
-         {send_timeout, 30000},
-         {send_timeout_close, true}]).
-
-%% @doc Start a listener
 -spec(start_link(atom(), esockd:listen_on(), [esockd:option()], pid())
       -> {ok, pid()} | ignore | {error, term()}).
 start_link(Proto, ListenOn, Opts, AcceptorSup) ->
     gen_server:start_link(?MODULE, {Proto, ListenOn, Opts, AcceptorSup}, []).
 
 -spec(options(pid()) -> [esockd:option()]).
-options(Listener) -> gen_server:call(Listener, options).
+options(Listener) ->
+    gen_server:call(Listener, options).
 
 -spec(get_port(pid()) -> inet:port_number()).
-get_port(Listener) -> gen_server:call(Listener, get_port).
+get_port(Listener) ->
+    gen_server:call(Listener, get_port).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -99,15 +94,15 @@ handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("Unexpected request: ~p", [Req]),
+    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
     {noreply, State}.
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("Unexpected msg: ~p", [Msg]),
+    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    error_logger:error_msg("Unexpected info: ~p", [Info]),
+    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,

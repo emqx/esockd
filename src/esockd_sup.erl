@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_sup).
 
@@ -22,12 +20,12 @@
 -export([start_listener/4, stop_listener/2, listeners/0, listener/1, restart_listener/2]).
 -export([child_spec/4, udp_child_spec/4, dtls_child_spec/4, start_child/1]).
 
-%% callback
+%% supervisor callback
 -export([init/1]).
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% API
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 -spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
@@ -49,8 +47,8 @@ child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
       -> supervisor:child_spec()).
 udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
 	{child_id(Proto, Port),
-     {esockd_udp_server, start_link, [Proto, Port, Opts, MFA]},
-     transient, 5000, worker, [udp_server]}.
+     {esockd_udp, server, [Proto, Port, Opts, MFA]},
+     transient, 5000, worker, [esockd_udp]}.
 
 -spec(dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
@@ -73,8 +71,7 @@ stop_listener(Proto, ListenOn) ->
 
 -spec(listeners() -> [{term(), pid()}]).
 listeners() ->
-    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _}
-                  <- supervisor:which_children(?MODULE)].
+    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _} <- supervisor:which_children(?MODULE)].
 
 -spec(listener({atom(), esockd:listen_on()}) -> undefined | pid()).
 listener({Proto, ListenOn}) ->
@@ -95,12 +92,16 @@ restart_listener(Proto, ListenOn) ->
 
 child_id(Proto, ListenOn) -> {listener_sup, {Proto, ListenOn}}.
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% Supervisor callbacks
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 init([]) ->
-    Server = {esockd_server, {esockd_server, start_link, []},
-              permanent, 5000, worker, [esockd_server]},
+    Server = #{id       => esockd_server,
+               start    => {esockd_server, start_link, []},
+               restart  => permanent,
+               shutdown => 5000,
+               type     => worker,
+               modules  => [esockd_server]},
     {ok, {{one_for_one, 10, 100}, [Server]}}.
 

@@ -1,77 +1,72 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
+%% copy emqx/src/emqx_keepalive here.
 -module(esockd_keepalive).
 
--export([start/4, resume/1, cancel/1]).
+-export([start/3, check/1, cancel/1]).
 
--record(keepalive, {transport, socket, recv_oct,
-                    timeout_msec, timeout_msg, timer_ref}).
+-record(keepalive, {statfun, statval, tsec, tmsg, tref, repeat = 0}).
 
 -type(keepalive() :: #keepalive{}).
 
-%% @doc Start keepalive
--spec(start(atom(), esockd_transport:sock(), timeout(), any()) ->
-      {ok, keepalive()} | {error, term()}).
-start(Transport, Socket, TimeoutSec, TimeoutMsg) when TimeoutSec > 0 ->
-    with_sock_stats(
-      Transport, Socket,
-      fun(RecvOct) ->
-          Ms = timer:seconds(TimeoutSec),
-          Ref = erlang:send_after(Ms, self(), TimeoutMsg),
-          {ok, #keepalive{transport    = Transport,
-                          socket       = Socket,
-                          recv_oct     = RecvOct,
-                          timeout_msec = Ms,
-                          timeout_msg  = TimeoutMsg,
-                          timer_ref    = Ref}}
-      end).
+-export_type([keepalive/0]).
 
-%% @doc Try to resume keepalive, called when timeout
--spec(resume(keepalive()) -> timeout | {resumed, keepalive()}).
-resume(KeepAlive = #keepalive{transport    = Transport,
-                              socket       = Socket,
-                              recv_oct     = RecvOct,
-                              timeout_msec = Ms,
-                              timeout_msg  = TimeoutMsg,
-                              timer_ref    = Ref}) ->
-    with_sock_stats(
-      Transport, Socket,
-      fun(NewRecvOct) ->
-          case NewRecvOct =:= RecvOct of
-              false -> cancel(Ref), %% need?
-                       NewRef = erlang:send_after(Ms, self(), TimeoutMsg),
-                       {resumed, KeepAlive#keepalive{recv_oct = NewRecvOct, timer_ref = NewRef}};
-              true  -> {error, timeout}
-          end
-      end).
-
-%% @doc Cancel keepalive
--spec(cancel(keepalive()) -> any()).
-cancel(#keepalive{timer_ref = Ref}) ->
-    cancel(Ref);
-cancel(undefined) ->
-	undefined;
-cancel(Ref) ->
-	catch erlang:cancel_timer(Ref).
-
-with_sock_stats(Transport, Socket, SuccFun) ->
-    case Transport:getstat(Socket, [recv_oct]) of
-        {ok, [{recv_oct, RecvOct}]} ->
-            SuccFun(RecvOct);
-        Error -> Error
+%% @doc Start a keepalive
+-spec(start(fun(), integer(), any()) -> {ok, keepalive()} | {error, term()}).
+start(_, 0, _) ->
+    {ok, #keepalive{}};
+start(StatFun, TimeoutSec, TimeoutMsg) ->
+    case catch StatFun() of
+        {ok, StatVal} ->
+            {ok, #keepalive{statfun = StatFun, statval = StatVal, tsec = TimeoutSec,
+                            tmsg = TimeoutMsg, tref = timer(TimeoutSec, TimeoutMsg)}};
+        {error, Error} ->
+            {error, Error};
+        {'EXIT', Reason} ->
+            {error, Reason}
     end.
+
+%% @doc Check keepalive, called when timeout...
+-spec(check(keepalive()) -> {ok, keepalive()} | {error, term()}).
+check(KeepAlive = #keepalive{statfun = StatFun, statval = LastVal, repeat = Repeat}) ->
+    case catch StatFun() of
+        {ok, NewVal} ->
+            if
+                NewVal =/= LastVal ->
+                    {ok, resume(KeepAlive#keepalive{statval = NewVal, repeat = 0})};
+                Repeat < 1 ->
+                    {ok, resume(KeepAlive#keepalive{statval = NewVal, repeat = Repeat + 1})};
+                true -> {error, timeout}
+            end;
+        {error, Error} ->
+            {error, Error};
+        {'EXIT', Reason} ->
+            {error, Reason}
+    end.
+
+-spec(resume(keepalive()) -> keepalive()).
+resume(KeepAlive = #keepalive{tsec = TimeoutSec, tmsg = TimeoutMsg}) ->
+    KeepAlive#keepalive{tref = timer(TimeoutSec, TimeoutMsg)}.
+
+%% @doc Cancel Keepalive
+-spec(cancel(keepalive()) -> ok).
+cancel(#keepalive{tref = TRef}) when is_reference(TRef) ->
+    catch erlang:cancel_timer(TRef), ok;
+cancel(_) ->
+    ok.
+
+timer(Secs, Msg) ->
+    erlang:send_after(timer:seconds(Secs), self(), Msg).
 

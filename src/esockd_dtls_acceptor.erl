@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_dtls_acceptor).
 
@@ -21,7 +19,6 @@
 -include("esockd.hrl").
 
 -export([start_link/4]).
-
 -export([waiting_for_sock/3, waiting_for_data/3]).
 
 %% gen_statem callbacks
@@ -46,10 +43,9 @@ waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock, mfar
     {ok, Sock} = ssl:transport_accept(LSock),
     esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
     {ok, Peername} = ssl:peername(Sock),
-    io:format("DTLS accept: ~p~n", [Peername]),
     case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
         {ok, SslSock} ->
-            case catch erlang:apply(M, F, [self(), Peername | Args]) of
+            case catch erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
                 {ok, Pid} ->
                     true = link(Pid),
                     {next_state, waiting_for_data,
@@ -66,11 +62,11 @@ waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock, mfar
 waiting_for_sock(EventType, EventContent, StateData) ->
     handle_event(EventType, EventContent, waiting_for_sock, StateData).
 
-waiting_for_data(info, {ssl, _Sock, Data}, State = #state{channel = Ch}) ->
-    Ch ! {datagram, self(), Data},
+waiting_for_data(info, {ssl, Sock, Data}, State = #state{sock = Sock, channel = Ch}) ->
+    Ch ! {datagram, {dtls, self(), Sock}, Data},
     {keep_state, State};
 
-waiting_for_data(info, {ssl_closed, _Socket}, State) ->
+waiting_for_data(info, {ssl_closed, _Sock}, State) ->
     {stop, {shutdown, closed}, State};
 
 waiting_for_data(info, {datagram, _To, Data}, State = #state{sock = Sock}) ->
@@ -87,14 +83,13 @@ waiting_for_data(EventType, EventContent, StateData) ->
     handle_event(EventType, EventContent, waiting_for_data, StateData).
 
 handle_event(EventType, EventContent, StateName, StateData) ->
-    error_logger:error_msg("StateName: ~s, Unexpected Event(~s, ~p)",
-                           [StateName, EventType, EventContent]),
+    error_logger:error_msg("[~s] StateName: ~s, unexpected event(~s, ~p)",
+                           [?MODULE, StateName, EventType, EventContent]),
     {keep_state, StateData}.
 
 terminate(_Reason, _StateName, #state{sock = undefined}) ->
     ok;
-terminate(Reason, _StateName, #state{sock = Sock}) ->
-    io:format("DTLS closed: ~p~n", [Reason]),
+terminate(_Reason, _StateName, #state{sock = Sock}) ->
     ssl:close(Sock).
 
 code_change(_OldVsn, StateName, State, _Extra) ->

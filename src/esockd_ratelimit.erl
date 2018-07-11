@@ -1,38 +1,33 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
-%%% @doc
-%%%
-%%% eSockd Rate Limiter.
-%%%
-%%% [Token Bucket](https://en.wikipedia.org/wiki/Token_bucket).
-%%%
-%%% [Leaky Bucket](https://en.wikipedia.org/wiki/Leaky_bucket)
-%%%
-%%% @end
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%
+%% @doc esockd rate limiter:
+%%
+%% [Token Bucket](https://en.wikipedia.org/wiki/Token_bucket).
+%%
+%% [Leaky Bucket](https://en.wikipedia.org/wiki/Leaky_bucket)
+%%
+%% @end
 
 -module(esockd_ratelimit).
 
 -export([new/2, check/2]).
 
--record(bucket, {capacity   :: pos_integer(),     %% tokens capacity
-                 remaining  :: non_neg_integer(), %% available tokens
-                 limitrate  :: float(),           %% bytes/millsec
-                 lastime    :: pos_integer()      %% millseconds
-                }).
+-record(bucket, {capacity  :: pos_integer(),     %% tokens capacity
+                 remaining :: non_neg_integer(), %% available tokens
+                 limitrate :: float(),           %% bytes/millsec
+                 lastime   :: pos_integer()}).   %% millseconds
 
 -type(bucket() :: #bucket{}).
 
@@ -41,8 +36,7 @@
 %% @doc Create rate limiter bucket.
 -spec(new(pos_integer(), pos_integer()) -> bucket()).
 new(Capacity, Rate) when Capacity > Rate andalso Rate > 0 ->
-    #bucket{capacity = Capacity, remaining = Capacity,
-            limitrate = Rate/1000, lastime = now_ms()}.
+    #bucket{capacity = Capacity, remaining = Capacity, limitrate = Rate/1000, lastime = now_ms()}.
 
 %% @doc Check inflow bytes.
 -spec(check(pos_integer(), bucket()) -> {non_neg_integer(), bucket()}).

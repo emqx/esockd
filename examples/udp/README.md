@@ -1,4 +1,5 @@
-# DTLS Echo Server
+
+# UDP Echo Server
 
 ## listen
 
@@ -19,5 +20,6 @@ make
 ## client
 
 ```
-openssl s_client -dtls1 -connect 127.0.0.1:5000 -debug
+telnet 127.0.0.1 5000
 ```
+

@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(tcp_window).
 
@@ -20,14 +18,13 @@
 
 -export([start_server/3, server_init/3, server_loop/3]).
 
--define(TCP_OPTIONS,
-        [binary,
-         {packet, raw},
-         {active, false},
-         {recbuf, 1024},
-         {sndbuf, 1024},
-         {send_timeout, 5000},
-         {send_timeout_close, true}]).
+-define(TCP_OPTIONS, [binary,
+                      {packet, raw},
+                      {active, false},
+                      {recbuf, 1024},
+                      {sndbuf, 1024},
+                      {send_timeout, 5000},
+                      {send_timeout_close, true}]).
 
 main() -> main(5000, sync).
 
@@ -35,8 +32,7 @@ main([Port, How]) when is_atom(Port) ->
     main(list_to_integer(atom_to_list(Port)), How).
 
 main(Port, How) when is_integer(Port) ->
-    lists:foreach(fun application:ensure_all_started/1,
-                  [sasl, crypto, esockd]),
+    lists:foreach(fun application:ensure_all_started/1, [sasl, crypto, esockd]),
     Options = [{acceptors, 1},
                {shutdown, infinity},
                {max_clients, 100},

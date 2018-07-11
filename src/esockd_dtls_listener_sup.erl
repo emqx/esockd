@@ -1,22 +1,18 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_dtls_listener_sup).
-
--import(esockd_util, [merge_opts/2]).
 
 -export([start_link/4]).
 
@@ -24,8 +20,11 @@
 
 -define(DTLS_OPTS, [{protocol, dtls}, {mode, binary}, {reuseaddr, true}]).
 
+-spec(start_link(atom(), inet:port_number(), [esockd:option()], mfa())
+      -> {ok, pid()} | {error, term()}).
 start_link(Proto, Port, Opts, MFA) ->
-    case ssl:listen(Port, merge_opts(?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
+    case ssl:listen(Port, esockd_util:merge_opts(
+                            ?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
         {ok, LSock} ->
             io:format("~s opened on dtls ~w~n", [Proto, Port]),
             {ok, Sup} = supervisor:start_link(?MODULE, []),
@@ -42,14 +41,17 @@ start_link(Proto, Port, Opts, MFA) ->
     end.
 
 start_acceptor_sup(Sup, Opts, MFA) ->
-    Spec = #{id       => acceptor_sup,
-             start    => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA]},
-             restart  => transient,
-             shutdown => brutal_kill,
-             type     => supervisor,
-             modules  => [esockd_acceptor_sup]},
-    supervisor:start_child(Sup, Spec).
+    supervisor:start_child(Sup, #{id       => acceptor_sup,
+                                  start    => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA]},
+                                  restart  => permanent,
+                                  shutdown => 60000,
+                                  type     => supervisor,
+                                  modules  => [esockd_dtls_acceptor_sup]}).
+
+%%-----------------------------------------------------------------------------
+%% Supervisor callbacks
+%%-----------------------------------------------------------------------------
 
 init([]) ->
-    {ok, {{rest_for_one, 10, 3600}, []}}.
+    {ok, {{one_for_all, 10, 3600}, []}}.
 

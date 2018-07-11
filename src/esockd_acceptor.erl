@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_acceptor).
 
@@ -21,13 +19,13 @@
 -include("esockd.hrl").
 
 -export([start_link/5]).
-
 -export([accepting/3, suspending/3]).
 
 %% gen_statem Callbacks
 -export([init/1, callback_mode/0, terminate/3, code_change/4]).
 
 -record(state, {lsock        :: inet:socket(),
+                sockmod      :: module(),
                 sockname     :: {inet:ip_address(), inet:port_number()},
                 tune_fun     :: esockd:sock_fun(),
                 upgrade_funs :: [esockd:sock_fun()],
@@ -41,14 +39,16 @@
 start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock) ->
     gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock], []).
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% gen_server callbacks
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock]) ->
     rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
+    {ok, SockMod} = inet_db:lookup_socket(LSock),
     {ok, accepting, #state{lsock        = LSock,
+                           sockmod      = SockMod,
                            sockname     = Sockname,
                            tune_fun     = TuneFun,
                            upgrade_funs = UpgradeFuns,
@@ -73,17 +73,17 @@ accepting(internal, accept, State = #state{lsock = LSock}) ->
 
 accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
           #state{lsock        = LSock,
+                 sockmod      = SockMod,
                  sockname     = Sockname,
                  tune_fun     = TuneFun,
                  upgrade_funs = UpgradeFuns,
                  stats_fun    = StatsFun,
                  conn_sup     = ConnSup,
                  accept_ref   = Ref}) ->
-    %% Make it look like the socket we got from gen_tcp:accept/1
-    {ok, Mod} = inet_db:lookup_socket(LSock),
-    inet_db:register_socket(Sock, Mod),
+    %% make it look like gen_tcp:accept
+    inet_db:register_socket(Sock, SockMod),
 
-    %% accepted stats.
+    %% Inc accepted stats.
     StatsFun({inc, 1}),
 
     case TuneFun(Sock) of
@@ -128,8 +128,7 @@ accepting(info, {inet_async, LSock, Ref, {error, Reason}},
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
           State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
     when Reason =:= emfile; Reason =:= enfile ->
-    error_logger:error_msg("Accept error on ~s: ~s",
-                           [esockd_net:format(Sockname), Reason]),
+    error_logger:error_msg("Accept error on ~s: ~s", [esockd_net:format(Sockname), Reason]),
     {next_state, suspending, State, 1000};
 
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},

@@ -1,25 +1,18 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
-%%% @doc
-%%%
-%%% Echo Test Client.
-%%%
-%%% @end
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
+%% @doc Echo test client
 -module(echo_client).
 
 -export([start/1, start/3, send/2, run/4, connect/4, loop/2]).
@@ -27,9 +20,7 @@
 -define(TCP_OPTIONS, [binary, {packet, raw}, {active, true}]).
 
 %%shell
-start([Host, Port, Num]) when is_atom(Host),
-                              is_atom(Port),
-                              is_atom(Num) ->
+start([Host, Port, Num]) when is_atom(Host), is_atom(Port), is_atom(Num) ->
     start(atom_to_list(Host), a2i(Port), a2i(Num)).
 
 start(Host, Port, Num) ->

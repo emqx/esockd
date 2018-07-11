@@ -1,4 +1,4 @@
-{application, dtls_echo_server,
+{application, udp_echo_server,
  [
   {description, ""},
   {vsn, "1.0"},

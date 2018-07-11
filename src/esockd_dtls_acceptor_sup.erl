@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_dtls_acceptor_sup).
 
@@ -34,6 +32,10 @@ count_acceptors(Sup) ->
 
 init([Opts, MFA]) ->
     {ok, {{simple_one_for_one, 0, 1},
-          [{acceptor, {esockd_dtls_acceptor, start_link, [self(), Opts, MFA]},
-            transient, 5000, worker, [esockd_dtls_acceptor]}]}}.
+          [#{id       => acceptor,
+             start    => {esockd_dtls_acceptor, start_link, [self(), Opts, MFA]},
+             restart  => transient,
+             shutdown => brutal_kill,
+             type     => worker,
+             modules  => [esockd_dtls_acceptor]}]}}.
 

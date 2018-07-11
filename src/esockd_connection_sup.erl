@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_connection_sup).
 
@@ -20,21 +18,14 @@
 
 -import(proplists, [get_value/3]).
 
-%% API Exports
 -export([start_link/2, start_connection/3, count_connections/1]).
-
-%% Max Clients
 -export([get_max_clients/1, set_max_clients/2]).
-
-%% Shutdown Count
 -export([get_shutdown_count/1]).
-
 %% Allow, Deny
 -export([access_rules/1, allow/2, deny/2]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(MAX_CLIENTS, 1024).
 -define(Transport, esockd_transport).
@@ -44,52 +35,53 @@
                 conn_opts    = [],
                 access_rules = [],
                 shutdown     = brutal_kill,
-                mfargs}).
+                mfargs       :: mfa()}).
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% API
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 %% @doc Start connection supervisor.
--spec(start_link([esockd:option()], esockd:mfargs())
-      -> {ok, pid()} | ignore | {error, term()}).
+-spec(start_link([esockd:option()], esockd:mfargs()) -> {ok, pid()} | ignore | {error, term()}).
 start_link(Opts, MFA) ->
     gen_server:start_link(?MODULE, [Opts, MFA], []).
 
 %% @doc Start connection.
 start_connection(Sup, Sock, UpgradeFuns) ->
     case call(Sup, {start_connection, Sock}) of
-        {ok, Pid} ->
-            %% transfer controlling from acceptor to connection
-            _ = ?Transport:controlling_process(Sock, Pid),
-            _ = ?Transport:ready(Pid, Sock, UpgradeFuns),
-            {ok, Pid};
-        ignore ->
-            ignore;
+        {ok, ConnPid} ->
+            %% Transfer controlling from acceptor to connection
+            _ = ?Transport:controlling_process(Sock, ConnPid),
+            _ = ?Transport:ready(ConnPid, Sock, UpgradeFuns),
+            {ok, ConnPid};
+        ignore -> ignore;
         {error, Reason} ->
             {error, Reason}
     end.
 
 %% @doc Start the connection process.
--spec(start_connection_proc(esockd:mfargs(), inet:socket())
+-spec(start_connection_proc(esockd:mfargs(), esockd_transport:sock())
       -> {ok, pid()} | ignore | {error, term()}).
 start_connection_proc(M, Sock) when is_atom(M) ->
     M:start_link(?Transport, Sock);
 start_connection_proc({M, F}, Sock) when is_atom(M), is_atom(F) ->
     M:F(?Transport, Sock);
-start_connection_proc({M, F, Args}, Sock)
-    when is_atom(M), is_atom(F), is_list(Args) ->
+start_connection_proc({M, F, Args}, Sock) when is_atom(M), is_atom(F), is_list(Args) ->
     erlang:apply(M, F, [?Transport, Sock | Args]).
 
+-spec(count_connections(pid()) -> integer()).
 count_connections(Sup) ->
     call(Sup, count_connections).
 
+-spec(get_max_clients(pid()) -> integer()).
 get_max_clients(Sup) when is_pid(Sup) ->
     call(Sup, get_max_clients).
 
+-spec(set_max_clients(pid(), integer()) -> ok).
 set_max_clients(Sup, MaxClients) when is_pid(Sup) ->
     call(Sup, {set_max_clients, MaxClients}).
 
+-spec(get_shutdown_count(pid()) -> integer()).
 get_shutdown_count(Sup) ->
     call(Sup, get_shutdown_count).
 
@@ -105,46 +97,38 @@ deny(Sup, CIDR) ->
 call(Sup, Req) ->
     gen_server:call(Sup, Req, infinity).
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% gen_server callbacks
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 init([Opts, MFA]) ->
     process_flag(trap_exit, true),
-    Shutdown    = get_value(shutdown, Opts, brutal_kill),
-    MaxClients  = get_value(max_clients, Opts, ?MAX_CLIENTS),
-    RawRules    = get_value(access_rules, Opts, [{allow, all}]),
+    Shutdown = get_value(shutdown, Opts, brutal_kill),
+    MaxClients = get_value(max_clients, Opts, ?MAX_CLIENTS),
+    RawRules = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
-    {ok, #state{max_clients  = MaxClients,
-                access_rules = AccessRules,
-                shutdown     = Shutdown,
-                mfargs       = MFA}}.
+    {ok, #state{max_clients = MaxClients, access_rules = AccessRules, shutdown = Shutdown, mfargs = MFA}}.
 
-handle_call({start_connection, _Sock}, _From,
-            State = #state{curr_clients = CurrClients,
-                           max_clients  = MaxClients})
+handle_call({start_connection, _Sock}, _From, State = #state{curr_clients = CurrClients, max_clients = MaxClients})
     when CurrClients >= MaxClients ->
     {reply, {error, maxlimit}, State};
 
-handle_call({start_connection, Sock}, _From,
-            State = #state{mfargs = MFA, curr_clients = Count, access_rules = Rules}) ->
+handle_call({start_connection, Sock}, _From, State = #state{mfargs = MFA, curr_clients = Count, access_rules = Rules}) ->
     case esockd_transport:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
-                true ->
-                    case catch start_connection_proc(MFA, Sock) of
-                        {ok, Pid} when is_pid(Pid) ->
-                            put(Pid, true),
-                            {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
-                        ignore ->
-                            {reply, ignore, State};
-                        {error, Reason} ->
-                            {reply, {error, Reason}, State};
-                        What ->
-                            {reply, {error, What}, State}
-                    end;
-                false ->
-                    {reply, {error, forbidden}, State}
+                true  -> case catch start_connection_proc(MFA, Sock) of
+                             {ok, Pid} when is_pid(Pid) ->
+                                 put(Pid, true),
+                                 {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
+                             ignore ->
+                                 {reply, ignore, State};
+                             {error, Reason} ->
+                                 {reply, {error, Reason}, State};
+                             What ->
+                                {reply, {error, What}, State}
+                         end;
+                false -> {reply, {error, forbidden}, State}
             end;
         {error, Reason} ->
             {reply, {error, Reason}, State}
@@ -182,7 +166,7 @@ handle_call(_Req, _From, State) ->
     {stop, {error, badreq}, State}.
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("Unexpected Msg: ~p", [Msg]),
+    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count}) ->
@@ -191,12 +175,12 @@ handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count}) ->
             connection_crashed(Pid, Reason, State),
             {noreply, State#state{curr_clients = Count-1}};
         undefined ->
-            error_logger:error_msg("~p 'EXIT' for ~p", [Pid, Reason]),
+            error_logger:error_msg("[~s] unexpected 'EXIT': ~p, reason: ~p", [?MODULE, Pid, Reason]),
             {noreply, State}
     end;
 
 handle_info(Info, State) ->
-    error_logger:error_msg("Unexpected Info: ~p", [Info]),
+    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->
@@ -205,9 +189,9 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% Internal functions
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 allowed(Addr, Rules) ->
     case esockd_access:match(Addr, Rules) of
