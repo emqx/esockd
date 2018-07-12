@@ -63,7 +63,7 @@ waiting_for_sock(EventType, EventContent, StateData) ->
     handle_event(EventType, EventContent, waiting_for_sock, StateData).
 
 waiting_for_data(info, {ssl, Sock, Data}, State = #state{sock = Sock, channel = Ch}) ->
-    Ch ! {datagram, {dtls, self(), Sock}, Data},
+    Ch ! {datagram, self(), Data},
     {keep_state, State};
 
 waiting_for_data(info, {ssl_closed, _Sock}, State) ->
