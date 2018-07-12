@@ -1,18 +1,16 @@
-%%%===================================================================
-%%% Copyright (c) 2013-2018 EMQ Inc. All rights reserved.
-%%%
-%%% Licensed under the Apache License, Version 2.0 (the "License");
-%%% you may not use this file except in compliance with the License.
-%%% You may obtain a copy of the License at
-%%%
-%%%     http://www.apache.org/licenses/LICENSE-2.0
-%%%
-%%% Unless required by applicable law or agreed to in writing, software
-%%% distributed under the License is distributed on an "AS IS" BASIS,
-%%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-%%% See the License for the specific language governing permissions and
-%%% limitations under the License.
-%%%===================================================================
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_SUITE).
 
@@ -29,6 +27,7 @@ all() ->
      {group, cidr},
      {group, access},
      {group, udp},
+     {group, dtls},
      {group, proxy_protocol}].
 
 groups() ->
@@ -60,7 +59,9 @@ groups() ->
        access_match_allow,
        access_ipv6_match]},
      {udp, [sequence],
-      [esockd_udp_server]},
+      [udp_server]},
+     {dtls, [sequence],
+      [dtls_server]},
      {proxy_protocol, [sequence],
       [parse_proxy_info_v1,
        parse_proxy_info_v2,
@@ -82,7 +83,7 @@ end_per_suite(_Config) ->
     application:stop(esockd).
 
 %%--------------------------------------------------------------------
-%% eSockd
+%% esockd
 %%--------------------------------------------------------------------
 
 esockd_child_spec(_) ->
@@ -310,24 +311,52 @@ access_ipv6_match(_) ->
 %% UDP Server
 %%--------------------------------------------------------------------
 
-esockd_udp_server(_) ->
-    {ok, Srv} = esockd_udp_server:start_link(test, 9876, [], {?MODULE, udp_echo_server, []}),
+udp_server(_) ->
+    {ok, Srv} = esockd_udp:server(test, 9876, [], {?MODULE, udp_echo_init, []}),
     {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
     ok = gen_udp:send(Sock, {127,0,0,1}, 9876, <<"hello">>),
     {ok, {_Addr, _Port, <<"hello">>}} = gen_udp:recv(Sock, 5, 3000),
     ok = gen_udp:send(Sock, {127,0,0,1}, 9876, <<"world">>),
     {ok, {_Addr, _Port, <<"world">>}} = gen_udp:recv(Sock, 5, 3000),
-    ok = esockd_udp_server:stop(Srv).
+    ok = esockd_udp:stop(Srv).
 
-udp_echo_server(Sock, Peer) ->
-    {ok, spawn(fun() -> udp_echo_loop(Sock, Peer) end)}.
+udp_echo_init(Transport, Peer) ->
+    {ok, spawn(fun() -> udp_echo_loop(Transport, Peer) end)}.
 
-udp_echo_loop(Sock, Peer) ->
+udp_echo_loop(Transport, Peer) ->
     receive
-        {datagram, _Server, Packet} ->
-            Sock ! {datagram, Peer, Packet},
-            udp_echo_loop(Sock, Peer);
-         _Any -> ok
+        {datagram, {udp, From, Sock}, Packet} ->
+            From ! {datagram, Peer, Packet},
+            udp_echo_loop(Transport, Peer)
+    end.
+
+%%--------------------------------------------------------------------
+%% DTLS Server
+%%--------------------------------------------------------------------
+
+dtls_server(Config) ->
+    DataDir = proplists:get_value(data_dir, Config),
+    Opts = [{acceptors, 4}, {max_clients, 1000},
+            {dtls_options, [{mode, binary}, {reuseaddr, true},
+                            {certfile, filename:join([DataDir, "demo.crt"])},
+                            {keyfile, filename:join([DataDir, "demo.key"])}]}],
+    {ok, _} = esockd:open_dtls('echo/dtls', 9876, Opts, {?MODULE, dtls_echo_init, []}),
+    {ok, Sock} = ssl:connect({127,0,0,1}, 9876, [binary, {protocol, dtls}, {active, false}], 5000),
+    ok = ssl:send(Sock, <<"hello">>),
+    ?assertEqual({ok, <<"hello">>}, ssl:recv(Sock, 5, 3000)),
+    ok = ssl:send(Sock, <<"world">>),
+    ?assertEqual({ok, <<"world">>}, ssl:recv(Sock, 5, 3000)),
+    ok = esockd:close('echo/dtls', 9876).
+
+dtls_echo_init(Transport, Peer) ->
+    {ok, spawn_link(?MODULE, dtls_echo_loop, [Transport, Peer])}.
+
+dtls_echo_loop(Transport, Peer) ->
+    receive
+        {datagram, {dtls, From, _Sock} = Transport, Packet} ->
+            io:format("~s - ~p~n", [esockd_net:format(peername, Peer), Packet]),
+            From ! {datagram, Peer, Packet},
+            dtls_echo_loop(Transport, Peer)
     end.
 
 parse_proxy_info_v1(_Config) ->
@@ -423,3 +452,4 @@ reuse_socket(_) ->
           ok
     end,
     esockd_transport:close(Sock1).
+
