@@ -30,9 +30,9 @@ start(Port) ->
 start_link(Transport, Peer) ->
     {ok, spawn_link(?MODULE, loop, [Transport, Peer])}.
 
-loop(Transport, Peer) ->
+loop(Transport = {dtls, SockPid, _}, Peer) ->
     receive
-        {datagram, {dtls, From, _Sock} = Transport, Packet} ->
+        {datagram, SockPid, Packet} ->
             io:format("~s - ~p~n", [esockd_net:format(peername, Peer), Packet]),
             From ! {datagram, Peer, Packet},
             loop(Transport, Peer)

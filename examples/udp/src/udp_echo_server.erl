@@ -28,12 +28,12 @@ start(Port) ->
 start_link(Transport, Peer) ->
     {ok, spawn_link(?MODULE, loop, [Transport, Peer])}.
 
-loop(Transport, Peer = {IP, Port}) ->
+loop(Transport = {udp, Server, Sock}, Peer = {IP, Port}) ->
     receive
-        {datagram, {udp, From, Sock} = Transport, Packet} ->
+        {datagram, Server, Packet} ->
             io:format("~s - ~p~n", [esockd_net:format(peername, Peer), Packet]),
             %% Reply by pid
-            From ! {datagram, Peer, Packet},
+            Server ! {datagram, Peer, Packet},
             %% Reply by sock
             ok = gen_udp:send(Sock, IP, Port, Packet),
             loop(Transport, Peer)
