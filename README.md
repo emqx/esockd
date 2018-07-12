@@ -1,5 +1,5 @@
 
-# eSockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=3.0)](https://travis-ci.org/emqtt/esockd)
+# esockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=3.0)](https://travis-ci.org/emqtt/esockd)
 
 Erlang General Non-blocking TCP/SSL Socket Server.
 
@@ -7,6 +7,7 @@ Erlang General Non-blocking TCP/SSL Socket Server.
 
 * General Non-blocking TCP/SSL Socket Server
 * Acceptor Pool and Asynchronous TCP Accept
+* UDP/DTLS Server
 * Max connections management
 * Allow/Deny by peer address
 * Proxy Protocol V1/V2
@@ -16,7 +17,7 @@ Erlang General Non-blocking TCP/SSL Socket Server.
 
 ## Usage
 
-A Simple Echo Server:
+A Simple TCP Echo Server:
 
     -module(echo_server).
 
@@ -46,11 +47,9 @@ A Simple Echo Server:
 
 Setup Echo Server:
 
-    %% Start eSockd application
+    %% Start esockd application
     ok = esockd:start().
-    Options = [{acceptors, 10},
-               {max_clients, 1024},
-               {tcp_options, [binary, {reuseaddr, true}]}].
+    Options = [{acceptors, 10}, {max_clients, 1024}, {tcp_options, [binary, {reuseaddr, true}]}].
     MFArgs = {echo_server, start_link, []},
     esockd:open(echo, 5000, Options, MFArgs).
 
@@ -63,10 +62,12 @@ examples/gen_server     | gen_server behaviour
 examples/simple         | simple echo server
 examples/ssl            | ssl echo server
 examples/proxy_protocol | proxy protocol v1/2
+examples/udp            | udp echo server
+examples/dtls           | dtls echo server
 
 ## API
 
-### Open a Listener
+### Open a listener
 
     esockd:open(echo, 5000, [{tcp_options, [binary, {reuseaddr, true}]}],
                 {echo_server, start_link, []}).
@@ -92,8 +93,8 @@ Option:
                     | proxy_protocol | {proxy_protocol, boolean()}
                     | {proxy_protocol_timeout, timeout()}
                     | {ssl_options, [ssl:ssl_option()]}
-                    | {tcp_options, [gen_tcp:listen_option()]}
-                    | {udp_options, [gen_udp:option()]}).
+                    | {udp_options, [gen_udp:option()]}
+                    | {dtls_options, [gen_udp:option() | ssl:ssl_option()]}).
 
 MFArgs:
 
@@ -124,10 +125,7 @@ Same to Allow/Deny Syntax of nginx:
 
 allow/deny by options:
 
-    esockd:open(echo, 5000, [
-        {access, [{deny, "192.168.1.1"},
-                  {allow, "192.168.1.0/24"},
-                  {deny, all}]}], MFArgs).
+    esockd:open(echo, 5000, [{access, [{deny, "192.168.1.1"}, {allow, "192.168.1.0/24"}, {deny, all}]}], MFArgs).
 
 allow/deny by API:
 
@@ -138,16 +136,12 @@ allow/deny by API:
 
 ### Close a listener
 
-.. code:: erlang
-
     esockd:close(echo, 5000).
     esockd:close(echo, {"127.0.0.1", 6000}).
 
 Spec:
 
-    -spec(close(Protocol, ListenOn) -> ok when
-                Protocol :: atom(),
-                ListenOn :: inet:port_number() | {host(), inet:port_number()}).
+    -spec(close(Protocol, ListenOn) -> ok when Protocol :: atom(), ListenOn :: inet:port_number() | {host(), inet:port_number()}).
 
 ### SSL
 
@@ -205,5 +199,5 @@ Apache License Version 2.0
 
 ## Author
 
-Feng Lee <feng@emqtt.io>
+Feng Lee <feng@emqx.io>
 
