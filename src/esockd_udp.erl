@@ -86,7 +86,7 @@ handle_info({udp, Sock, IP, InPortNo, Packet},
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
-            case catch erlang:apply(M, F, Args ++ [{udp, self(), Sock}, Peer]) of
+            case catch erlang:apply(M, F, [{udp, self(), Sock}, Peer | Args]) of
                 {ok, Pid} ->
                     _Ref = erlang:monitor(process, Pid),
                     Pid ! {datagram, self(), Packet},

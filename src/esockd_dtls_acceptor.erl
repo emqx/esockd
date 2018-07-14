@@ -45,7 +45,7 @@ waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock, mfar
     {ok, Peername} = ssl:peername(Sock),
     case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
         {ok, SslSock} ->
-            case catch erlang:apply(M, F, Args ++ [{dtls, self(), SslSock}, Peername]) of
+            case catch erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
                 {ok, Pid} ->
                     true = link(Pid),
                     {next_state, waiting_for_data,

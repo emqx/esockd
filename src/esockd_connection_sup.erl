@@ -67,7 +67,7 @@ start_connection_proc(M, Sock) when is_atom(M) ->
 start_connection_proc({M, F}, Sock) when is_atom(M), is_atom(F) ->
     M:F(?Transport, Sock);
 start_connection_proc({M, F, Args}, Sock) when is_atom(M), is_atom(F), is_list(Args) ->
-    erlang:apply(M, F, Args ++ [?Transport, Sock]).
+    erlang:apply(M, F, [?Transport, Sock | Args]).
 
 -spec(count_connections(pid()) -> integer()).
 count_connections(Sup) ->
