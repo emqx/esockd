@@ -39,23 +39,32 @@ start_listener(Proto, ListenOn, Opts, MFA) ->
 -spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
-	{child_id(Proto, ListenOn),
-     {esockd_listener_sup, start_link, [Proto, ListenOn, Opts, MFA]},
-     transient, infinity, supervisor, [esockd_listener_sup]}.
+    #{id       => child_id(Proto, ListenOn),
+      start    => {esockd_listener_sup, start_link, [Proto, ListenOn, Opts, MFA]},
+      restart  => transient,
+      shutdown => infinity,
+      type     => supervisor,
+      modules  => [esockd_listener_sup]}.
 
 -spec(udp_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
-	{child_id(Proto, Port),
-     {esockd_udp, server, [Proto, Port, Opts, MFA]},
-     transient, 5000, worker, [esockd_udp]}.
+    #{id       => child_id(Proto, Port),
+      start    => {esockd_udp, server, [Proto, Port, Opts, MFA]},
+      restart  => transient,
+      shutdown => 5000,
+      type     => worker,
+      modules  => [esockd_udp]}.
 
 -spec(dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 dtls_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
-    {child_id(Proto, Port),
-     {esockd_dtls_listener_sup, start_link, [Proto, Port, Opts, MFA]},
-     transient, infinity, supervisor, [esockd_dtls_listener_sup]}.
+    #{id       => child_id(Proto, Port),
+      start    => {esockd_dtls_listener_sup, start_link, [Proto, Port, Opts, MFA]},
+      restart  => transient,
+      shutdown => infinity,
+      type     => supervisor,
+      modules  => [esockd_dtls_listener_sup]}.
 
 -spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, term()}).
 start_child(ChildSpec) ->
@@ -63,7 +72,13 @@ start_child(ChildSpec) ->
 
 -spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 stop_listener(Proto, ListenOn) ->
-    ChildId = child_id(Proto, ListenOn),
+    case match_listeners(Proto, ListenOn) of
+        [] -> {error, not_found};
+        Listeners ->
+            return_ok_or_error([terminate_and_delete(ChildId) || ChildId <- Listeners])
+    end.
+
+terminate_and_delete(ChildId) ->
 	case supervisor:terminate_child(?MODULE, ChildId) of
         ok    -> supervisor:delete_child(?MODULE, ChildId);
         Error -> Error
@@ -71,26 +86,51 @@ stop_listener(Proto, ListenOn) ->
 
 -spec(listeners() -> [{term(), pid()}]).
 listeners() ->
-    [{Id, Pid} || {{listener_sup, Id}, Pid, supervisor, _} <- supervisor:which_children(?MODULE)].
+    [{Id, Pid} || {{listener_sup, Id}, Pid, _Type, _} <- supervisor:which_children(?MODULE)].
 
 -spec(listener({atom(), esockd:listen_on()}) -> undefined | pid()).
 listener({Proto, ListenOn}) ->
     ChildId = child_id(Proto, ListenOn),
-    case [Pid || {Id, Pid, supervisor, _}
-                 <- supervisor:which_children(?MODULE), Id =:= ChildId] of
+    case [Pid || {Id, Pid, _Type, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
     end.
 
 -spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 restart_listener(Proto, ListenOn) ->
-    ChildId = child_id(Proto, ListenOn),
+    case match_listeners(Proto, ListenOn) of
+        [] -> {error, not_found};
+        Listeners ->
+            return_ok_or_error([terminate_and_restart(ChildId) || ChildId <- Listeners])
+    end.
+
+terminate_and_restart(ChildId) ->
     case supervisor:terminate_child(?MODULE, ChildId) of
         ok    -> supervisor:restart_child(?MODULE, ChildId);
         Error -> Error
     end.
 
-child_id(Proto, ListenOn) -> {listener_sup, {Proto, ListenOn}}.
+match_listeners(Proto, ListenOn) ->
+    [ChildId || {ChildId, _Pid, _Type, _} <- supervisor:which_children(?MODULE),
+                match_listener(Proto, ListenOn, ChildId)].
+
+match_listener(Proto, ListenOn, {listener_sup, {Proto, ListenOn}}) ->
+    true;
+match_listener(Proto, Port, {listener_sup, {Proto, {_IP, Port}}}) ->
+    true;
+match_listener(_Proto, _ListenOn, _ChildId) ->
+    false.
+
+child_id(Proto, ListenOn) ->
+    {listener_sup, {Proto, ListenOn}}.
+
+return_ok_or_error([]) -> ok;
+return_ok_or_error([ok|Results]) ->
+    return_ok_or_error(Results);
+return_ok_or_error([{ok, _Pid}|Results]) ->
+    return_ok_or_error(Results);
+return_ok_or_error([{error, Reason}|_]) ->
+    {error, Reason}.
 
 %%------------------------------------------------------------------------------
 %% Supervisor callbacks

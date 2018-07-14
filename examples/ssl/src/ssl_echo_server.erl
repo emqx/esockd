@@ -15,15 +15,15 @@
 -module(ssl_echo_server).
 
 -export([start/0, start/1]).
+
 -export([start_link/2, init/2, loop/2]).
 
 start() -> start(5000).
 
 start(Port) ->
-    [application:ensure_all_started(App) || App <- [sasl, crypto, ssl, esockd]],
+    ok = esockd:start(),
     TcpOpts = [binary, {reuseaddr, true}],
-    SslOpts = [{certfile, "./crt/demo.crt"},
-               {keyfile,  "./crt/demo.key"}],
+    SslOpts = [{certfile, "./crt/demo.crt"}, {keyfile,  "./crt/demo.key"}],
     Opts = [{acceptors, 4},
             {max_clients, 1000},
             {tcp_options, TcpOpts},

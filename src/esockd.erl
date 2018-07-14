@@ -222,7 +222,7 @@ with_listener({Proto, ListenOn}, Fun, Args) ->
 with_listener(undefined, _Fun, _Args) ->
     undefined;
 with_listener(LSup, Fun, Args) when is_pid(LSup) ->
-    apply(Fun, [LSup | Args]).
+    erlang:apply(Fun, [LSup | Args]).
 
 -spec(to_string(listen_on()) -> string()).
 to_string(Port) when is_integer(Port) ->
@@ -234,9 +234,9 @@ to_string({Addr, Port}) ->
 %% @doc Parse Address
 fixaddr(Port) when is_integer(Port) ->
     Port;
-fixaddr({Addr, Port}) when is_list(Addr) and is_integer(Port) ->
+fixaddr({Addr, Port}) when is_list(Addr), is_integer(Port) ->
     {ok, IPAddr} = inet:parse_address(Addr), {IPAddr, Port};
-fixaddr({Addr, Port}) when is_tuple(Addr) and is_integer(Port) ->
+fixaddr({Addr, Port}) when is_tuple(Addr), is_integer(Port) ->
     case esockd_cidr:is_ipv6(Addr) or esockd_cidr:is_ipv4(Addr) of
         true  -> {Addr, Port};
         false -> error(invalid_ipaddr)

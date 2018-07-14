@@ -22,7 +22,7 @@
 
 start() -> start(5000).
 start(Port) ->
-    {ok, _} = application:ensure_all_started(esockd),
+    ok = esockd:start(),
     esockd:open_udp('echo/udp', Port, [{udp_options, ?UDP_OPTS}], {?MODULE, start_link, []}).
 
 start_link(Transport, Peer) ->

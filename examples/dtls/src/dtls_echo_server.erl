@@ -34,7 +34,7 @@ loop(Transport = {dtls, SockPid, _}, Peer) ->
     receive
         {datagram, SockPid, Packet} ->
             io:format("~s - ~p~n", [esockd_net:format(peername, Peer), Packet]),
-            From ! {datagram, Peer, Packet},
+            SockPid ! {datagram, Peer, Packet},
             loop(Transport, Peer)
     end.
 

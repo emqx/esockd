@@ -49,8 +49,7 @@ init([Transport, Sock]) ->
         {ok, NewSock} ->
             io:format("Proxy Sock: ~p~n", [NewSock]),
             Transport:setopts(Sock, [{active, once}]),
-            State = #state{transport = Transport, socket = NewSock},
-            gen_server:enter_loop(?MODULE, [], State);
+            gen_server:enter_loop(?MODULE, [], #state{transport = Transport, socket = NewSock});
         {error, Reason} ->
             io:format("Proxy Sock Error: ~p~n", [Reason]),
             {stop, Reason}
@@ -64,8 +63,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({tcp, _Sock, Data}, State = #state{transport = Transport, socket = Sock}) ->
 	{ok, Peername} = Transport:peername(Sock),
-    io:format("Data from ~s: ~s~n",
-              [esockd_net:format(peername, Peername), Data]),
+    io:format("Data from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
 	Transport:send(Sock, Data),
 	Transport:setopts(Sock, [{active, once}]),
     {noreply, State};

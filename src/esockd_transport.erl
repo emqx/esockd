@@ -313,8 +313,7 @@ proxy_protocol_timeout(Opts) ->
 -spec(ensure_ok_or_exit(atom(), list(term())) -> term()).
 ensure_ok_or_exit(Fun, Args = [Sock|_]) when is_atom(Fun), is_list(Args) ->
     case erlang:apply(?MODULE, Fun, Args) of
-        {error, Reason} when Reason =:= enotconn;
-                             Reason =:= closed ->
+        {error, Reason} when Reason =:= enotconn; Reason =:= closed ->
             fast_close(Sock),
             exit(normal);
         {error, Reason} ->

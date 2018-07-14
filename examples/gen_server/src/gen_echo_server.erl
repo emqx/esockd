@@ -37,10 +37,8 @@ start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
     ok = esockd:start(),
-    Options = [{acceptors, 32},
-               {max_clients, 100000}],
-    MFArgs = {?MODULE, start_link, []},
-    esockd:open(echo, Port, Options, MFArgs).
+    esockd:open(echo, Port, [{acceptors, 32}, {max_clients, 100000}],
+                {?MODULE, start_link, []}).
 
 start_link(Transport, Sock) ->
     {ok, proc_lib:spawn_link(?MODULE, init, [[Transport, Sock]])}.
@@ -49,8 +47,7 @@ init([Transport, Sock]) ->
     case Transport:wait(Sock) of
         {ok, NewSock} ->
             Transport:setopts(Sock, [{active, once}]),
-            State = #state{transport = Transport, socket = NewSock},
-            gen_server:enter_loop(?MODULE, [], State);
+            gen_server:enter_loop(?MODULE, [], #state{transport = Transport, socket = NewSock});
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -61,19 +58,19 @@ handle_call(_Request, _From, State) ->
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
-handle_info({tcp, Sock, Data}, State=#state{transport = Transport, socket = Sock}) ->
+handle_info({tcp, Sock, Data}, State = #state{transport = Transport, socket = Sock}) ->
     {ok, Peername} = Transport:peername(Sock),
     io:format("Data from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
     Transport:send(Sock, Data),
     Transport:setopts(Sock, [{active, once}]),
     {noreply, State};
 
-handle_info({tcp_error, Sock, Reason}, State=#state{socket = Sock}) ->
+handle_info({tcp_error, Sock, Reason}, State = #state{socket = Sock}) ->
     io:format("Error from: ~p~n", [Sock]),
     io:format("tcp_error: ~s~n", [Reason]),
     {stop, {shutdown, Reason}, State};
 
-handle_info({tcp_closed, Sock}, State=#state{socket = Sock}) ->
+handle_info({tcp_closed, Sock}, State = #state{socket = Sock}) ->
     io:format("tcp_closed~n"),
     {stop, normal, State};
 

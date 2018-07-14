@@ -81,13 +81,12 @@ handle_cast(Msg, State) ->
 handle_info({udp, Sock, IP, InPortNo, Packet},
             State = #state{sock = Sock, peers = Peers, mfa = {M, F, Args}}) ->
     Peer = {IP, InPortNo},
-    Transport = {udp, self(), Sock},
     case maps:find(Peer, Peers) of
         {ok, Pid} ->
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
-            case catch apply(M, F, [Transport, Peer|Args]) of
+            case catch erlang:apply(M, F, Args ++ [{udp, self(), Sock}, Peer]) of
                 {ok, Pid} ->
                     _Ref = erlang:monitor(process, Pid),
                     Pid ! {datagram, self(), Packet},
