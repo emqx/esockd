@@ -325,7 +325,7 @@ udp_echo_init(Transport, Peer) ->
 
 udp_echo_loop(Transport, Peer) ->
     receive
-        {datagram, {udp, From, Sock}, Packet} ->
+        {datagram, From, Packet} ->
             From ! {datagram, Peer, Packet},
             udp_echo_loop(Transport, Peer)
     end.
@@ -353,7 +353,7 @@ dtls_echo_init(Transport, Peer) ->
 
 dtls_echo_loop(Transport, Peer) ->
     receive
-        {datagram, {dtls, From, _Sock} = Transport, Packet} ->
+        {datagram, From, Packet} ->
             io:format("~s - ~p~n", [esockd_net:format(peername, Peer), Packet]),
             From ! {datagram, Peer, Packet},
             dtls_echo_loop(Transport, Peer)
