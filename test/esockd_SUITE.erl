@@ -43,6 +43,7 @@ groups() ->
        esockd_getset_max_clients,
        esockd_get_shutdown_count,
        esockd_get_access_rules,
+       parse_opt,
        esockd_fixaddr,
        esockd_to_string]},
      {cidr, [parallel],
@@ -183,6 +184,10 @@ esockd_get_access_rules(_) ->
                   {allow, "192.168.1.0/24"}],
                  esockd:get_access_rules({echo, 7000})),
     esockd:close(echo, 7000).
+
+parse_opt(_) ->
+    Opts = [{acceptors, 10}, {tune_buffer, true}, {proxy_protocol, true}, {ssl_options, []}],
+    ?assertEqual(Opts, esockd:parse_opt([{badopt1, val1}, {badopt2, val2}|Opts])).
 
 esockd_fixaddr(_) ->
     ?assertEqual({{127,0,0,1}, 9000}, esockd:fixaddr({"127.0.0.1", 9000})),

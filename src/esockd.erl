@@ -33,7 +33,7 @@
 -export([get_access_rules/1, allow/2, deny/2]).
 
 %% Utility functions
--export([ulimit/0, fixaddr/1, to_string/1]).
+-export([parse_opt/1, ulimit/0, fixaddr/1, to_string/1]).
 
 -type(transport() :: module()).
 -type(udp_transport() :: {udp | dtls, pid(), inet:socket()}).
@@ -67,9 +67,8 @@
 start() ->
     {ok, _} = application:ensure_all_started(esockd), ok.
 
-%% @doc Open a listener
--spec(open(atom(), listen_on(), [option()], mfargs())
-      -> {ok, pid()} | {error, term()}).
+%% @doc Open a TCP or SSL listener
+-spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, term()}).
 open(Proto, Port, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
 	esockd_sup:start_listener(Proto, Port, Opts, MFA);
 open(Proto, {Host, Port}, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
@@ -207,7 +206,40 @@ allow({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
     LSup = listener({Proto, ListenOn}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
+
     esockd_connection_sup:deny(ConnSup, CIDR).
+
+%% @doc Parse sock option.
+parse_opt(Options) ->
+    parse_opt(Options, []).
+parse_opt([], Acc) ->
+    lists:reverse(Acc);
+parse_opt([{acceptors, Val}|Opts], Acc) when is_integer(Val) ->
+    parse_opt(Opts, [{acceptors, Val}|Acc]);
+parse_opt([{access_rules, Rules}|Opts], Acc) ->
+    parse_opt(Opts, [{access_rules, Rules}|Acc]);
+parse_opt([{shutdown, I}|Opts], Acc) when I == brutal_kill; I == infinity; is_integer(I) ->
+    parse_opt(Opts, [{shutdown, I}|Acc]);
+parse_opt([tune_buffer|Opts], Acc) ->
+    parse_opt(Opts, [{tune_buffer, true}|Acc]);
+parse_opt([{tune_buffer, Val}|Opts], Acc) when is_boolean(Val) ->
+    parse_opt(Opts, [{tune_buffer, Val}|Acc]);
+parse_opt([proxy_protocol|Opts], Acc) ->
+    parse_opt(Opts, [{proxy_protocol, true}|Acc]);
+parse_opt([{proxy_protocol, Val}|Opts], Acc) when is_boolean(Val) ->
+    parse_opt(Opts, [{proxy_protocol, Val}|Acc]);
+parse_opt([{proxy_protocol_timeout, Timeout}|Opts], Acc) when is_integer(Timeout) ->
+    parse_opt(Opts, [{proxy_protocol_timeout, Timeout}|Acc]);
+parse_opt([{ssl_options, L}|Opts], Acc) when is_list(L) ->
+    parse_opt(Opts, [{ssl_options, L}|Acc]);
+parse_opt([{tcp_options, L}|Opts], Acc) when is_list(L) ->
+    parse_opt(Opts, [{tcp_options, L}|Acc]);
+parse_opt([{udp_options, L}|Opts], Acc) when is_list(L) ->
+    parse_opt(Opts, [{udp_options, L}|Acc]);
+parse_opt([{dtls_options, L}|Opts], Acc) when is_list(L) ->
+    parse_opt(Opts, [{dtls_options, L}|Acc]);
+parse_opt([_|Opts], Acc) ->
+    parse_opt(Opts, Acc).
 
 %% @doc System 'ulimit -n'
 -spec(ulimit() -> pos_integer()).
