@@ -16,19 +16,19 @@
 
 -include_lib("kernel/include/inet.hrl").
 
--export([ntoab/1, tcp_host/1, hostname/0, format/1, format/2]).
+-export([hostname/1, hostname/0]).
+-export([format/2, format/1]).
+-export([ntoa/1, ntoab/1]).
 
-tcp_host({0,0,0,0}) ->
+hostname({0,0,0,0}) ->
     hostname();
-tcp_host({0,0,0,0,0,0,0,0}) ->
+hostname({0,0,0,0,0,0,0,0}) ->
     hostname();
-
-tcp_host(IPAddr) ->
-    case inet:gethostbyaddr(IPAddr) of
+hostname(IPAddress) ->
+    case inet:gethostbyaddr(IPAddress) of
         {ok, #hostent{h_name = Name}} -> Name;
-        {error, _Reason} -> ntoa(IPAddr)
+        {error, _Reason} -> ntoa(IPAddress)
     end.
-
 hostname() ->
     {ok, Hostname} = inet:gethostname(),
     case inet:gethostbyname(Hostname) of
@@ -41,13 +41,11 @@ format(sockname, Sockname) ->
 format(peername, Peername) ->
     format(Peername).
 format({Addr, Port}) ->
-    io_lib:format("~s:~p", [maybe_ntoab(Addr), Port]).
+    lists:flatten(io_lib:format("~s:~p", [maybe_ntoab(Addr), Port])).
 
 maybe_ntoab(Addr) when is_tuple(Addr) -> ntoab(Addr);
 maybe_ntoab(Host) -> Host.
 
-%% Format IPv4-mapped IPv6 addresses as IPv4, since they're what we see
-%% when IPv6 is enabled but not used (i.e. 99% of the time).
 ntoa({0,0,0,0,0,16#ffff,AB,CD}) ->
     inet_parse:ntoa({AB bsr 8, AB rem 256, CD bsr 8, CD rem 256});
 ntoa(IP) -> inet_parse:ntoa(IP).
