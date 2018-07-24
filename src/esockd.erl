@@ -214,20 +214,22 @@ parse_opt(Options) ->
     parse_opt(Options, []).
 parse_opt([], Acc) ->
     lists:reverse(Acc);
-parse_opt([{acceptors, Val}|Opts], Acc) when is_integer(Val) ->
-    parse_opt(Opts, [{acceptors, Val}|Acc]);
+parse_opt([{acceptors, I}|Opts], Acc) when is_integer(I) ->
+    parse_opt(Opts, [{acceptors, I}|Acc]);
+parse_opt([{max_clients, I}|Opts], Acc) when is_integer(I) ->
+    parse_opt(Opts, [{max_clients, I}|Acc]);
 parse_opt([{access_rules, Rules}|Opts], Acc) ->
     parse_opt(Opts, [{access_rules, Rules}|Acc]);
 parse_opt([{shutdown, I}|Opts], Acc) when I == brutal_kill; I == infinity; is_integer(I) ->
     parse_opt(Opts, [{shutdown, I}|Acc]);
 parse_opt([tune_buffer|Opts], Acc) ->
     parse_opt(Opts, [{tune_buffer, true}|Acc]);
-parse_opt([{tune_buffer, Val}|Opts], Acc) when is_boolean(Val) ->
-    parse_opt(Opts, [{tune_buffer, Val}|Acc]);
+parse_opt([{tune_buffer, I}|Opts], Acc) when is_boolean(I) ->
+    parse_opt(Opts, [{tune_buffer, I}|Acc]);
 parse_opt([proxy_protocol|Opts], Acc) ->
     parse_opt(Opts, [{proxy_protocol, true}|Acc]);
-parse_opt([{proxy_protocol, Val}|Opts], Acc) when is_boolean(Val) ->
-    parse_opt(Opts, [{proxy_protocol, Val}|Acc]);
+parse_opt([{proxy_protocol, I}|Opts], Acc) when is_boolean(I) ->
+    parse_opt(Opts, [{proxy_protocol, I}|Acc]);
 parse_opt([{proxy_protocol_timeout, Timeout}|Opts], Acc) when is_integer(Timeout) ->
     parse_opt(Opts, [{proxy_protocol_timeout, Timeout}|Acc]);
 parse_opt([{ssl_options, L}|Opts], Acc) when is_list(L) ->
