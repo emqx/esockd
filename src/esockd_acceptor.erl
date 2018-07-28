@@ -18,7 +18,7 @@
 
 -include("esockd.hrl").
 
--export([start_link/5]).
+-export([start_link/6]).
 -export([accepting/3, suspending/3]).
 
 %% gen_statem Callbacks
@@ -30,20 +30,21 @@
                 tune_fun     :: esockd:sock_fun(),
                 upgrade_funs :: [esockd:sock_fun()],
                 stats_fun    :: fun(),
+                limit_fun    :: fun(),
                 conn_sup     :: pid(),
-                accept_ref   :: term() }).
+                accept_ref   :: term()}).
 
 %% @doc Start an acceptor
--spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), inet:socket())
+-spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun(), inet:socket())
       -> {ok, pid()} | {error, term()}).
-start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock) ->
-    gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock], []).
+start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
+    gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
 
 %%------------------------------------------------------------------------------
 %% gen_server callbacks
 %%------------------------------------------------------------------------------
 
-init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock]) ->
+init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
     rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
@@ -53,6 +54,7 @@ init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LSock]) ->
                            tune_fun     = TuneFun,
                            upgrade_funs = UpgradeFuns,
                            stats_fun    = StatsFun,
+                           limit_fun    = LimitFun,
                            conn_sup     = ConnSup},
      {next_event, internal, accept}}.
 
@@ -72,14 +74,14 @@ accepting(internal, accept, State = #state{lsock = LSock}) ->
     end;
 
 accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
-          #state{lsock        = LSock,
-                 sockmod      = SockMod,
-                 sockname     = Sockname,
-                 tune_fun     = TuneFun,
-                 upgrade_funs = UpgradeFuns,
-                 stats_fun    = StatsFun,
-                 conn_sup     = ConnSup,
-                 accept_ref   = Ref}) ->
+          State = #state{lsock        = LSock,
+                         sockmod      = SockMod,
+                         sockname     = Sockname,
+                         tune_fun     = TuneFun,
+                         upgrade_funs = UpgradeFuns,
+                         stats_fun    = StatsFun,
+                         conn_sup     = ConnSup,
+                         accept_ref   = Ref}) ->
     %% make it look like gen_tcp:accept
     inet_db:register_socket(Sock, SockMod),
 
@@ -110,7 +112,7 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
                                    [esockd_net:format(Sockname), Reason]),
             close(Sock)
     end,
-    {keep_state_and_data, {next_event, internal, accept}};
+    rate_limit(State);
 
 accepting(info, {inet_async, LSock, Ref, {error, closed}},
           State = #state{lsock = LSock, accept_ref = Ref}) ->
@@ -145,4 +147,11 @@ code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 close(Sock) -> catch port_close(Sock).
+
+rate_limit(State = #state{limit_fun = RateLimit}) ->
+    case RateLimit(1) of
+        I when I =< 0 ->
+            {next_state, suspending, State, 1000};
+        _ -> {keep_state, State, {next_event, internal, accept}}
+    end.
 

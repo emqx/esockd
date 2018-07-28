@@ -16,12 +16,12 @@
 
 -behaviour(supervisor).
 
--export([start_link/2, start_acceptor/2, count_acceptors/1]).
+-export([start_link/3, start_acceptor/2, count_acceptors/1]).
 
 -export([init/1]).
 
-start_link(Opts, MFA) ->
-    supervisor:start_link(?MODULE, [Opts, MFA]).
+start_link(Opts, MFA, LimitFun) ->
+    supervisor:start_link(?MODULE, [Opts, MFA, LimitFun]).
 
 -spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | {error, term()}).
 start_acceptor(Sup, LSock) ->
@@ -30,10 +30,10 @@ start_acceptor(Sup, LSock) ->
 count_acceptors(Sup) ->
     proplists:get_value(active, supervisor:count_children(Sup), 0).
 
-init([Opts, MFA]) ->
+init([Opts, MFA, LimitFun]) ->
     {ok, {{simple_one_for_one, 0, 1},
           [#{id       => acceptor,
-             start    => {esockd_dtls_acceptor, start_link, [self(), Opts, MFA]},
+             start    => {esockd_dtls_acceptor, start_link, [self(), Opts, MFA, LimitFun]},
              restart  => transient,
              shutdown => brutal_kill,
              type     => worker,

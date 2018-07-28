@@ -107,6 +107,7 @@ handle_info(Info, State) ->
 
 terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,
                           lsock = LSock, laddr = Addr, lport = Port}) ->
+    esockd_rate_limiter:delete({listener, Proto, ListenOn}),
     esockd_server:del_stats({Proto, ListenOn}),
     esockd_transport:fast_close(LSock),
     io:format("~s stopped on ~s~n", [Proto, esockd_net:format({Addr, Port})]).

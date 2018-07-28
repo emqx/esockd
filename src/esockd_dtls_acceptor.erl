@@ -18,20 +18,22 @@
 
 -include("esockd.hrl").
 
--export([start_link/4]).
--export([waiting_for_sock/3, waiting_for_data/3]).
+-export([start_link/5]).
+
+-export([waiting_for_sock/3, waiting_for_data/3, suspending/3]).
 
 %% gen_statem callbacks
 -export([init/1, callback_mode/0, handle_event/4, terminate/3, code_change/4]).
 
--record(state, {sup, mfargs, max_clients, peername, lsock, sock, channel}).
+-record(state, {sup, mfargs, max_clients, limit_fun, peername, lsock, sock, channel}).
 
-start_link(Sup, Opts, MFA, LSock) ->
-    gen_statem:start_link(?MODULE, [Sup, Opts, MFA, LSock], []).
+start_link(Sup, Opts, MFA, LimitFun, LSock) ->
+    gen_statem:start_link(?MODULE, [Sup, Opts, MFA, LimitFun, LSock], []).
 
-init([Sup, Opts, MFA, LSock]) ->
+init([Sup, Opts, MFA, LimitFun, LSock]) ->
     process_flag(trap_exit, true),
-    State = #state{sup = Sup, mfargs = MFA, max_clients = max_clients(Opts), lsock = LSock},
+    State = #state{sup = Sup, mfargs = MFA, limit_fun = LimitFun,
+                   max_clients = max_clients(Opts), lsock = LSock},
     {ok, waiting_for_sock, State, {next_event, internal, accept}}.
 
 max_clients(Opts) ->
@@ -40,24 +42,27 @@ max_clients(Opts) ->
 callback_mode() -> state_functions.
 
 waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock, mfargs = {M, F, Args}}) ->
-    {ok, Sock} = ssl:transport_accept(LSock),
-    esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
-    {ok, Peername} = ssl:peername(Sock),
-    case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
-        {ok, SslSock} ->
-            case catch erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
-                {ok, Pid} ->
-                    true = link(Pid),
-                    {next_state, waiting_for_data,
-                     State#state{sock = SslSock, peername = Peername, channel = Pid}};
-                {error, Reason} ->
-                    {stop, Reason, State};
-                {'EXIT', Error} ->
-                    shutdown(Error, State)
-            end;
-        {error, Reason} ->
-            shutdown(Reason, State#state{sock = Sock})
-    end;
+    rate_limit(
+      fun() ->
+          {ok, Sock} = ssl:transport_accept(LSock),
+          esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
+          {ok, Peername} = ssl:peername(Sock),
+          case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
+              {ok, SslSock} ->
+                  case catch erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
+                      {ok, Pid} ->
+                          true = link(Pid),
+                          {next_state, waiting_for_data,
+                           State#state{sock = SslSock, peername = Peername, channel = Pid}};
+                      {error, Reason} ->
+                          {stop, Reason, State};
+                      {'EXIT', Error} ->
+                          shutdown(Error, State)
+                  end;
+              {error, Reason} ->
+                  shutdown(Reason, State#state{sock = Sock})
+          end
+      end, State);
 
 waiting_for_sock(EventType, EventContent, StateData) ->
     handle_event(EventType, EventContent, waiting_for_sock, StateData).
@@ -82,6 +87,9 @@ waiting_for_data(info, {'EXIT', Ch, Reason}, State = #state{channel = Ch}) ->
 waiting_for_data(EventType, EventContent, StateData) ->
     handle_event(EventType, EventContent, waiting_for_data, StateData).
 
+suspending(timeout, _Timeout, State) ->
+    {next_state, waiting_for_sock, State, {next_event, internal, accept}}.
+
 handle_event(EventType, EventContent, StateName, StateData) ->
     error_logger:error_msg("[~s] StateName: ~s, unexpected event(~s, ~p)",
                            [?MODULE, StateName, EventType, EventContent]),
@@ -97,4 +105,11 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 shutdown(Reason, State) ->
     {stop, {shutdown, Reason}, State}.
+
+rate_limit(Fun, State = #state{limit_fun = RateLimit}) ->
+    case RateLimit(1) of
+        I when I =< 0 ->
+            {next_state, suspending, State, 1000};
+        _ -> Fun()
+    end.
 

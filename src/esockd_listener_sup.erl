@@ -19,6 +19,8 @@
 -include("esockd.hrl").
 
 -export([start_link/4, listener/1, acceptor_sup/1, connection_sup/1]).
+%% export for dtls_listener_sup
+-export([rate_limit_fun/2]).
 
 %% supervisor callback
 -export([init/1]).
@@ -44,9 +46,10 @@ start_link(Proto, ListenOn, Opts, MFA) ->
     TuneFun = buffer_tune_fun(Opts),
     UpgradeFuns = upgrade_funs(Opts),
     StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
+    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, Opts),
     AcceptorSupSpec =  #{id       => acceptor_sup,
                          start    => {esockd_acceptor_sup, start_link,
-                                      [ConnSup, TuneFun, UpgradeFuns, StatsFun]},
+                                      [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
                          restart  => transient,
                          shutdown => infinity,
                          type     => supervisor,
@@ -123,4 +126,18 @@ proxy_upgrade_fun(Opts) ->
         false -> [];
         true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
     end.
+
+rate_limit_fun(Bucket, Opts) ->
+    case proplists:get_value(max_conn_rate, Opts) of
+        undefined ->
+            fun(_) -> 1 end;
+        I when is_integer(I) ->
+            rate_limit_fun(Bucket, I, 1);
+        {Limit, Period} ->
+            rate_limit_fun(Bucket, Limit, Period)
+    end.
+
+rate_limit_fun(Bucket, Limit, Period) ->
+    ok = esockd_rate_limiter:create(Bucket, Limit, Period),
+    fun(I) -> esockd_rate_limiter:aquire(Bucket, I) end.
 

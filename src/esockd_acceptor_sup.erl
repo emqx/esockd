@@ -16,7 +16,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/4, start_acceptor/2, count_acceptors/1]).
+-export([start_link/5, start_acceptor/2, count_acceptors/1]).
 
 -export([init/1]).
 
@@ -25,9 +25,9 @@
 %%------------------------------------------------------------------------------
 
 %% @doc Start Acceptor Supervisor.
--spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun()) -> {ok, pid()}).
-start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun) ->
-    supervisor:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun]).
+-spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun()) -> {ok, pid()}).
+start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun) ->
+    supervisor:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]).
 
 %% @doc Start a acceptor.
 -spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | ignore | {error, term()}).
@@ -43,11 +43,11 @@ count_acceptors(AcceptorSup) ->
 %% Supervisor callbacks
 %%------------------------------------------------------------------------------
 
-init([ConnSup, TuneFun, UpgradeFuns, StatsFun]) ->
+init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]) ->
     {ok, {{simple_one_for_one, 100, 3600},
           [#{id       => acceptor,
              start    => {esockd_acceptor, start_link,
-                         [ConnSup, TuneFun, UpgradeFuns, StatsFun]},
+                         [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
              restart  => transient,
              shutdown => 5000,
              type     => worker,

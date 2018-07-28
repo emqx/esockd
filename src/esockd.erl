@@ -42,6 +42,7 @@
 -type(sock_fun() :: fun((esockd_transport:sock()) -> {ok, esockd_transport:sock()} | {error, term()})).
 -type(option() :: {acceptors, pos_integer()}
                 | {max_clients, pos_integer()}
+                | {max_conn_rate, pos_integer() | {pos_integer(), pos_integer()}}
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}
                 | tune_buffer | {tune_buffer, boolean()}
@@ -209,7 +210,7 @@ deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 
     esockd_connection_sup:deny(ConnSup, CIDR).
 
-%% @doc Parse sock option.
+%% @doc Parse option.
 parse_opt(Options) ->
     parse_opt(Options, []).
 parse_opt([], Acc) ->
@@ -218,6 +219,10 @@ parse_opt([{acceptors, I}|Opts], Acc) when is_integer(I) ->
     parse_opt(Opts, [{acceptors, I}|Acc]);
 parse_opt([{max_clients, I}|Opts], Acc) when is_integer(I) ->
     parse_opt(Opts, [{max_clients, I}|Acc]);
+parse_opt([{max_conn_rate, Limit}|Opts], Acc) when Limit > 0 ->
+    parse_opt(Opts, [{max_conn_rate, {Limit, 1}}|Acc]);
+parse_opt([{max_conn_rate, {Limit, Period}}|Opts], Acc) when Limit > 0, Period >0 ->
+    parse_opt(Opts, [{max_conn_rate, {Limit, Period}}|Acc]);
 parse_opt([{access_rules, Rules}|Opts], Acc) ->
     parse_opt(Opts, [{access_rules, Rules}|Acc]);
 parse_opt([{shutdown, I}|Opts], Acc) when I == brutal_kill; I == infinity; is_integer(I) ->

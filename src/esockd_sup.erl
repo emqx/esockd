@@ -17,7 +17,8 @@
 -behaviour(supervisor).
 
 -export([start_link/0, child_id/2]).
--export([start_listener/4, stop_listener/2, listeners/0, listener/1, restart_listener/2]).
+-export([start_listener/4, stop_listener/2, restart_listener/2]).
+-export([listeners/0, listener/1]).
 -export([child_spec/4, udp_child_spec/4, dtls_child_spec/4, start_child/1]).
 
 %% supervisor callback
@@ -137,11 +138,17 @@ return_ok_or_error([{error, Reason}|_]) ->
 %%------------------------------------------------------------------------------
 
 init([]) ->
+    Limiter = #{id       => rate_limiter,
+                start    => {esockd_rate_limiter, start_link, []},
+                restart  => permanent,
+                shutdown => 5000,
+                type     => worker,
+                modules  => [esockd_rate_limiter]},
     Server = #{id       => esockd_server,
                start    => {esockd_server, start_link, []},
                restart  => permanent,
                shutdown => 5000,
                type     => worker,
                modules  => [esockd_server]},
-    {ok, {{one_for_one, 10, 100}, [Server]}}.
+    {ok, {{one_for_one, 10, 100}, [Limiter, Server]}}.
 

@@ -28,7 +28,8 @@ start_link(Proto, Port, Opts, MFA) ->
         {ok, LSock} ->
             io:format("~s opened on dtls ~w~n", [Proto, Port]),
             {ok, Sup} = supervisor:start_link(?MODULE, []),
-            {ok, AcceptorSup} = start_acceptor_sup(Sup, Opts, MFA),
+            LimitFun = esockd_listener_sup:rate_limit_fun({dtls, Proto, Port}, Opts),
+            {ok, AcceptorSup} = start_acceptor_sup(Sup, Opts, MFA, LimitFun),
             AcceptorNum = proplists:get_value(acceptors, Opts, 8),
             lists:foreach(fun(_) ->
                 {ok, _Pid} = esockd_dtls_acceptor_sup:start_acceptor(AcceptorSup, LSock)
@@ -40,9 +41,9 @@ start_link(Proto, Port, Opts, MFA) ->
             {error, Reason}
     end.
 
-start_acceptor_sup(Sup, Opts, MFA) ->
+start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
     supervisor:start_child(Sup, #{id       => acceptor_sup,
-                                  start    => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA]},
+                                  start    => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA, LimitFun]},
                                   restart  => permanent,
                                   shutdown => 60000,
                                   type     => supervisor,
