@@ -341,7 +341,7 @@ udp_echo_loop(Transport, Peer) ->
 
 dtls_server(Config) ->
     DataDir = proplists:get_value(data_dir, Config),
-    Opts = [{acceptors, 4}, {max_clients, 1000},
+    Opts = [{acceptors, 4}, {max_clients, 1000}, {max_conn_rate, 10},
             {dtls_options, [{mode, binary}, {reuseaddr, true},
                             {certfile, filename:join([DataDir, "demo.crt"])},
                             {keyfile, filename:join([DataDir, "demo.key"])}]}],
