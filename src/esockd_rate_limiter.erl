@@ -19,12 +19,14 @@
 
 -export([start_link/0]).
 -export([create/2, create/3, aquire/1, aquire/2, delete/1]).
--export([buckets/0, tokens/0]).
+-export([buckets/0]).
+
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
 -type(bucket() :: term()).
+
 -export_type([bucket/0]).
 
 %%-record(bucket, {name, limit, period}).
@@ -54,13 +56,12 @@ delete(Bucket) ->
     gen_server:cast(?SERVER, {delete, Bucket}).
 
 buckets() ->
-    [{bucket, Name, Limit, Period} ||
+    [{bucket, Name, Limit, Period, tokens(Name)} ||
      {{bucket, Name}, Limit, Period}
      <- ets:match_object(?TAB, {{bucket, '_'}, '_', '_'})].
 
-tokens() ->
-    [{tokens, Name, Tokens} || {{tokens, Name}, Tokens}
-                               <- ets:match_object(?TAB, {{tokens, '_'}, '_'})].
+tokens(Name) ->
+    ets:lookup_element(?TAB, {tokens, Name}, 2).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
