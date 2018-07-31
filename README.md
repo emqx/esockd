@@ -87,6 +87,7 @@ Option:
 
     -type(option() :: {acceptors, pos_integer()}
                     | {max_clients, pos_integer()}
+                    | {max_conn_rate, pos_integer()}
                     | {access_rules, [esockd_access:rule()]}
                     | {shutdown, brutal_kill | infinity | pos_integer()}
                     | tune_buffer | {tune_buffer, boolean()}
