@@ -25,7 +25,6 @@
          peer_cert_subject_items/2, peer_cert_validity/1]).
 
 -type(certificate() :: binary()).
-
 -export_type([certificate/0]).
 
 %% Return a string describing the certificate's issuer.

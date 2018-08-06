@@ -126,7 +126,7 @@ send(#proxy_socket{socket = Sock}, Data) ->
 async_send(Sock, Data) when is_port(Sock) ->
     case erlang:port_command(Sock, Data, [nosuspend]) of
         true  -> ok;
-        false -> {error, timeout} %% TODO: tcp window full?
+        false -> {error, ebusy} %% Tcp window may be full?
     end;
 async_send(Sock = #ssl_socket{ssl = SslSock}, Data) ->
     case ssl:send(SslSock, Data) of
@@ -224,13 +224,17 @@ peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
     {ok, {SrcAddr, SrcPort}}.
 
 %% @doc Socket peercert
--spec(peercert(sock()) -> nossl | {ok, Cert :: binary()} | {error, term()}).
+-spec(peercert(sock()) -> nossl | binary() | list(pp2_additional_ssl_field()) |
+                          {error, term()}).
 peercert(Sock) when is_port(Sock) ->
     nossl;
 peercert(#ssl_socket{ssl = SslSock}) ->
-    ssl:peercert(SslSock);
-peercert(#proxy_socket{socket = Sock}) ->
-    peercert(Sock).
+    case ssl:peercert(SslSock) of
+        {ok, Cert} -> Cert;
+        Error -> Error
+    end;
+peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+    proplists:get_value(pp2_ssl, AdditionalInfo, []).
 
 %% @doc Peercert subject
 -spec(peer_cert_subject(sock()) -> undefined | binary()).
