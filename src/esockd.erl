@@ -26,7 +26,7 @@
 %% Management API
 -export([listeners/0, listener/1]).
 -export([get_stats/1, get_options/1, get_acceptors/1]).
--export([get_max_clients/1, set_max_clients/2, get_current_clients/1]).
+-export([get_max_connections/1, set_max_connections/2, get_current_connections/1]).
 -export([get_shutdown_count/1]).
 
 %% Allow, Deny API
@@ -41,7 +41,7 @@
 -type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
 -type(sock_fun() :: fun((esockd_transport:sock()) -> {ok, esockd_transport:sock()} | {error, term()})).
 -type(option() :: {acceptors, pos_integer()}
-                | {max_clients, pos_integer()}
+                | {max_connections, pos_integer()}
                 | {max_conn_rate, pos_integer() | {pos_integer(), pos_integer()}}
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}
@@ -152,28 +152,28 @@ get_acceptors(LSup) when is_pid(LSup) ->
     AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
     esockd_acceptor_sup:count_acceptors(AcceptorSup).
 
-%% @doc Get max clients
--spec(get_max_clients({atom(), listen_on()} | pid()) -> undefined | pos_integer()).
-get_max_clients({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_max_clients/1);
-get_max_clients(LSup) when is_pid(LSup) ->
+%% @doc Get max connections
+-spec(get_max_connections({atom(), listen_on()} | pid()) -> undefined | pos_integer()).
+get_max_connections({Proto, ListenOn}) when is_atom(Proto) ->
+    with_listener({Proto, ListenOn}, fun get_max_connections/1);
+get_max_connections(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:get_max_clients(ConnSup).
+    esockd_connection_sup:get_max_connections(ConnSup).
 
-%% @doc Set max clients
--spec(set_max_clients({atom(), listen_on()} | pid(), pos_integer())
+%% @doc Set max connections
+-spec(set_max_connections({atom(), listen_on()} | pid(), pos_integer())
       -> undefined | pos_integer()).
-set_max_clients({Proto, ListenOn}, MaxClients) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun set_max_clients/2, [MaxClients]);
-set_max_clients(LSup, MaxClients) when is_pid(LSup) ->
+set_max_connections({Proto, ListenOn}, MaxConns) when is_atom(Proto) ->
+    with_listener({Proto, ListenOn}, fun set_max_connections/2, [MaxConns]);
+set_max_connections(LSup, MaxConns) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:set_max_clients(ConnSup, MaxClients).
+    esockd_connection_sup:set_max_connections(ConnSup, MaxConns).
 
-%% @doc Get current clients
--spec(get_current_clients({atom(), listen_on()}) -> undefined | pos_integer()).
-get_current_clients({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_current_clients/1);
-get_current_clients(LSup) when is_pid(LSup) ->
+%% @doc Get current connections
+-spec(get_current_connections({atom(), listen_on()}) -> undefined | non_neg_integer()).
+get_current_connections({Proto, ListenOn}) when is_atom(Proto) ->
+    with_listener({Proto, ListenOn}, fun get_current_connections/1);
+get_current_connections(LSup) when is_pid(LSup) ->
     ConnSup = esockd_listener_sup:connection_sup(LSup),
     esockd_connection_sup:count_connections(ConnSup).
 
@@ -217,8 +217,8 @@ parse_opt([], Acc) ->
     lists:reverse(Acc);
 parse_opt([{acceptors, I}|Opts], Acc) when is_integer(I) ->
     parse_opt(Opts, [{acceptors, I}|Acc]);
-parse_opt([{max_clients, I}|Opts], Acc) when is_integer(I) ->
-    parse_opt(Opts, [{max_clients, I}|Acc]);
+parse_opt([{max_connections, I}|Opts], Acc) when is_integer(I) ->
+    parse_opt(Opts, [{max_connections, I}|Acc]);
 parse_opt([{max_conn_rate, Limit}|Opts], Acc) when Limit > 0 ->
     parse_opt(Opts, [{max_conn_rate, {Limit, 1}}|Acc]);
 parse_opt([{max_conn_rate, {Limit, Period}}|Opts], Acc) when Limit > 0, Period >0 ->

@@ -19,32 +19,33 @@
 -import(proplists, [get_value/3]).
 
 -export([start_link/2, start_connection/3, count_connections/1]).
--export([get_max_clients/1, set_max_clients/2]).
+-export([get_max_connections/1, set_max_connections/2]).
 -export([get_shutdown_count/1]).
+
 %% Allow, Deny
 -export([access_rules/1, allow/2, deny/2]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+         code_change/3]).
 
--define(MAX_CLIENTS, 1024).
+-define(DEFAULT_MAX_CONNS, 1024).
 -define(Transport, esockd_transport).
 
--record(state, {curr_clients = 0,
-                max_clients  = ?MAX_CLIENTS,
-                conn_opts    = [],
-                access_rules = [],
-                shutdown     = brutal_kill,
-                mfargs       :: mfa()}).
-
-%%------------------------------------------------------------------------------
-%% API
-%%------------------------------------------------------------------------------
+-record(state, {curr_connections = 0,
+                max_connections  = ?DEFAULT_MAX_CONNS,
+                access_rules     = [],
+                shutdown         = brutal_kill,
+                mfargs           :: mfa()}).
 
 %% @doc Start connection supervisor.
 -spec(start_link([esockd:option()], esockd:mfargs()) -> {ok, pid()} | ignore | {error, term()}).
 start_link(Opts, MFA) ->
     gen_server:start_link(?MODULE, [Opts, MFA], []).
+
+%%------------------------------------------------------------------------------
+%% API
+%%------------------------------------------------------------------------------
 
 %% @doc Start connection.
 start_connection(Sup, Sock, UpgradeFuns) ->
@@ -73,13 +74,13 @@ start_connection_proc({M, F, Args}, Sock) when is_atom(M), is_atom(F), is_list(A
 count_connections(Sup) ->
     call(Sup, count_connections).
 
--spec(get_max_clients(pid()) -> integer()).
-get_max_clients(Sup) when is_pid(Sup) ->
-    call(Sup, get_max_clients).
+-spec(get_max_connections(pid()) -> integer()).
+get_max_connections(Sup) when is_pid(Sup) ->
+    call(Sup, get_max_connections).
 
--spec(set_max_clients(pid(), integer()) -> ok).
-set_max_clients(Sup, MaxClients) when is_pid(Sup) ->
-    call(Sup, {set_max_clients, MaxClients}).
+-spec(set_max_connections(pid(), integer()) -> ok).
+set_max_connections(Sup, MaxConns) when is_pid(Sup) ->
+    call(Sup, {set_max_connections, MaxConns}).
 
 -spec(get_shutdown_count(pid()) -> integer()).
 get_shutdown_count(Sup) ->
@@ -104,23 +105,25 @@ call(Sup, Req) ->
 init([Opts, MFA]) ->
     process_flag(trap_exit, true),
     Shutdown = get_value(shutdown, Opts, brutal_kill),
-    MaxClients = get_value(max_clients, Opts, ?MAX_CLIENTS),
+    MaxConns = get_value(max_connections, Opts, ?DEFAULT_MAX_CONNS),
     RawRules = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
-    {ok, #state{max_clients = MaxClients, access_rules = AccessRules, shutdown = Shutdown, mfargs = MFA}}.
+    {ok, #state{curr_connections = 0, max_connections  = MaxConns,
+                access_rules = AccessRules, shutdown = Shutdown, mfargs = MFA}}.
 
-handle_call({start_connection, _Sock}, _From, State = #state{curr_clients = CurrClients, max_clients = MaxClients})
-    when CurrClients >= MaxClients ->
+handle_call({start_connection, _Sock}, _From,
+            State = #state{curr_connections = CurrConns, max_connections  = MaxConns})
+    when CurrConns >= MaxConns ->
     {reply, {error, maxlimit}, State};
 
-handle_call({start_connection, Sock}, _From, State = #state{mfargs = MFA, curr_clients = Count, access_rules = Rules}) ->
+handle_call({start_connection, Sock}, _From, State = #state{mfargs = MFA, curr_connections = Count, access_rules = Rules}) ->
     case esockd_transport:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
                 true  -> case catch start_connection_proc(MFA, Sock) of
                              {ok, Pid} when is_pid(Pid) ->
                                  put(Pid, true),
-                                 {reply, {ok, Pid}, State#state{curr_clients = Count+1}};
+                                 {reply, {ok, Pid}, State#state{curr_connections = Count+1}};
                              ignore ->
                                  {reply, ignore, State};
                              {error, Reason} ->
@@ -134,14 +137,14 @@ handle_call({start_connection, Sock}, _From, State = #state{mfargs = MFA, curr_c
             {reply, {error, Reason}, State}
     end;
 
-handle_call(count_connections, _From, State = #state{curr_clients = Count}) ->
+handle_call(count_connections, _From, State = #state{curr_connections = Count}) ->
     {reply, Count, State};
 
-handle_call(get_max_clients, _From, State = #state{max_clients = MaxClients}) ->
-    {reply, MaxClients, State};
+handle_call(get_max_connections, _From, State = #state{max_connections = MaxConns}) ->
+    {reply, MaxConns, State};
 
-handle_call({set_max_clients, MaxClients}, _From, State) ->
-    {reply, ok, State#state{max_clients = MaxClients}};
+handle_call({set_max_connections, MaxConns}, _From, State) ->
+    {reply, ok, State#state{max_connections = MaxConns}};
 
 handle_call(get_shutdown_count, _From, State) ->
     {reply, [{Reason, Count} || {{shutdown, Reason}, Count} <- get()], State};
@@ -162,18 +165,19 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
             end
     end;
 
-handle_call(_Req, _From, State) ->
-    {stop, {error, badreq}, State}.
+handle_call(Req, _From, State) ->
+    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
+    {reply, ignored, State}.
 
 handle_cast(Msg, State) ->
     error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
-handle_info({'EXIT', Pid, Reason}, State = #state{curr_clients = Count}) ->
+handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Count}) ->
     case erase(Pid) of
         true ->
             connection_crashed(Pid, Reason, State),
-            {noreply, State#state{curr_clients = Count-1}};
+            {noreply, State#state{curr_connections = Count-1}};
         undefined ->
             error_logger:error_msg("[~s] unexpected 'EXIT': ~p, reason: ~p", [?MODULE, Pid, Reason]),
             {noreply, State}

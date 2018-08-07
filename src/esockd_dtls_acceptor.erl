@@ -25,7 +25,7 @@
 %% gen_statem callbacks
 -export([init/1, callback_mode/0, handle_event/4, terminate/3, code_change/4]).
 
--record(state, {sup, mfargs, max_clients, limit_fun, peername, lsock, sock, channel}).
+-record(state, {sup, mfargs, max_conns, limit_fun, peername, lsock, sock, channel}).
 
 start_link(Sup, Opts, MFA, LimitFun, LSock) ->
     gen_statem:start_link(?MODULE, [Sup, Opts, MFA, LimitFun, LSock], []).
@@ -33,11 +33,11 @@ start_link(Sup, Opts, MFA, LimitFun, LSock) ->
 init([Sup, Opts, MFA, LimitFun, LSock]) ->
     process_flag(trap_exit, true),
     State = #state{sup = Sup, mfargs = MFA, limit_fun = LimitFun,
-                   max_clients = max_clients(Opts), lsock = LSock},
+                   max_conns = max_conns(Opts), lsock = LSock},
     {ok, waiting_for_sock, State, {next_event, internal, accept}}.
 
-max_clients(Opts) ->
-    proplists:get_value(max_clients, Opts, 0).
+max_conns(Opts) ->
+    proplists:get_value(max_connections, Opts, 0).
 
 callback_mode() -> state_functions.
 

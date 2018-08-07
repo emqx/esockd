@@ -40,7 +40,7 @@ groups() ->
        esockd_listeners,
        esockd_get_stats,
        esockd_get_acceptors,
-       esockd_getset_max_clients,
+       esockd_getset_max_connections,
        esockd_get_shutdown_count,
        esockd_get_access_rules,
        parse_opt,
@@ -111,17 +111,15 @@ esockd_reopen(_) ->
     esockd:close(echo, {"127.0.0.1", 3000}).
 
 esockd_reopen1(_) ->
-    {ok, _LSup} = esockd:open(echo, 7000, [{max_clients, 4},
-                                           {acceptors, 4}], echo_mfa()),
-    timer:sleep(10),
+    {ok, _LSup} = esockd:open(echo, 7000, [{max_connections, 4}, {acceptors, 4}], echo_mfa()),
+    timer:sleep(1),
     ok = esockd:reopen({echo, 7000}),
-    ?assertEqual(4, esockd:get_max_clients({echo, 7000})),
+    ?assertEqual(4, esockd:get_max_connections({echo, 7000})),
     ?assertEqual(4, esockd:get_acceptors({echo, 7000})),
     esockd:close(echo, 7000).
 
 esockd_reopen_fail(_) ->
-    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 4000},
-                              [{acceptors, 4}], echo_mfa()),
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 4000}, [{acceptors, 4}], echo_mfa()),
     {error, not_found} = esockd:reopen({echo, 5000}),
     ?assertEqual(4, esockd:get_acceptors({echo, {"127.0.0.1", 4000}})),
     {ok, Sock} = gen_tcp:connect("127.0.0.1", 4000, []),
@@ -153,11 +151,11 @@ esockd_get_acceptors(_) ->
     ?assertEqual(4, esockd:get_acceptors({echo, {{127,0,0,1}, 6000}})),
     esockd:close(echo, 6000).
 
-esockd_getset_max_clients(_) ->
-    {ok, _LSup} = esockd:open(echo, 7000, [{max_clients, 4}], echo_mfa()),
-    ?assertEqual(4, esockd:get_max_clients({echo, 7000})),
-    esockd:set_max_clients({echo, 7000}, 16),
-    ?assertEqual(16, esockd:get_max_clients({echo, 7000})),
+esockd_getset_max_connections(_) ->
+    {ok, _LSup} = esockd:open(echo, 7000, [{max_connections, 4}], echo_mfa()),
+    ?assertEqual(4, esockd:get_max_connections({echo, 7000})),
+    esockd:set_max_connections({echo, 7000}, 16),
+    ?assertEqual(16, esockd:get_max_connections({echo, 7000})),
     esockd:close(echo, 7000).
 
 esockd_get_shutdown_count(_) ->
@@ -341,7 +339,7 @@ udp_echo_loop(Transport, Peer) ->
 
 dtls_server(Config) ->
     DataDir = proplists:get_value(data_dir, Config),
-    Opts = [{acceptors, 4}, {max_clients, 1000}, {max_conn_rate, 10},
+    Opts = [{acceptors, 4}, {max_connections, 1000}, {max_conn_rate, 10},
             {dtls_options, [{mode, binary}, {reuseaddr, true},
                             {certfile, filename:join([DataDir, "demo.crt"])},
                             {keyfile, filename:join([DataDir, "demo.key"])}]}],
