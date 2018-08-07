@@ -25,7 +25,7 @@ start(Port) ->
     TcpOpts = [binary, {reuseaddr, true}],
     SslOpts = [{certfile, "./crt/demo.crt"}, {keyfile,  "./crt/demo.key"}],
     Opts = [{acceptors, 4},
-            {max_clients, 1000},
+            {max_connections, 1000},
             {tcp_options, TcpOpts},
             {ssl_options, SslOpts}],
     {ok, _} = esockd:open('echo/ssl', Port, Opts, ssl_echo_server).

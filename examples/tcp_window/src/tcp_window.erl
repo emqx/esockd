@@ -35,7 +35,7 @@ main(Port, How) when is_integer(Port) ->
     lists:foreach(fun application:ensure_all_started/1, [sasl, crypto, esockd]),
     Options = [{acceptors, 1},
                {shutdown, infinity},
-               {max_clients, 100},
+               {max_connections, 100},
                {tcp_options, ?TCP_OPTIONS}],
     esockd:open(tcp_block, Port, Options, {?MODULE, start_server, [How]}),
     start_client(Port).

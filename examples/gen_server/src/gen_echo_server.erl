@@ -37,7 +37,7 @@ start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
     ok = esockd:start(),
-    esockd:open(echo, Port, [{acceptors, 32}, {max_clients, 100000}],
+    esockd:open(echo, Port, [{acceptors, 2}, {max_connections, 100000}, {max_conn_rate, 10}],
                 {?MODULE, start_link, []}).
 
 start_link(Transport, Sock) ->

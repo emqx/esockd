@@ -43,7 +43,7 @@ start(Port) when is_integer(Port) ->
     SslOpts = [{certfile, "./crt/demo.crt"},
                {keyfile,  "./crt/demo.key"}],
     Options = [{acceptors, 8},
-               {max_clients, 100000},
+               {max_connections, 100000},
                {tcp_options, TcpOpts},
                {ssl_options, SslOpts}],
     MFArgs = {?MODULE, start_link, []},
