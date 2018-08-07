@@ -238,7 +238,7 @@ esockd_net add format/2 api
 
 esockd_listener_sup: change 'restart strategy' from one_for_all to rest_for_one
 
-esockd.hrl: remove 'sock_args' record 
+esockd.hrl: remove 'sock_args' record
 
 esockd_server add stats_fun/2, inc_stats/3, dec_stats/3, get_stats/1, del_stats/1
 
