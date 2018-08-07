@@ -49,7 +49,7 @@ Setup Echo Server:
 
     %% Start esockd application
     ok = esockd:start().
-    Options = [{acceptors, 10}, {max_clients, 1024}, {tcp_options, [binary, {reuseaddr, true}]}].
+    Options = [{acceptors, 10}, {max_connections, 1024}, {tcp_options, [binary, {reuseaddr, true}]}].
     MFArgs = {echo_server, start_link, []},
     esockd:open(echo, 5000, Options, MFArgs).
 
@@ -86,7 +86,7 @@ Spec:
 Option:
 
     -type(option() :: {acceptors, pos_integer()}
-                    | {max_clients, pos_integer()}
+                    | {max_connections, pos_integer()}
                     | {max_conn_rate, pos_integer()}
                     | {access_rules, [esockd_access:rule()]}
                     | {shutdown, brutal_kill | infinity | pos_integer()}
@@ -111,10 +111,10 @@ Get acceptors:
 
     esockd:get_acceptors({echo, {"127.0.0.1", 6000}}).
 
-Get/Set max clients:
+Get/Set max connections:
 
-    esockd:get_max_clients({echo, 5000}).
-    esockd:set_max_clients({echo, 5000}, 100000).
+    esockd:get_max_connections({echo, 5000}).
+    esockd:set_max_connections({echo, 5000}, 100000).
 
 ### Allow/Deny
 
