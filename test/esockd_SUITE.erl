@@ -117,7 +117,7 @@ esockd_reopen1(_) ->
 
 esockd_reopen_fail(_) ->
     {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 4000}, [{acceptors, 4}], echo_mfa()),
-    {error, _Reson} = esockd:reopen({echo, 4000}),
+    {ok, _} = esockd:reopen({echo, 4000}),
     ?assertEqual(4, esockd:get_acceptors({echo, {"127.0.0.1", 4000}})),
     {ok, Sock} = gen_tcp:connect("127.0.0.1", 4000, []),
     ok = gen_tcp:send(Sock, <<"Hello">>),
