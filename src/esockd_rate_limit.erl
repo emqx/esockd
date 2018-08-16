@@ -32,7 +32,7 @@
 -export_type([bucket/0]).
 
 -spec(new(float() | pos_integer(), pos_integer()) -> bucket()).
-new(Rate, Burst) when is_integer(Burst), 0 < Rate andalso Rate =< Burst ->
+new(Rate, Burst) when 0 < Rate andalso Rate =< Burst, is_integer(Burst) ->
     #bucket{burst = Burst, tokens = Burst, rate = Rate, lastime = os:system_time(milli_seconds)}.
 
 -spec(info(bucket()) -> map()).

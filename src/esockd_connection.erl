@@ -61,10 +61,12 @@ parse_opt([{rate_limit, Str} | Opts], Acc) ->
     parse_opt(Opts, [{rate_limit, parse_rl(Str)}|Acc]);
 parse_opt([Opt | Opts], Acc) ->
     parse_opt(Opts, [Opt | Acc]).
-parse_rl(Str) ->
-    Bps = fun(S) -> list_to_integer(string:strip(S)) * 1024 end,
-    [Burst, Rate] = [Bps(S) || S <- string:tokens(Str, ",")],
-    esockd_ratelimit:new(Burst, Rate).
+parse_rl(Str) when is_list(Str) ->
+    Bps = fun(S) -> list_to_integer(string:strip(S)) end,
+    [Rate, Burst] = [Bps(S) || S <- string:tokens(Str, ",")],
+    parse_rl({Rate, Burst});
+parse_rl({Rate, Burst}) ->
+    esockd_rate_limit:new(Rate, Burst).
 
 %% @doc Start the connection process.
 -spec(start_link(esockd:mfargs(), connection()) -> {ok, pid()}
