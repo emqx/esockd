@@ -1,38 +1,21 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd Server.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
--module(esockd_server).
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
--author("Feng Lee <feng@emqtt.io>").
+-module(esockd_server).
 
 -behaviour(gen_server).
 
--define(SERVER, ?MODULE).
-
-%% Start esockd server
 -export([start_link/0]).
 
 %% stats API
@@ -47,6 +30,7 @@
 
 -record(state, {}).
 
+-define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
 
 %%------------------------------------------------------------------------------
@@ -76,7 +60,7 @@ get_stats({Protocol, ListenOn}) ->
 -spec(inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 inc_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, Num).
-    
+
 %% @doc Dec Stats.
 -spec(dec_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 dec_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
@@ -106,21 +90,23 @@ init([]) ->
     {ok, #state{}}.
 
 handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
-    Key = {{Protocol, ListenOn}, Metric},
-    ets:insert(?STATS_TAB, {Key, 0}),
-    {reply, ok, State};
+    _ = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
+    {reply, ok, State, hibernate};
 
-handle_call(_Request, _From, State) ->
-    {reply, ok, State}.
+handle_call(Req, _From, State) ->
+    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
+    {reply, ignore, State}.
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
-    {noreply, State};
+    {noreply, State, hibernate};
 
-handle_cast(_Request, State) ->
+handle_cast(Msg, State) ->
+    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->

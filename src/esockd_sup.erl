@@ -1,29 +1,16 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd Supervisor.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_sup).
 
@@ -119,8 +106,7 @@ listener({Protocol, ListenOn}) ->
 
 -spec(restart_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 restart_listener(Protocol, ListenOn) ->
-    ChildList = filter_child(Protocol, ListenOn),
-    restart_listeners(ChildList).
+    restart_listeners(filter_child(Protocol, ListenOn)).
 
 restart_listener(Child) ->
     {ChildId, _, _, _} = Child,
@@ -130,22 +116,25 @@ restart_listener(Child) ->
         Error -> Error
     end.
 
-restart_listeners([Child| LeftChilds]) ->
+restart_listeners(Childs) ->
+    restart_listeners(Childs, {error, not_found}).
+
+restart_listeners([], Result) ->
+    Result;
+restart_listeners([Child|Left], _Result) ->
     case restart_listener(Child) of
-        ok ->
-            restart_listeners(LeftChilds);
-        Error ->
-            Error
-    end;
-restart_listeners([]) ->
-    ok.
+        OK = {ok, _} ->
+            restart_listeners(Left, OK);
+        Error -> Error
+    end.
 
 %%------------------------------------------------------------------------------
 %% Supervisor callbacks
 %%------------------------------------------------------------------------------
 
 init([]) ->
-    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker)]}}.
+    {ok, {{one_for_one, 10, 100}, [?CHILD(esockd_server, worker),
+                                   ?CHILD(esockd_rate_limiter, worker)]}}.
 
 %%------------------------------------------------------------------------------
 %% Internal functions
@@ -156,23 +145,14 @@ init([]) ->
 child_id(Protocol, ListenOn) ->
     {listener_sup, {Protocol, ListenOn}}.
 
-filter_child(SpecProtocol, {SpecIP, SpecPort}) ->
-    lists:filter(fun(Child) ->
-                         {ChildId, _, _, _} = Child,
-                         {_, ListenOn} = ChildId,
-                         {SpecProtocol, {SpecIP, SpecPort}} =:= ListenOn
-                 end ,
-                 lists:droplast(supervisor:which_children(?MODULE)));
-filter_child(SpecProtocol, SpecPort) ->
-    lists:filter(fun(Child) ->
-                         {ChildId, _, _, _} = Child,
-                         {_, {Protocol, ListenOn}} = ChildId,
-                         case is_tuple(ListenOn) of
-                             true ->
-                                 {_, Port} = ListenOn,
-                                 {Port, Protocol} =:= {SpecPort, SpecProtocol};
-                             false ->
-                                 ListenOn =:= SpecPort
-                         end
-                 end,
-                 lists:droplast(supervisor:which_children(?MODULE))).
+filter_child(Protocol1, ListenOn1) ->
+    [Child || Child = {{listener_sup, {Protocol2, ListenOn2}}, _, _, _}
+              <- supervisor:which_children(?MODULE),
+              Protocol1 =:= Protocol2, same_port(ListenOn1, ListenOn2)].
+
+same_port(ListenOn, ListenOn)   -> true;
+same_port({_, Port}, {_, Port}) -> true;
+same_port({_, Port}, Port)      -> true;
+same_port(Port, {_, Port})      -> true;
+same_port(_, _)                 -> false.
+

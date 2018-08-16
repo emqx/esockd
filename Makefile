@@ -14,6 +14,10 @@ ERLC_OPTS += +'{parse_transform, lager_transform}'
 
 COVER = true
 
+PLT_APPS = sasl asn1 syntax_tools runtime_tools crypto public_key ssl
+DIALYZER_DIRS := ebin/
+DIALYZER_OPTS := --verbose --statistics -Werror_handling -Wrace_conditions
+
 include erlang.mk
 
 app:: rebar.config

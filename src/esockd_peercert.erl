@@ -12,15 +12,22 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
--module(esockd_app).
+-module(esockd_peercert).
 
--behaviour(application).
+-export([subject/1, common_name/1]).
 
--export([start/2, stop/1]).
+subject(nossl)     -> undefined;
+subject(undefined) -> undefined;
+subject(Cert) when is_binary(Cert) ->
+    esockd_ssl:peer_cert_subject(Cert);
+subject(PP2Info) when is_list(PP2Info) ->
+    %%TODO: DN is not available in ppv2 additional info
+    proplists:get_value(pp2_ssl_cn, PP2Info).
 
-start(_StartType, _StartArgs) ->
-    esockd_sup:start_link().
-
-stop(_State) ->
-    ok.
+common_name(nossl)     -> undefined;
+common_name(undefined) -> undefined;
+common_name(Cert) when is_binary(Cert) ->
+    esockd_ssl:peer_cert_common_name(Cert);
+common_name(PP2Info) when is_list(PP2Info) ->
+    proplists:get_value(pp2_ssl_cn, PP2Info).
 

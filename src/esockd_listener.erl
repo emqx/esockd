@@ -1,37 +1,22 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2014-2017 Feng Lee <feng@emqtt.io>. All Rights Reserved.
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd Listener.
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_listener).
 
--author("Feng Lee <feng@emqtt.io>").
+-behaviour(gen_server).
 
 -include("esockd.hrl").
-
--behaviour(gen_server).
 
 -export([start_link/5, options/1, get_port/1]).
 
@@ -58,7 +43,7 @@
 -spec(start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) -> {ok, pid()} | {error, term()} | ignore when 
     Protocol    :: atom(),
     ListenOn    :: esockd:listen_on(),
-    Options	    :: [esockd:option()],
+    Options	:: [esockd:option()],
     AcceptorSup :: pid(),
     Logger      :: gen_logger:logmod()).
 start_link(Protocol, ListenOn, Options, AcceptorSup, Logger) ->
@@ -116,16 +101,20 @@ handle_call(options, _From, State = #state{options = Options}) ->
 handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
 
-handle_call(_Request, _From, State) ->
+handle_call(Req, _From, State) ->
+    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
     {noreply, State}.
 
-handle_cast(_Msg, State) ->
+handle_cast(Msg, State) ->
+    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
-handle_info(_Info, State) ->
+handle_info(Info, State) ->
+    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{protocol = Protocol, listen_on = ListenOn, lsock = LSock}) ->
+    esockd_rate_limiter:delete({listener, Protocol, ListenOn}),
     {ok, {IPAddress, Port}} = esockd_transport:sockname(LSock),
     esockd_transport:close(LSock),
     %% Print on console

@@ -1,30 +1,21 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%
-%%% The Original Code is RabbitMQ.
-%%%
-%%% The Initial Developer of the Original Code is GoPivotal, Inc.
-%%% Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
-%%%
-%%%-----------------------------------------------------------------------------
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%
+%% The Original Code is RabbitMQ.
+%%
+%% The Initial Developer of the Original Code is GoPivotal, Inc.
+%% Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
 
 -module(esockd_ssl).
 
@@ -34,7 +25,6 @@
          peer_cert_subject_items/2, peer_cert_validity/1]).
 
 -type(certificate() :: binary()).
-
 -export_type([certificate/0]).
 
 %% Return a string describing the certificate's issuer.
@@ -55,15 +45,15 @@ peer_cert_subject(Cert) ->
                       format_rdn_sequence(Subject)
               end, Cert).
 
--spec(peer_cert_common_name(certificate()) -> binary() | 'not_found').
+-spec(peer_cert_common_name(certificate()) -> binary() | undefined).
 peer_cert_common_name(Cert) ->
     case peer_cert_subject_items(Cert, ?'id-at-commonName') of
-        not_found -> not_found;
+        undefined -> undefined;
         CNs       -> iolist_to_binary(string:join(CNs, ","))
      end.
 
 %% Return the parts of the certificate's subject.
--spec(peer_cert_subject_items(certificate(), tuple()) -> [string()] | 'undefined').
+-spec(peer_cert_subject_items(certificate(), tuple()) -> [string()] | undefined).
 peer_cert_subject_items(Cert, Type) ->
     cert_info(fun(#'OTPCertificate' {
                      tbsCertificate = #'OTPTBSCertificate' {
@@ -82,17 +72,14 @@ peer_cert_validity(Cert) ->
                                            format_asn1_value(End)]))
               end, Cert).
 
-cert_info(F, {ok, Cert}) ->
-    F(case public_key:pkix_decode_cert(Cert, otp) of
-          {ok, DecCert} -> DecCert; %%pre R14B
-          DecCert       -> DecCert  %%R14B onwards
-      end).
+cert_info(F, Cert) ->
+    F(public_key:pkix_decode_cert(Cert, otp)).
 
 find_by_type(Type, {rdnSequence, RDNs}) ->
     case [V || #'AttributeTypeAndValue'{type = T, value = V}
                    <- lists:flatten(RDNs),
                T == Type] of
-        [] -> not_found;
+        [] -> undefined;
         L  -> [format_asn1_value(V) || V <- L]
     end.
 
@@ -159,7 +146,7 @@ escape_rdn_value([C | S], middle) when C < 32 ; C >= 126 ->
     %% purposes it's handy to escape all non-printable chars. All non-ASCII
     %% characters get converted to UTF-8 sequences and then escaped. We've
     %% already got a UTF-8 sequence here, so just escape it.
-    rabbit_misc:format("\\~2.16.0B", [C]) ++ escape_rdn_value(S, middle);
+    lists:flatten(io_lib:format("\\~2.16.0B", [C]) ++ escape_rdn_value(S, middle));
 escape_rdn_value([C | S], middle) ->
     [C | escape_rdn_value(S, middle)].
 

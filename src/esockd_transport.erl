@@ -1,33 +1,18 @@
-%%%-----------------------------------------------------------------------------
-%%% Copyright (c) 2013-2017 EMQ Enterprise, Inc. (http://emqtt.io)
-%%%
-%%% Permission is hereby granted, free of charge, to any person obtaining a copy
-%%% of this software and associated documentation files (the "Software"), to deal
-%%% in the Software without restriction, including without limitation the rights
-%%% to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-%%% copies of the Software, and to permit persons to whom the Software is
-%%% furnished to do so, subject to the following conditions:
-%%%
-%%% The above copyright notice and this permission notice shall be included in all
-%%% copies or substantial portions of the Software.
-%%%
-%%% THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-%%% IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-%%% FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-%%% AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-%%% LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-%%% OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-%%% SOFTWARE.
-%%%-----------------------------------------------------------------------------
-%%% @doc
-%%% eSockd TCP/SSL or Proxy Transport
-%%%
-%%% @end
-%%%-----------------------------------------------------------------------------
+%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
 
 -module(esockd_transport).
-
--author("Feng Lee <feng@emqtt.io>").
 
 -include("esockd.hrl").
 
@@ -105,19 +90,7 @@ close(#proxy_socket{socket = Sock}) ->
 -spec(fast_close(sock()) -> ok).
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
-%% From rabbit_net.erl
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
-    %% We cannot simply port_close the underlying tcp socket since the
-    %% TLS protocol is quite insistent that a proper closing handshake
-    %% should take place (see RFC 5245 s7.2.1). So we call ssl:close
-    %% instead, but that can block for a very long time, e.g. when
-    %% there is lots of pending output and there is tcp backpressure,
-    %% or the ssl_connection process has entered the the
-    %% workaround_transport_delivery_problems function during
-    %% termination, which, inexplicably, does a gen_tcp:recv(Socket,
-    %% 0), which may never return if the client doesn't send a FIN or
-    %% that gets swallowed by the network. Since there is no timeout
-    %% variant of ssl:close, we construct our own.
     {Pid, MRef} = spawn_monitor(fun() -> ssl:close(SslSock) end),
     erlang:send_after(?SSL_CLOSE_TIMEOUT, self(), {Pid, ssl_close_timeout}),
     receive
@@ -255,34 +228,48 @@ peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
     {ok, {SrcAddr, SrcPort}}.
 
 %% @doc Socket peercert
--spec(peercert(Sock :: sock()) -> nossl | {ok, Cert :: binary()} | {error, Reason :: term()}).
+-spec(peercert(sock()) -> nossl | binary() | list(pp2_additional_ssl_field()) |
+                          {error, term()}).
 peercert(Sock) when is_port(Sock) ->
     nossl;
 peercert(#ssl_socket{ssl = SslSock}) ->
-    ssl:peercert(SslSock);
-peercert(#proxy_socket{socket = Sock}) ->
-    peercert(Sock).
+    case ssl:peercert(SslSock) of
+        {ok, Cert} -> Cert;
+        Error -> Error
+    end;
+peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+    proplists:get_value(pp2_ssl, AdditionalInfo, []).
 
 %% @doc Peercert subject
--spec(peer_cert_subject(Sock :: sock()) -> undefined | binary()).
+-spec(peer_cert_subject(sock()) -> undefined | binary()).
 peer_cert_subject(Sock) when is_port(Sock) ->
     undefined;
 peer_cert_subject(#ssl_socket{ssl = SslSock}) ->
-    esockd_ssl:peer_cert_subject(ssl:peercert(SslSock));
-peer_cert_subject(Sock) when ?IS_PROXY(Sock) ->
-    peer_cert_common_name(Sock). %% Common Name?? PP2 will not pass subject.
+    case ssl:peercert(SslSock) of
+        {ok, Cert} ->
+            esockd_ssl:peer_cert_subject(Cert);
+        _Error -> undefined
+    end;
+peer_cert_subject(Sock = #proxy_socket{}) ->
+    %% Common Name? Haproxy PP2 will not pass subject.
+    peer_cert_common_name(Sock).
 
 %% @doc Peercert common name
--spec(peer_cert_common_name(Sock :: sock()) -> undefined | binary()).
+-spec(peer_cert_common_name(sock()) -> undefined | binary()).
 peer_cert_common_name(Sock) when is_port(Sock) ->
     undefined;
 peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
-    esockd_ssl:peer_cert_common_name(ssl:peercert(SslSock));
+    case ssl:peercert(SslSock) of
+        {ok, Cert} ->
+            esockd_ssl:peer_cert_common_name(Cert);
+        _Error -> undefined
+    end;
 peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
-    proplists:get_value(pp2_ssl_cn, proplists:get_value(pp2_ssl, AdditionalInfo, [])).
+    proplists:get_value(pp2_ssl_cn,
+                        proplists:get_value(pp2_ssl, AdditionalInfo, [])).
 
 %% @doc Shutdown socket
--spec(shutdown(sock(), How) -> ok | {error, Reason :: inet:posix()} when
+-spec(shutdown(sock(), How) -> ok | {error, inet:posix()} when
     How :: read | write | read_write).
 shutdown(Sock, How) when is_port(Sock) ->
     gen_tcp:shutdown(Sock, How);
