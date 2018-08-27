@@ -26,7 +26,7 @@ start_link(Proto, Port, Opts, MFA) ->
     case ssl:listen(Port, esockd_util:merge_opts(
                             ?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
         {ok, LSock} ->
-            io:format("~s opened on dtls ~w~n", [Proto, Port]),
+            error_logger:info_msg("~s opened on dtls ~w~n", [Proto, Port]),
             {ok, Sup} = supervisor:start_link(?MODULE, []),
             LimitFun = esockd_listener_sup:rate_limit_fun({dtls, Proto, Port}, Opts),
             {ok, AcceptorSup} = start_acceptor_sup(Sup, Opts, MFA, LimitFun),

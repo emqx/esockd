@@ -18,7 +18,8 @@
 
 -export([server/4, count_peers/1, stop/1]).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
+         code_change/3]).
 
 -record(state, {proto, sock, port, peers, mfa}).
 
@@ -62,7 +63,7 @@ init([Proto, Port, Opts, MFA]) ->
         {ok, Sock} ->
             %% Trigger the udp_passive event
             inet:setopts(Sock, [{active, 1}]),
-            io:format("~s opened on udp ~p~n", [Proto, Port]),
+            error_logger:info_msg("~s opened on udp ~p~n", [Proto, Port]),
             {ok, #state{proto = Proto, sock = Sock, port = Port, peers = #{}, mfa = MFA}};
         {error, Reason} -> {stop, Reason}
     end.

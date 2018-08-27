@@ -65,8 +65,8 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
                 {ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock)
             end, lists:seq(1, AcceptorNum)),
             {ok, {LAddr, LPort}} = inet:sockname(LSock),
-            io:format("~s listen on ~s:~p with ~p acceptors.~n",
-                      [Proto, esockd_net:ntoab(LAddr), LPort, AcceptorNum]),
+            error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
+                                  [Proto, esockd_net:ntoab(LAddr), LPort, AcceptorNum]),
             {ok, #state{proto = Proto, listen_on = ListenOn, options = Opts,
                         lsock = LSock, laddr = LAddr, lport = LPort}};
         {error, Reason} ->
@@ -107,10 +107,10 @@ handle_info(Info, State) ->
 
 terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,
                           lsock = LSock, laddr = Addr, lport = Port}) ->
+    error_logger:info_msg("~s stopped on ~s~n", [Proto, esockd_net:format({Addr, Port})]),
     esockd_rate_limiter:delete({listener, Proto, ListenOn}),
     esockd_server:del_stats({Proto, ListenOn}),
-    esockd_transport:fast_close(LSock),
-    io:format("~s stopped on ~s~n", [Proto, esockd_net:format({Addr, Port})]).
+    esockd_transport:fast_close(LSock).
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
