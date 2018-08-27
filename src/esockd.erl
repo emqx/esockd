@@ -35,6 +35,7 @@
 %% Utility functions
 -export([parse_opt/1, ulimit/0, fixaddr/1, to_string/1]).
 
+-type(proto() :: atom()).
 -type(transport() :: module()).
 -type(udp_transport() :: {udp | dtls, pid(), inet:socket()}).
 -type(sock() :: esockd_transport:sock()).
@@ -54,10 +55,10 @@
                 | {dtls_options, [gen_udp:option() | ssl:ssl_option()]}).
 
 -type(host() :: inet:ip_address() | string()).
-
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
 
--export_type([transport/0, udp_transport/0, sock/0, sock_fun/0, mfargs/0, option/0, listen_on/0]).
+-export_type([proto/0, transport/0, udp_transport/0, sock/0, sock_fun/0, mfargs/0,
+              option/0, listen_on/0]).
 
 %%--------------------------------------------------------------------
 %% API
