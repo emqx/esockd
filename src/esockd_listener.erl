@@ -65,8 +65,8 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
                 {ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock)
             end, lists:seq(1, AcceptorNum)),
             {ok, {LAddr, LPort}} = inet:sockname(LSock),
-            error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
-                                  [Proto, esockd_net:ntoab(LAddr), LPort, AcceptorNum]),
+            %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
+            %%                      [Proto, esockd_net:ntoab(LAddr), LPort, AcceptorNum]),
             {ok, #state{proto = Proto, listen_on = ListenOn, options = Opts,
                         lsock = LSock, laddr = LAddr, lport = LPort}};
         {error, Reason} ->

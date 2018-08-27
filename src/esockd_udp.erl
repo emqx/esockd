@@ -63,9 +63,10 @@ init([Proto, Port, Opts, MFA]) ->
         {ok, Sock} ->
             %% Trigger the udp_passive event
             inet:setopts(Sock, [{active, 1}]),
-            error_logger:info_msg("~s opened on udp ~p~n", [Proto, Port]),
+            %% error_logger:info_msg("~s opened on udp ~p~n", [Proto, Port]),
             {ok, #state{proto = Proto, sock = Sock, port = Port, peers = #{}, mfa = MFA}};
-        {error, Reason} -> {stop, Reason}
+        {error, Reason} ->
+            {stop, Reason}
     end.
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
