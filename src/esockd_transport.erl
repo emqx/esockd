@@ -231,6 +231,9 @@ peercert(Sock) when is_port(Sock) ->
 peercert(#ssl_socket{ssl = SslSock}) ->
     case ssl:peercert(SslSock) of
         {ok, Cert} -> Cert;
+        %% One-way SSL
+        {error, no_peercert} ->
+            undefined;
         Error -> Error
     end;
 peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
