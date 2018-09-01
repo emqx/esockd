@@ -73,7 +73,7 @@ handle_info({inet_async, _Sock, _Ref, {ok, Data}},
 	{ok, Peername} = Transport:peername(Sock),
     io:format("Data from ~s: ~s~n",
               [esockd_net:format(peername, Peername), Data]),
-	Transport:async_send(Data),
+	Transport:async_send(Sock, Data),
     Transport:async_recv(Sock, 0, infinity),
     {noreply, State};
 
