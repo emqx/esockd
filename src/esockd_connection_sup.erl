@@ -159,7 +159,7 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
         Rule ->
             case lists:member(Rule, Rules) of
                 true ->
-                    {reply, {error, alread_existed}, State};
+                    {reply, {error, already_exists}, State};
                 false ->
                     {reply, ok, State#state{access_rules = [Rule | Rules]}}
             end
