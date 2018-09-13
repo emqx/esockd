@@ -22,10 +22,12 @@
 
 -export([new/2, info/1, check/2, check/3]).
 
--record(bucket, {burst   :: pos_integer(),
-                 tokens  :: non_neg_integer(),
-                 rate    :: float(),
-                 lastime :: pos_integer()}).
+-record(bucket, {
+          burst   :: pos_integer(),
+          tokens  :: non_neg_integer(),
+          rate    :: float(),
+          lastime :: pos_integer()
+         }).
 
 -type(bucket() :: #bucket{}).
 

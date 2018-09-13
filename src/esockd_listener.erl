@@ -23,12 +23,14 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--record(state, {proto     :: atom(),
-                listen_on :: esockd:listen_on(),
-                options   :: [esockd:option()],
-                lsock     :: inet:socket(),
-                laddr     :: inet:ip_address(),
-                lport     :: inet:port_number()}).
+-record(state, {
+          proto     :: atom(),
+          listen_on :: esockd:listen_on(),
+          options   :: [esockd:option()],
+          lsock     :: inet:socket(),
+          laddr     :: inet:ip_address(),
+          lport     :: inet:port_number()
+         }).
 
 -define(ACCEPTOR_POOL, 16).
 -define(DEFAULT_TCP_OPTIONS, [{nodelay, true},
