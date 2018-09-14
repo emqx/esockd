@@ -1,5 +1,5 @@
 
-# esockd [![Build Status](https://travis-ci.org/emqtt/esockd.svg?branch=3.0)](https://travis-ci.org/emqtt/esockd)
+# esockd [![Build Status](https://travis-ci.org/emqx/esockd.svg?branch=emqx30)](https://travis-ci.org/emqx/esockd)
 
 Erlang General Non-blocking TCP/SSL Socket Server.
 
@@ -200,5 +200,5 @@ Apache License Version 2.0
 
 ## Author
 
-Feng Lee <feng@emqx.io>
+EMQ X Team.
 
