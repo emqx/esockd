@@ -29,14 +29,20 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
          code_change/3]).
 
--define(DEFAULT_MAX_CONNS, 1024).
--define(Transport, esockd_transport).
+-type(shutdown() :: brutal_kill | infinity | pos_integer()).
 
--record(state, {curr_connections = 0,
-                max_connections  = ?DEFAULT_MAX_CONNS,
-                access_rules     = [],
-                shutdown         = brutal_kill,
-                mfargs           :: mfa()}).
+-record(state, {
+          curr_connections :: map(),
+          max_connections  :: pos_integer(),
+          access_rules     :: list(),
+          shutdown         :: shutdown(),
+          mfargs           :: mfa()
+         }).
+
+-define(DEFAULT_MAX_CONNS, 1024).
+-define(TRANSPORT, esockd_transport).
+-define(ERROR_MSG(Format, Args),
+        error_logger:error_msg("[~s] " ++ Format, [?MODULE | Args])).
 
 %% @doc Start connection supervisor.
 -spec(start_link([esockd:option()], esockd:mfargs()) -> {ok, pid()} | ignore | {error, term()}).
@@ -52,8 +58,8 @@ start_connection(Sup, Sock, UpgradeFuns) ->
     case call(Sup, {start_connection, Sock}) of
         {ok, ConnPid} ->
             %% Transfer controlling from acceptor to connection
-            _ = ?Transport:controlling_process(Sock, ConnPid),
-            _ = ?Transport:ready(ConnPid, Sock, UpgradeFuns),
+            _ = ?TRANSPORT:controlling_process(Sock, ConnPid),
+            _ = ?TRANSPORT:ready(ConnPid, Sock, UpgradeFuns),
             {ok, ConnPid};
         ignore -> ignore;
         {error, Reason} ->
@@ -64,11 +70,11 @@ start_connection(Sup, Sock, UpgradeFuns) ->
 -spec(start_connection_proc(esockd:mfargs(), esockd_transport:sock())
       -> {ok, pid()} | ignore | {error, term()}).
 start_connection_proc(M, Sock) when is_atom(M) ->
-    M:start_link(?Transport, Sock);
+    M:start_link(?TRANSPORT, Sock);
 start_connection_proc({M, F}, Sock) when is_atom(M), is_atom(F) ->
-    M:F(?Transport, Sock);
+    M:F(?TRANSPORT, Sock);
 start_connection_proc({M, F, Args}, Sock) when is_atom(M), is_atom(F), is_list(Args) ->
-    erlang:apply(M, F, [?Transport, Sock | Args]).
+    erlang:apply(M, F, [?TRANSPORT, Sock | Args]).
 
 -spec(count_connections(pid()) -> integer()).
 count_connections(Sup) ->
@@ -108,37 +114,42 @@ init([Opts, MFA]) ->
     MaxConns = get_value(max_connections, Opts, ?DEFAULT_MAX_CONNS),
     RawRules = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
-    {ok, #state{curr_connections = 0, max_connections  = MaxConns,
-                access_rules = AccessRules, shutdown = Shutdown, mfargs = MFA}}.
+    {ok, #state{curr_connections = #{},
+                max_connections  = MaxConns,
+                access_rules     = AccessRules,
+                shutdown         = Shutdown,
+                mfargs           = MFA}}.
 
 handle_call({start_connection, _Sock}, _From,
-            State = #state{curr_connections = CurrConns, max_connections  = MaxConns})
-    when CurrConns >= MaxConns ->
+            State = #state{curr_connections = Conns, max_connections = MaxConns})
+    when map_size(Conns) >= MaxConns ->
     {reply, {error, maxlimit}, State};
 
-handle_call({start_connection, Sock}, _From, State = #state{mfargs = MFA, curr_connections = Count, access_rules = Rules}) ->
+handle_call({start_connection, Sock}, _From,
+            State = #state{curr_connections = Conns, access_rules = Rules, mfargs = MFA}) ->
     case esockd_transport:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
-                true  -> case catch start_connection_proc(MFA, Sock) of
-                             {ok, Pid} when is_pid(Pid) ->
-                                 put(Pid, true),
-                                 {reply, {ok, Pid}, State#state{curr_connections = Count+1}};
-                             ignore ->
-                                 {reply, ignore, State};
-                             {error, Reason} ->
-                                 {reply, {error, Reason}, State};
-                             What ->
-                                {reply, {error, What}, State}
-                         end;
-                false -> {reply, {error, forbidden}, State}
+                true ->
+                    case catch start_connection_proc(MFA, Sock) of
+                        {ok, Pid} when is_pid(Pid) ->
+                            {reply, {ok, Pid}, State#state{curr_connections = maps:put(Pid, true, Conns)}};
+                        ignore ->
+                            {reply, ignore, State};
+                        {error, Reason} ->
+                            {reply, {error, Reason}, State};
+                        What ->
+                            {reply, {error, What}, State}
+                    end;
+                false ->
+                    {reply, {error, forbidden}, State}
             end;
         {error, Reason} ->
             {reply, {error, Reason}, State}
     end;
 
-handle_call(count_connections, _From, State = #state{curr_connections = Count}) ->
-    {reply, Count, State};
+handle_call(count_connections, _From, State = #state{curr_connections = Conns}) ->
+    {reply, maps:size(Conns), State};
 
 handle_call(get_max_connections, _From, State = #state{max_connections = MaxConns}) ->
     {reply, MaxConns, State};
@@ -166,25 +177,25 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     end;
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
+    ?ERROR_MSG("unexpected call: ~p", [Req]),
     {reply, ignored, State}.
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
+    ?ERROR_MSG("unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
-handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Count}) ->
-    case erase(Pid) of
-        true ->
+handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
+    case maps:take(Pid, Conns) of
+        {true, Conns1} ->
             connection_crashed(Pid, Reason, State),
-            {noreply, State#state{curr_connections = Count-1}};
-        undefined ->
-            error_logger:error_msg("[~s] unexpected 'EXIT': ~p, reason: ~p", [?MODULE, Pid, Reason]),
+            {noreply, State#state{curr_connections = Conns1}};
+        error ->
+            ?ERROR_MSG("unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
             {noreply, State}
     end;
 
 handle_info(Info, State) ->
-    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
+    ?ERROR_MSG("unexpected info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->
@@ -226,12 +237,12 @@ count_shutdown(Reason) ->
     case get({shutdown, Reason}) of
         undefined ->
             put({shutdown, Reason}, 1);
-        Count     ->
-            put({shutdown, Reason}, Count+1)
+        Cnt ->
+            put({shutdown, Reason}, Cnt+1)
     end.
 
-terminate_children(State = #state{shutdown = Shutdown}) ->
-    {Pids, EStack0} = monitor_children(),
+terminate_children(State = #state{curr_connections = Conns, shutdown = Shutdown}) ->
+    {Pids, EStack0} = monitor_children(Conns),
     Sz = sets:size(Pids),
     EStack = case Shutdown of
                  brutal_kill ->
@@ -250,7 +261,7 @@ terminate_children(State = #state{shutdown = Shutdown}) ->
                   report_error(connection_shutdown_error, Reason, Pid, State)
               end, ok, EStack).
 
-monitor_children() ->
+monitor_children(Conns) ->
     lists:foldl(fun(P, {Pids, EStack}) ->
         case monitor_child(P) of
             ok ->
@@ -260,7 +271,7 @@ monitor_children() ->
             {error, Reason} ->
                 {Pids, dict:append(Reason, P, EStack)}
         end
-    end, {sets:new(), dict:new()}, get_keys(true)).
+    end, {sets:new(), dict:new()}, maps:keys(Conns)).
 
 %% Help function to shutdown/2 switches from link to monitor approach
 monitor_child(Pid) ->
@@ -306,21 +317,21 @@ wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
 wait_children(brutal_kill, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, killed} ->
-            wait_children(brutal_kill, del(Pid, Pids), Sz-1, TRef, EStack);
+            wait_children(brutal_kill, sets:del_element(Pid, Pids), Sz-1, TRef, EStack);
 
         {'DOWN', _MRef, process, Pid, Reason} ->
-            wait_children(brutal_kill, del(Pid, Pids),
+            wait_children(brutal_kill, sets:del_element(Pid, Pids),
                           Sz-1, TRef, dict:append(Reason, Pid, EStack))
     end;
 
 wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
     receive
         {'DOWN', _MRef, process, Pid, shutdown} ->
-            wait_children(Shutdown, del(Pid, Pids), Sz-1, TRef, EStack);
+            wait_children(Shutdown, sets:del_element(Pid, Pids), Sz-1, TRef, EStack);
         {'DOWN', _MRef, process, Pid, normal} ->
-            wait_children(Shutdown, del(Pid, Pids), Sz-1, TRef, EStack);
+            wait_children(Shutdown, sets:del_element(Pid, Pids), Sz-1, TRef, EStack);
         {'DOWN', _MRef, process, Pid, Reason} ->
-            wait_children(Shutdown, del(Pid, Pids), Sz-1,
+            wait_children(Shutdown, sets:del_element(Pid, Pids), Sz-1,
                           TRef, dict:append(Reason, Pid, EStack));
         {timeout, TRef, kill} ->
             sets:fold(fun(P, _) -> exit(P, kill) end, ok, Pids),
@@ -336,7 +347,4 @@ report_error(Error, Reason, Pid, #state{mfargs = MFA}) ->
                             {name, connection},
                             {mfargs, MFA}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
-
-del(Pid, Pids) ->
-    erase(Pid), sets:del_element(Pid, Pids).
 

@@ -12,6 +12,9 @@
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
 
+-ifndef(ESOCKD_HRL).
+-define(ESOCKD_HRL, true).
+
 %%--------------------------------------------------------------------
 %% Default Timeout
 %%--------------------------------------------------------------------
@@ -59,3 +62,4 @@
 
 -define(IS_PROXY(Sock), is_record(Sock, proxy_socket)).
 
+-endif.

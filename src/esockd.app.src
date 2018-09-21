@@ -1,6 +1,6 @@
 {application, esockd, [
   {id, "esockd"},
-  {vsn, "5.4"},
+  {vsn, "5.4.1"},
   {description, "General Non-blocking TCP/SSL Server"},
   {modules, []},
   {registered, []},
