@@ -22,13 +22,46 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-define(OPTS, [{tcp_options,[{backlog, 1024},
+                             {send_timeout, 15000},
+                             {send_timeout_close, true},
+                             {nodelay, true},
+                             {reuseaddr, true}]},
+                             {acceptors, 8},
+                {max_connections, 1024000},
+                {max_conn_rate, {1000, 1}},
+                {access_rules, [{allow, all}]}]).
+
+-define(INFINITY_OPTS, [{tcp_options, [{backlog, 1024},
+                             {send_timeout, 15000},
+                             {send_timeout_close, true},
+                             {nodelay, true},
+                             {reuseaddr, true}]},
+                             {acceptors, 8},
+                {max_connections, 1024000},
+                {shutdown, infinity},
+                {max_conn_rate, {1000, 1}},
+                {access_rules, [{allow, all}]}]).
+
+-define(TIME_OPTS, [{tcp_options, [{backlog, 1024},
+                             {send_timeout, 15000},
+                             {send_timeout_close, true},
+                             {nodelay, true},
+                             {reuseaddr, true}]},
+                             {acceptors, 8},
+                {max_connections, 1024000},
+                {shutdown, 3000},
+                {max_conn_rate, {1000, 1}},
+                {access_rules, [{allow, all}]}]).
+
 all() ->
     [{group, esockd},
      {group, cidr},
      {group, access},
      {group, udp},
      {group, dtls},
-     {group, proxy_protocol}].
+     {group, proxy_protocol},
+     {group, connection_sup}].
 
 groups() ->
     [{esockd, [sequence],
@@ -73,7 +106,8 @@ groups() ->
        new_connection_v2,
        unknow_data,
        garbage_date,
-       reuse_socket]}
+       reuse_socket]},
+     {connection_sup, [sequence], [connection_sup_api, shutdown]}
     ].
 
 init_per_suite(Config) ->
@@ -456,3 +490,39 @@ reuse_socket(_) ->
     end,
     esockd_transport:close(Sock1).
 
+connection_sup_api(_Config) ->
+    {ok, LSup} = esockd:open(esockd_connect_SUITE, {"127.0.0.1", 1314},
+                              ?OPTS, echo_mfa()),
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    MaxConn = esockd_connection_sup:get_max_connections(ConnSup),
+    ?assertEqual(MaxConn, 1024000),
+
+    esockd_connection_sup:set_max_connections(ConnSup, 2),
+    RestMaxConn = esockd_connection_sup:get_max_connections(ConnSup),
+    ?assertEqual(RestMaxConn, 2),
+
+    {ok, Sock1} = gen_tcp:connect({127,0,0,1}, 1314, []),
+    timer:sleep(10),
+    CurrentConn = esockd_connection_sup:count_connections(ConnSup),
+    ?assertEqual(CurrentConn, 1),
+    esockd_transport:close(Sock1),
+    timer:sleep(10),
+
+    [{_Reason, ShutdownConn}] = esockd_connection_sup:get_shutdown_count(ConnSup),
+    ?assertEqual(ShutdownConn, 1),
+    gen_server:stop(ConnSup, normal, 3000),
+    esockd:close(esockd_connect_SUITE, {"127.0.0.1", 1314}).
+
+shutdown(_Config) ->
+    {ok, LSup} = esockd:open(esockd_connect_SUITE, {"127.0.0.1", 1314},
+                              ?INFINITY_OPTS, echo_mfa()),
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    gen_server:stop(ConnSup, normal, 3000),
+    esockd:close(esockd_connect_SUITE, {"127.0.0.1", 1314}),
+    timer:sleep(10),
+
+    {ok, LTSup} = esockd:open(esockd_connect_SUITE, {"127.0.0.1", 1314},
+                              ?TIME_OPTS, echo_mfa()),
+    TConnSup = esockd_listener_sup:connection_sup(LTSup),
+    gen_server:stop(TConnSup, normal, 3000),
+    esockd:close(esockd_connect_SUITE, {"127.0.0.1", 1314}).
