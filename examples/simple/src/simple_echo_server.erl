@@ -26,7 +26,7 @@ start() -> start(5000).
 start([Port]) when is_atom(Port) ->
     start(list_to_integer(atom_to_list(Port)));
 start(Port) when is_integer(Port) ->
-    [ok = application:start(App) || App <- [sasl, esockd]],
+    [{ok, _} = application:ensure_all_started(App) || App <- [sasl, esockd]],
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access_rules, Access},
                 {acceptors, 8},
