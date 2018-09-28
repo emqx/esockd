@@ -1,0 +1,9 @@
+{application, dtls_psk_echo_server,
+ [
+  {description, ""},
+  {vsn, "1.0"},
+  {modules, []},
+  {registered, []},
+  {applications, [kernel, stdlib]},
+  {env, []}
+ ]}.
