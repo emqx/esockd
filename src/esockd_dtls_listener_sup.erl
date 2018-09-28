@@ -20,8 +20,10 @@
 
 -define(DTLS_OPTS, [{protocol, dtls}, {mode, binary}, {reuseaddr, true}]).
 
--spec(start_link(atom(), inet:port_number(), [esockd:option()], mfa())
+-spec(start_link(atom(), {inet:ip_address(),inet:port_number()} | inet:port_number(), [esockd:option()], mfa())
       -> {ok, pid()} | {error, term()}).
+start_link(Proto, {Host, Port}, Opts, MFA) ->
+    start_link(Proto, Port, merge_addr(Host, Opts), MFA);
 start_link(Proto, Port, Opts, MFA) ->
     case ssl:listen(Port, esockd_util:merge_opts(
                             ?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
@@ -48,6 +50,9 @@ start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
                                   shutdown => 60000,
                                   type     => supervisor,
                                   modules  => [esockd_dtls_acceptor_sup]}).
+
+merge_addr(Addr, Opts) ->
+    lists:keystore(ip, 1, Opts, {ip, Addr}).
 
 %%-----------------------------------------------------------------------------
 %% Supervisor callbacks
