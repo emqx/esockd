@@ -39,7 +39,7 @@ start_link(Proto, ListenOn, Opts, MFA) ->
                     start    => {esockd_connection_sup, start_link, [Opts, MFA]},
                     restart  => transient,
                     shutdown => brutal_kill,
-                    type     => supervisor,
+                    type     => worker,
                     modules  => [esockd_connection_sup]},
     {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
     %% Start acceptor sup
