@@ -26,3 +26,4 @@ examples/plain/echo_server.d
 examples/ssl/ssl_echo_server.d
 cover/
 .DS_Store
+erlang.mk
