@@ -226,6 +226,8 @@ connection_crashed(_Pid, normal, _State) ->
     ok;
 connection_crashed(_Pid, shutdown, _State) ->
     ok;
+connection_crashed(_Pid, killed, _State) ->
+    ok;
 connection_crashed(_Pid, {shutdown, Reason}, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
 connection_crashed(Pid, {shutdown, Reason}, State) ->
