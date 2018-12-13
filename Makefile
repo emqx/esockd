@@ -18,6 +18,8 @@ PLT_APPS = sasl asn1 syntax_tools runtime_tools crypto public_key ssl
 DIALYZER_DIRS := ebin/
 DIALYZER_OPTS := --verbose --statistics -Werror_handling -Wrace_conditions
 
+$(shell [ -f erlang.mk ] || curl -s -o erlang.mk https://raw.githubusercontent.com/emqx/erlmk/master/erlang.mk)
+
 include erlang.mk
 
 app:: rebar.config
