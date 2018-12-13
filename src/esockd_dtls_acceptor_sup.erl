@@ -16,7 +16,8 @@
 
 -behaviour(supervisor).
 
--export([start_link/3, start_acceptor/2, count_acceptors/1]).
+-export([start_link/3]).
+-export([start_acceptor/2, count_acceptors/1]).
 
 -export([init/1]).
 
@@ -31,11 +32,11 @@ count_acceptors(Sup) ->
     proplists:get_value(active, supervisor:count_children(Sup), 0).
 
 init([Opts, MFA, LimitFun]) ->
-    {ok, {{simple_one_for_one, 0, 1},
-          [#{id       => acceptor,
-             start    => {esockd_dtls_acceptor, start_link, [self(), Opts, MFA, LimitFun]},
-             restart  => transient,
-             shutdown => brutal_kill,
-             type     => worker,
-             modules  => [esockd_dtls_acceptor]}]}}.
+    Acceptor = #{id => acceptor,
+                 start => {esockd_dtls_acceptor, start_link, [self(), Opts, MFA, LimitFun]},
+                 restart => transient,
+                 shutdown => brutal_kill,
+                 type => worker,
+                 modules => [esockd_dtls_acceptor]},
+    {ok, {{simple_one_for_one, 0, 1}, [Acceptor]}}.
 

@@ -44,19 +44,20 @@ start_link(Proto, Port, Opts, MFA) ->
     end.
 
 start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
-    supervisor:start_child(Sup, #{id       => acceptor_sup,
-                                  start    => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA, LimitFun]},
-                                  restart  => permanent,
-                                  shutdown => 60000,
-                                  type     => supervisor,
-                                  modules  => [esockd_dtls_acceptor_sup]}).
+    Spec = #{id => acceptor_sup,
+             start => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA, LimitFun]},
+             restart => transient,
+             shutdown => infinity,
+             type => supervisor,
+             modules => [esockd_dtls_acceptor_sup]},
+    supervisor:start_child(Sup, Spec).
 
 merge_addr(Addr, Opts) ->
     lists:keystore(ip, 1, Opts, {ip, Addr}).
 
-%%-----------------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% Supervisor callbacks
-%%-----------------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 init([]) ->
     {ok, {{one_for_all, 10, 3600}, []}}.

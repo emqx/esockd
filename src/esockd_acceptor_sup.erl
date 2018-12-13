@@ -16,8 +16,10 @@
 
 -behaviour(supervisor).
 
--export([start_link/5, start_acceptor/2, count_acceptors/1]).
+-export([start_link/5]).
+-export([start_acceptor/2, count_acceptors/1]).
 
+%% Supervisor callbacks
 -export([init/1]).
 
 %%------------------------------------------------------------------------------
@@ -44,12 +46,12 @@ count_acceptors(AcceptorSup) ->
 %%------------------------------------------------------------------------------
 
 init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]) ->
-    {ok, {{simple_one_for_one, 100, 3600},
-          [#{id       => acceptor,
-             start    => {esockd_acceptor, start_link,
-                         [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
-             restart  => transient,
-             shutdown => 5000,
-             type     => worker,
-             modules  => [esockd_acceptor]}]}}.
+    Acceptor = #{id => acceptor,
+                 start => {esockd_acceptor, start_link,
+                           [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
+                 restart => transient,
+                 shutdown => 1000,
+                 type => worker,
+                 modules => [esockd_acceptor]},
+    {ok, {{simple_one_for_one, 100, 3600}, [Acceptor]}}.
 
