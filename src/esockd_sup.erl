@@ -40,32 +40,32 @@ start_listener(Proto, ListenOn, Opts, MFA) ->
 -spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
-    #{id       => child_id(Proto, ListenOn),
-      start    => {esockd_listener_sup, start_link, [Proto, ListenOn, Opts, MFA]},
-      restart  => transient,
+    #{id => child_id(Proto, ListenOn),
+      start => {esockd_listener_sup, start_link, [Proto, ListenOn, Opts, MFA]},
+      restart => transient,
       shutdown => infinity,
-      type     => supervisor,
-      modules  => [esockd_listener_sup]}.
+      type => supervisor,
+      modules => [esockd_listener_sup]}.
 
 -spec(udp_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
-    #{id       => child_id(Proto, Port),
-      start    => {esockd_udp, server, [Proto, Port, Opts, MFA]},
-      restart  => transient,
+    #{id => child_id(Proto, Port),
+      start => {esockd_udp, server, [Proto, Port, Opts, MFA]},
+      restart => transient,
       shutdown => 5000,
-      type     => worker,
-      modules  => [esockd_udp]}.
+      type => worker,
+      modules => [esockd_udp]}.
 
 -spec(dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 dtls_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
-    #{id       => child_id(Proto, Port),
-      start    => {esockd_dtls_listener_sup, start_link, [Proto, Port, Opts, MFA]},
-      restart  => transient,
+    #{id => child_id(Proto, Port),
+      start => {esockd_dtls_listener_sup, start_link, [Proto, Port, Opts, MFA]},
+      restart => transient,
       shutdown => infinity,
-      type     => supervisor,
-      modules  => [esockd_dtls_listener_sup]}.
+      type => supervisor,
+      modules => [esockd_dtls_listener_sup]}.
 
 -spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, term()}).
 start_child(ChildSpec) ->
