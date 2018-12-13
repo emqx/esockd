@@ -33,10 +33,10 @@
 
 -record(state, {
           curr_connections :: map(),
-          max_connections  :: pos_integer(),
-          access_rules     :: list(),
-          shutdown         :: shutdown(),
-          mfargs           :: mfa()
+          max_connections :: pos_integer(),
+          access_rules :: list(),
+          shutdown :: shutdown(),
+          mfargs :: mfa()
          }).
 
 -define(DEFAULT_MAX_CONNS, 1024).
@@ -158,7 +158,8 @@ handle_call({set_max_connections, MaxConns}, _From, State) ->
     {reply, ok, State#state{max_connections = MaxConns}};
 
 handle_call(get_shutdown_count, _From, State) ->
-    {reply, [{Reason, Count} || {{shutdown, Reason}, Count} <- get()], State};
+    Counts = [{Reason, Count} || {{shutdown_count, Reason}, Count} <- get()],
+    {reply, Counts, State};
 
 handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
     {reply, [raw(Rule) || Rule <- Rules], State};
@@ -228,6 +229,8 @@ connection_crashed(_Pid, shutdown, _State) ->
     ok;
 connection_crashed(_Pid, killed, _State) ->
     ok;
+connection_crashed(_Pid, Reason, _State) when is_atom(Reason) ->
+    count_shutdown(Reason);
 connection_crashed(_Pid, {shutdown, Reason}, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
 connection_crashed(Pid, {shutdown, Reason}, State) ->
@@ -236,12 +239,8 @@ connection_crashed(Pid, Reason, State) ->
     report_error(connection_crashed, Reason, Pid, State).
 
 count_shutdown(Reason) ->
-    case get({shutdown, Reason}) of
-        undefined ->
-            put({shutdown, Reason}, 1);
-        Cnt ->
-            put({shutdown, Reason}, Cnt+1)
-    end.
+    Key = {shutdown_count, Reason},
+    put(Key, case get(Key) of undefined -> 1; Cnt -> Cnt+1 end).
 
 terminate_children(State = #state{curr_connections = Conns, shutdown = Shutdown}) ->
     {Pids, EStack0} = monitor_children(Conns),
