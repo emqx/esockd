@@ -15,5 +15,5 @@ port_command(Socket, Data, [nosuspend]) | {send_timeout, 5000}     | Return fals
 ## Conclusions
 
 1. Should set the `send_timeout` option if using `gen_tcp:send`
-2. Should set the `nosuspend` option if using `port_command`
+2. Should not set the `nosuspend` option if using `port_command`, for the busy sock will be killed at once.
 
