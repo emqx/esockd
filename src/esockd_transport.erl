@@ -124,9 +124,13 @@ send(#proxy_socket{socket = Sock}, Data) ->
 -spec(async_send(sock(), iodata()) -> ok | {error, Reason} when
       Reason :: close | timeout | inet:posix()).
 async_send(Sock, Data) when is_port(Sock) ->
-    case erlang:port_command(Sock, Data, [nosuspend]) of
-        true  -> ok;
-        false -> {error, ebusy} %% Tcp window may be full?
+    try erlang:port_command(Sock, Data, []) of
+        true -> ok;
+        false -> %% nosuspend option and port busy
+            {error, busy}
+    catch
+        error:_Error ->
+            {error, einval}
     end;
 async_send(Sock = #ssl_socket{ssl = SslSock}, Data) ->
     case ssl:send(SslSock, Data) of
