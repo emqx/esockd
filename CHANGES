@@ -196,7 +196,7 @@ update change logs
 2.0.0-alpha (2015/03/15)
 ------------------------
 
-Support [Allow/Deny](https://github.com/emqtt/esockd/wiki/Allow-and-Deny) features like NGINX.
+Support [Allow/Deny](https://github.com/emqx/esockd/wiki/Allow-and-Deny) features like NGINX.
 
 esockd to add allow/2, deny/2, get_access_rules/1 APIs
 
