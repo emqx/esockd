@@ -152,8 +152,9 @@ close(Sock) -> catch port_close(Sock).
 
 rate_limit(State = #state{limit_fun = RateLimit}) ->
     case RateLimit(1) of
-        I when I =< 0 ->
-            {next_state, suspending, State, 1000};
-        _ -> {keep_state, State, {next_event, internal, accept}}
+        {I, Pause} when I =< 0 ->
+            {next_state, suspending, State, Pause};
+        _ ->
+            {keep_state, State, {next_event, internal, accept}}
     end.
 

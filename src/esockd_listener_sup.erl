@@ -19,6 +19,7 @@
 -include("esockd.hrl").
 
 -export([start_link/4, listener/1, acceptor_sup/1, connection_sup/1]).
+
 %% export for dtls_listener_sup
 -export([rate_limit_fun/2]).
 
@@ -47,13 +48,13 @@ start_link(Proto, ListenOn, Opts, MFA) ->
     UpgradeFuns = upgrade_funs(Opts),
     StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
     LimitFun = rate_limit_fun({listener, Proto, ListenOn}, Opts),
-    AcceptorSupSpec =  #{id => acceptor_sup,
-                         start => {esockd_acceptor_sup, start_link,
-                                   [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
-                         restart => transient,
-                         shutdown => infinity,
-                         type => supervisor,
-                         modules => [esockd_acceptor_sup]},
+    AcceptorSupSpec = #{id => acceptor_sup,
+                        start => {esockd_acceptor_sup, start_link,
+                                  [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
+                        restart => transient,
+                        shutdown => infinity,
+                        type => supervisor,
+                        modules => [esockd_acceptor_sup]},
     {ok, AcceptorSup} = supervisor:start_child(Sup, AcceptorSupSpec),
     %% Start listener
     ListenerSpec = #{id => listener,
@@ -83,16 +84,16 @@ child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _}
                <- supervisor:which_children(Sup), Id =:= ChildId]).
 
-%%-----------------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% Supervisor callbacks
-%%-----------------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 init([]) ->
     {ok, {{rest_for_one, 10, 3600}, []}}.
 
-%%-----------------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% Sock tune/upgrade functions
-%%-----------------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 buffer_tune_fun(Opts) ->
     buffer_tune_fun(proplists:get_value(buffer, Opts),
@@ -130,7 +131,7 @@ proxy_upgrade_fun(Opts) ->
 rate_limit_fun(Bucket, Opts) ->
     case proplists:get_value(max_conn_rate, Opts) of
         undefined ->
-            fun(_) -> 1 end;
+            fun(_) -> {1, 0} end;
         I when is_integer(I) ->
             rate_limit_fun(Bucket, I, 1);
         {Limit, Period} ->
@@ -139,5 +140,5 @@ rate_limit_fun(Bucket, Opts) ->
 
 rate_limit_fun(Bucket, Limit, Period) ->
     ok = esockd_rate_limiter:create(Bucket, Limit, Period),
-    fun(I) -> esockd_rate_limiter:aquire(Bucket, I) end.
+    fun(I) -> esockd_rate_limiter:consume(Bucket, I) end.
 
