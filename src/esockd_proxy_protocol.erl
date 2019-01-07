@@ -197,4 +197,3 @@ inet_family(?UNIX)   -> unix.
 
 bool(1) -> true;
 bool(_) -> false.
-

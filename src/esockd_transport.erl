@@ -79,6 +79,7 @@ listen(Port, Opts) ->
 
 -spec(controlling_process(sock(), pid()) -> ok | {error, Reason} when
       Reason :: closed | not_owner | badarg | inet:posix()).
+
 controlling_process(Sock, NewOwner) when is_port(Sock) ->
     gen_tcp:controlling_process(Sock, NewOwner);
 controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
