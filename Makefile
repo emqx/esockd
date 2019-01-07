@@ -1,6 +1,6 @@
 PROJECT = esockd
 PROJECT_DESCRIPTION = General Non-blocking TCP/SSL Server
-PROJECT_VERSION = 5.4.3
+PROJECT_VERSION = 5.4.4
 PROJECT_REGISTERED = esockd_server
 
 LOCAL_DEPS = ssl
@@ -10,7 +10,7 @@ ERLC_OPTS += +warnings_as_errors +warn_export_all +warn_unused_import
 
 EUNIT_OPTS = verbose
 
-CT_SUITES = esockd
+CT_SUITES = esockd esockd_rate_limiter
 
 COVER = true
 
