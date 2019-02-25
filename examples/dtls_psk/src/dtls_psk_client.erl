@@ -25,9 +25,16 @@ connect(Port) ->
 send(Client, Msg) ->
     ssl:send(Client, Msg).
 
-user_lookup(psk, ServerHint, UserState) ->
-    io:format("ServerHint:~p, Userstate: ~p~n", [ServerHint, UserState]),
-    {ok, UserState}.
+user_lookup(psk, ServerHint, _UserState = PSKs) ->
+    ServerPskId = server_suggested_psk_id(ServerHint),
+    ClientPsk = maps:get(ServerPskId, PSKs),
+    io:format("ServerHint:~p, ServerSuggestedPSKID:~p, ClientPickedPSK: ~p~n",
+              [ServerHint, ServerPskId, ClientPsk]),
+    {ok, ClientPsk}.
+
+server_suggested_psk_id(ServerHint) ->
+    [_, Psk] = binary:split(ServerHint, <<"plz_use_">>),
+    Psk.
 
 opts() ->
     [{ssl_imp, new},
@@ -36,6 +43,8 @@ opts() ->
      {versions, [dtlsv1]},
      {protocol, dtls},
      {ciphers, [{psk, aes_128_cbc, sha}]},
-     {psk_identity, "Client_identity"},
-     {user_lookup_fun, {fun user_lookup/3, <<"shared_secret">>}},
+     {psk_identity, "psk_b"},
+     {user_lookup_fun, {fun user_lookup/3,
+                          #{<<"psk_a">> => <<"shared_secret_a">>,
+                            <<"psk_b">> => <<"shared_secret_b">>}}},
      {cb_info, {gen_udp, udp, udp_close, udp_error}}].
