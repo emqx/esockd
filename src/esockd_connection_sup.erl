@@ -131,7 +131,7 @@ handle_call({start_connection, Sock}, _From,
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
                 true ->
-                    case catch start_connection_proc(MFA, Sock) of
+                    try start_connection_proc(MFA, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
                             {reply, {ok, Pid}, State#state{curr_connections = maps:put(Pid, true, Conns)}};
                         ignore ->
@@ -140,6 +140,9 @@ handle_call({start_connection, Sock}, _From,
                             {reply, {error, Reason}, State};
                         What ->
                             {reply, {error, What}, State}
+                    catch
+                        _Error:Reason ->
+                            {reply, {error, Reason}, State}
                     end;
                 false ->
                     {reply, {error, forbidden}, State}
@@ -165,9 +168,7 @@ handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
     {reply, [raw(Rule) || Rule <- Rules], State};
 
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
-    case catch esockd_access:compile(RawRule) of
-        {'EXIT', _Error} ->
-            {reply, {error, bad_access_rule}, State};
+    try esockd_access:compile(RawRule) of
         Rule ->
             case lists:member(Rule, Rules) of
                 true ->
@@ -175,6 +176,9 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
                 false ->
                     {reply, ok, State#state{access_rules = [Rule | Rules]}}
             end
+    catch
+        _Error:_Reason ->
+            {reply, {error, bad_access_rule}, State}
     end;
 
 handle_call(Req, _From, State) ->

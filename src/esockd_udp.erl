@@ -88,12 +88,16 @@ handle_info({udp, Sock, IP, InPortNo, Packet},
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
-            case catch erlang:apply(M, F, [{udp, self(), Sock}, Peer | Args]) of
+            try erlang:apply(M, F, [{udp, self(), Sock}, Peer | Args]) of
                 {ok, Pid} ->
                     _Ref = erlang:monitor(process, Pid),
                     Pid ! {datagram, self(), Packet},
                     {noreply, store_peer(Peer, Pid, State)};
-                {Err, Reason} when Err =:= error; Err =:= 'EXIT' ->
+                {error, Reason} ->
+                    ?ERROR_MSG("Failed to start udp channel: ~s, reason: ~p",
+                               [esockd_net:format(Peer), Reason])
+            catch
+                _Error:Reason ->
                     ?ERROR_MSG("Failed to start udp channel: ~s, reason: ~p",
                                [esockd_net:format(Peer), Reason]),
                     {noreply, State}
