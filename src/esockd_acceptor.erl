@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -22,19 +22,23 @@
 -export([accepting/3, suspending/3]).
 
 %% gen_statem Callbacks
--export([init/1, callback_mode/0, terminate/3, code_change/4]).
+-export([ init/1
+        , callback_mode/0
+        , terminate/3
+        , code_change/4
+        ]).
 
--record(state, {
-          lsock        :: inet:socket(),
-          sockmod      :: module(),
-          sockname     :: {inet:ip_address(), inet:port_number()},
-          tune_fun     :: esockd:sock_fun(),
-          upgrade_funs :: [esockd:sock_fun()],
-          stats_fun    :: fun(),
-          limit_fun    :: fun(),
-          conn_sup     :: pid(),
-          accept_ref   :: term()
-         }).
+-record(state,
+        { lsock :: inet:socket()
+        , sockmod :: module()
+        , sockname :: {inet:ip_address(), inet:port_number()}
+        , tune_fun :: esockd:sock_fun()
+        , upgrade_funs :: [esockd:sock_fun()]
+        , stats_fun :: fun()
+        , limit_fun :: fun()
+        , conn_sup :: pid()
+        , accept_ref :: term()
+        }).
 
 %% @doc Start an acceptor
 -spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun(), inet:socket())

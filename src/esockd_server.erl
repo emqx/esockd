@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,10 +19,22 @@
 -export([start_link/0]).
 
 %% stats API
--export([stats_fun/2, init_stats/2, get_stats/1, inc_stats/3, dec_stats/3, del_stats/1]).
+-export([ stats_fun/2
+        , init_stats/2
+        , get_stats/1
+        , inc_stats/3
+        , dec_stats/3
+        , del_stats/1
+        ]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
 
 -record(state, {}).
 

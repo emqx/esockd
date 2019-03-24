@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,12 +20,29 @@
 
 -export([start_link/5]).
 
--export([waiting_for_sock/3, waiting_for_data/3, suspending/3]).
+-export([ waiting_for_sock/3
+        , waiting_for_data/3
+        , suspending/3
+        ]).
 
 %% gen_statem callbacks
--export([init/1, callback_mode/0, handle_event/4, terminate/3, code_change/4]).
+-export([ init/1
+        , callback_mode/0
+        , handle_event/4
+        , terminate/3
+        , code_change/4
+        ]).
 
--record(state, {sup, mfargs, max_conns, limit_fun, peername, lsock, sock, channel}).
+-record(state,
+        { sup
+        , mfargs
+        , max_conns
+        , limit_fun
+        , peername
+        , lsock
+        , sock
+        , channel
+        }).
 
 start_link(Sup, Opts, MFA, LimitFun, LSock) ->
     gen_statem:start_link(?MODULE, [Sup, Opts, MFA, LimitFun, LSock], []).

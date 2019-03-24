@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,19 +18,29 @@
 
 -include("esockd.hrl").
 
--export([start_link/4, options/1, get_port/1]).
+-export([start_link/4]).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([ options/1
+        , get_port/1
+        ]).
 
--record(state, {
-          proto     :: atom(),
-          listen_on :: esockd:listen_on(),
-          options   :: [esockd:option()],
-          lsock     :: inet:socket(),
-          laddr     :: inet:ip_address(),
-          lport     :: inet:port_number()
-         }).
+%% gen_server callbacks
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
+
+-record(state,
+        { proto :: atom()
+        , listen_on :: esockd:listen_on()
+        , options :: [esockd:option()]
+        , lsock :: inet:socket()
+        , laddr :: inet:ip_address()
+        , lport :: inet:port_number()
+        }).
 
 -define(ACCEPTOR_POOL, 16).
 -define(DEFAULT_TCP_OPTIONS, [{nodelay, true},

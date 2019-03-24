@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,26 +18,42 @@
 
 -import(proplists, [get_value/3]).
 
--export([start_link/2, start_connection/3, count_connections/1]).
--export([get_max_connections/1, set_max_connections/2]).
+-export([start_link/2]).
+
+-export([ start_connection/3
+        , count_connections/1
+        ]).
+
+-export([ get_max_connections/1
+        , set_max_connections/2
+        ]).
+
 -export([get_shutdown_count/1]).
 
 %% Allow, Deny
--export([access_rules/1, allow/2, deny/2]).
+-export([ access_rules/1
+        , allow/2
+        , deny/2
+        ]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
 
 -type(shutdown() :: brutal_kill | infinity | pos_integer()).
 
--record(state, {
-          curr_connections :: map(),
-          max_connections :: pos_integer(),
-          access_rules :: list(),
-          shutdown :: shutdown(),
-          mfargs :: mfa()
-         }).
+-record(state,
+        { curr_connections :: map()
+        , max_connections :: pos_integer()
+        , access_rules :: list()
+        , shutdown :: shutdown()
+        , mfargs :: mfa()
+        }).
 
 -define(DEFAULT_MAX_CONNS, 1024).
 -define(TRANSPORT, esockd_transport).
