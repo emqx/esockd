@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,10 +16,19 @@
 
 -behaviour(gen_server).
 
--export([server/4, count_peers/1, stop/1]).
+-export([ server/4
+        , count_peers/1
+        , stop/1
+        ]).
 
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+%% gen_server callbacks
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
 
 -record(state, {proto, sock, port, peers, mfa}).
 

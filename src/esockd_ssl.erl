@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -21,8 +21,12 @@
 
 -include_lib("public_key/include/public_key.hrl").
 
--export([peer_cert_issuer/1, peer_cert_subject/1, peer_cert_common_name/1,
-         peer_cert_subject_items/2, peer_cert_validity/1]).
+-export([ peer_cert_issuer/1
+        , peer_cert_subject/1
+        , peer_cert_common_name/1
+        , peer_cert_subject_items/2
+        , peer_cert_validity/1
+        ]).
 
 -type(certificate() :: binary()).
 -export_type([certificate/0]).

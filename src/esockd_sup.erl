@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -16,10 +16,24 @@
 
 -behaviour(supervisor).
 
--export([start_link/0, child_id/2]).
--export([start_listener/4, stop_listener/2, restart_listener/2]).
--export([listeners/0, listener/1]).
--export([child_spec/4, udp_child_spec/4, dtls_child_spec/4, start_child/1]).
+-export([start_link/0]).
+
+-export([child_id/2]).
+
+-export([ start_listener/4
+        , stop_listener/2
+        , restart_listener/2
+        ]).
+
+-export([ listeners/0
+        , listener/1
+        ]).
+
+-export([ child_spec/4
+        , udp_child_spec/4
+        , dtls_child_spec/4
+        , start_child/1
+        ]).
 
 %% supervisor callback
 -export([init/1]).

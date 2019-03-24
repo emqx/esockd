@@ -1,5 +1,5 @@
 %% Copyright (c) 2016 Benoît Chesneau <benoitc@refuge.io>
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -23,8 +23,16 @@
 
 -module(esockd_cidr).
 
--export([parse/1, parse/2, match/2, count/1, to_string/1]).
--export([is_ipv4/1, is_ipv6/1]).
+-export([ parse/1
+        , parse/2
+        , match/2
+        , count/1
+        , to_string/1
+        ]).
+
+-export([ is_ipv4/1
+        , is_ipv6/1
+        ]).
 
 -type(cidr_string() :: string()).
 -type(cidr() :: {inet:ip_address(), inet:ip_address(), 0..128}).

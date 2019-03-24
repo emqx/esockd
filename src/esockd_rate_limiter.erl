@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -18,14 +18,27 @@
 -behaviour(gen_server).
 
 -export([start_link/0]).
--export([create/2, create/3, consume/1, consume/2, delete/1]).
+
+-export([ create/2
+        , create/3
+        , consume/1
+        , consume/2
+        , delete/1
+        ]).
+
 -export([buckets/0]).
+
 %% for test
 -export([stop/0]).
 
 %% gen_server callbacks
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
-         code_change/3]).
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
 
 -type(bucket() :: term()).
 
