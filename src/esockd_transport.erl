@@ -292,8 +292,6 @@ ssl_upgrade_fun(SslOpts) ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
             {error, Reason} when Reason =:= closed; Reason =:= timeout ->
                 {error, Reason};
-            {error, {tls_alert, _}} ->
-                {error, tls_alert};
             {error, Reason} ->
                 {error, {ssl_error, Reason}};
             {'EXIT', Reason} ->
