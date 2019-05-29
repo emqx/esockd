@@ -1,25 +1,27 @@
-PROJECT = esockd
-PROJECT_DESCRIPTION = General Non-blocking TCP/SSL Server
-PROJECT_VERSION = 5.5.0
-PROJECT_REGISTERED = esockd_server
+REBAR := rebar3
 
-LOCAL_DEPS = ssl
+.PHONY: all
+all: compile
 
-ERLC_OPTS += +debug_info
-ERLC_OPTS += +warnings_as_errors +warn_export_all +warn_unused_import
+compile:
+	$(REBAR) compile
 
-EUNIT_OPTS = verbose
+.PHONY: clean
+clean: distclean
 
-CT_SUITES = esockd esockd_rate_limiter
+.PHONY: distclean
+distclean:
+	@rm -rf _build erl_crash.dump rebar3.crashdump rebar.lock
 
-COVER = true
+.PHONY: eunit
+eunit: compile
+	$(REBAR) eunit verbose=truen
 
-PLT_APPS = sasl asn1 syntax_tools runtime_tools crypto public_key ssl
-DIALYZER_DIRS := ebin/
-DIALYZER_OPTS := --verbose --statistics -Werror_handling -Wrace_conditions
+.PHONY: ct
+ct: compile
+	$(REBAR) ct -v
 
-$(shell [ -f erlang.mk ] || curl -s -o erlang.mk https://raw.githubusercontent.com/emqx/erlmk/master/erlang.mk)
+.PHONY: dialyzer
+dialyzer:
+	$(REBAR) dialyzer
 
-include erlang.mk
-
-app:: rebar.config
