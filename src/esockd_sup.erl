@@ -152,17 +152,23 @@ return_ok_or_error([{error, Reason}|_]) ->
 %%------------------------------------------------------------------------------
 
 init([]) ->
-    Limiter = #{id       => rate_limiter,
-                start    => {esockd_rate_limiter, start_link, []},
-                restart  => permanent,
+    SupFlags = #{strategy => one_for_one,
+                 intensity => 10,
+                 period => 100
+                },
+    Limiter = #{id => rate_limiter,
+                start => {esockd_rate_limiter, start_link, []},
+                restart => permanent,
                 shutdown => 5000,
-                type     => worker,
-                modules  => [esockd_rate_limiter]},
-    Server = #{id       => esockd_server,
-               start    => {esockd_server, start_link, []},
-               restart  => permanent,
+                type => worker,
+                modules => [esockd_rate_limiter]
+               },
+    Server = #{id => esockd_server,
+               start => {esockd_server, start_link, []},
+               restart => permanent,
                shutdown => 5000,
-               type     => worker,
-               modules  => [esockd_server]},
-    {ok, {{one_for_one, 10, 100}, [Limiter, Server]}}.
+               type => worker,
+               modules => [esockd_server]
+              },
+    {ok, {SupFlags, [Limiter, Server]}}.
 
