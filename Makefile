@@ -1,6 +1,6 @@
 PROJECT = esockd
 PROJECT_DESCRIPTION = General Non-blocking TCP/SSL Server
-PROJECT_VERSION = 5.4.4
+PROJECT_VERSION = 5.5.0
 PROJECT_REGISTERED = esockd_server
 
 LOCAL_DEPS = ssl

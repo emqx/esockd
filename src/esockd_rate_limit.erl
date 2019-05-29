@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,14 +20,18 @@
 
 -module(esockd_rate_limit).
 
--export([new/2, info/1, check/2, check/3]).
+-export([ new/2
+        , info/1
+        , check/2
+        , check/3
+        ]).
 
--record(bucket, {
-          burst   :: pos_integer(),
-          tokens  :: non_neg_integer(),
-          rate    :: float(),
-          lastime :: pos_integer()
-         }).
+-record(bucket,
+        { burst   :: pos_integer()
+        , tokens  :: non_neg_integer()
+        , rate    :: float()
+        , lastime :: pos_integer()
+        }).
 
 -type(bucket() :: #bucket{}).
 

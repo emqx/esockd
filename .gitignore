@@ -27,5 +27,5 @@ examples/ssl/ssl_echo_server.d
 cover/
 .DS_Store
 erlang.mk
-rebar.lock
 _build/
+rebar.lock

@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -292,8 +292,6 @@ ssl_upgrade_fun(SslOpts) ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
             {error, Reason} when Reason =:= closed; Reason =:= timeout ->
                 {error, Reason};
-            {error, {tls_alert, _}} ->
-                {error, tls_alert};
             {error, Reason} ->
                 {error, {ssl_error, Reason}}
         catch

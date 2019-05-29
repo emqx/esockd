@@ -37,14 +37,18 @@ loop(Transport = {dtls, SockPid, _}, Peer) ->
             loop(Transport, Peer)
     end.
 
-user_lookup(psk, ClientPSKID, UserState) ->
-    io:format("ClientPSKID: ~p, Userstate: ~p~n", [ClientPSKID, UserState]),
-    {ok, UserState}.
+user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
+    ServerPickedPsk = maps:get(<<"psk_a">>, PSKs),
+    io:format("ClientPSKID: ~p, ServerPickedPSK: ~p~n", [ClientPSKID, ServerPickedPsk]),
+    {ok, ServerPickedPsk}.
 
 psk_opts() -> [
      {verify, verify_none},
      {protocol, dtls},
      {versions, [dtlsv1, 'dtlsv1.2']},
      {ciphers, [{psk,aes_128_cbc,sha}, {rsa_psk,aes_128_cbc,sha256}]},
-     {user_lookup_fun, {fun user_lookup/3, <<"shared_secret">>}}
+     {psk_identity, "plz_use_psk_a"},
+     {user_lookup_fun,
+       {fun user_lookup/3, #{<<"psk_a">> => <<"shared_secret_a">>,
+                             <<"psk_b">> => <<"shared_secret_b">>}}}
 ].

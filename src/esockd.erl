@@ -1,4 +1,4 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,21 +19,51 @@
 -export([start/0]).
 
 %% Core API
--export([open/4, open_udp/4, open_dtls/4, close/2, close/1]).
--export([reopen/1, reopen/2]).
--export([child_spec/4, udp_child_spec/4, dtls_child_spec/4]).
+-export([ open/4
+        , open_udp/4
+        , open_dtls/4
+        , close/2
+        , close/1
+        ]).
+
+-export([ reopen/1
+        , reopen/2
+        ]).
+
+-export([ child_spec/4
+        , udp_child_spec/4
+        , dtls_child_spec/4
+        ]).
 
 %% Management API
--export([listeners/0, listener/1]).
--export([get_stats/1, get_options/1, get_acceptors/1]).
--export([get_max_connections/1, set_max_connections/2, get_current_connections/1]).
+-export([ listeners/0
+        , listener/1
+        ]).
+
+-export([ get_stats/1
+        , get_options/1
+        , get_acceptors/1
+        ]).
+
+-export([ get_max_connections/1
+        , set_max_connections/2
+        , get_current_connections/1
+        ]).
+
 -export([get_shutdown_count/1]).
 
 %% Allow, Deny API
--export([get_access_rules/1, allow/2, deny/2]).
+-export([ get_access_rules/1
+        , allow/2
+        , deny/2
+        ]).
 
 %% Utility functions
--export([parse_opt/1, ulimit/0, fixaddr/1, to_string/1]).
+-export([ parse_opt/1
+        , ulimit/0
+        , fixaddr/1
+        , to_string/1
+        ]).
 
 -type(proto() :: atom()).
 -type(transport() :: module()).
@@ -57,12 +87,19 @@
 -type(host() :: inet:ip_address() | string()).
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
 
--export_type([proto/0, transport/0, udp_transport/0, sock/0, sock_fun/0, mfargs/0,
-              option/0, listen_on/0]).
+-export_type([ proto/0
+             , transport/0
+             , udp_transport/0
+             , sock/0
+             , sock_fun/0
+             , mfargs/0
+             , option/0
+             , listen_on/0
+             ]).
 
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 %% API
-%%--------------------------------------------------------------------
+%%------------------------------------------------------------------------------
 
 %% @doc Start esockd application.
 -spec(start() -> ok).
