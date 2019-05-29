@@ -103,8 +103,9 @@ handle_info({udp, Sock, IP, InPortNo, Packet},
                     Pid ! {datagram, self(), Packet},
                     {noreply, store_peer(Peer, Pid, State)};
                 {error, Reason} ->
-                    ?ERROR_MSG("Failed to start udp channel: ~s, reason: ~p",
-                               [esockd_net:format(Peer), Reason])
+                    ?ERROR_MSG("Error returned. udp channel: ~s, reason: ~p",
+                               [esockd_net:format(Peer), Reason]),
+                    {noreply, State}
             catch
                 _Error:Reason ->
                     ?ERROR_MSG("Failed to start udp channel: ~s, reason: ~p",
@@ -120,8 +121,9 @@ handle_info({udp_passive, Sock}, State) ->
 
 handle_info({'DOWN', _MRef, process, DownPid, _Reason}, State = #state{peers = Peers}) ->
     case maps:find(DownPid, Peers) of
-        {ok, Peer} -> {noreply, erase_peer(Peer, DownPid, State)};
-        error      -> {noreply, State}
+        {ok, Peer} ->
+            {noreply, erase_peer(Peer, DownPid, State)};
+        error -> {noreply, State}
     end;
 
 handle_info({datagram, Peer = {IP, Port}, Packet}, State = #state{sock = Sock}) ->

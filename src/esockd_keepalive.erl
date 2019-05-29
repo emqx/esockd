@@ -35,7 +35,7 @@ start(StatFun, TimeoutSec, TimeoutMsg) ->
         {error, Error} ->
             {error, Error}
     catch
-        _Error:Reason ->
+        error:Reason ->
             {error, Reason}
     end.
 
@@ -54,7 +54,7 @@ check(KeepAlive = #keepalive{statfun = StatFun, statval = LastVal, repeat = Repe
         {error, Error} ->
             {error, Error}
     catch
-        _Error:Reason ->
+        error:Reason ->
             {error, Reason}
     end.
 

@@ -290,6 +290,8 @@ ssl_upgrade_fun(SslOpts) ->
         try ssl:handshake(Sock, SslOpts1, Timeout) of
             {ok, SslSock} ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+            {ok, SslSock, _Ext} -> %% OTP 21.0
+                {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
             {error, Reason} when Reason =:= closed; Reason =:= timeout ->
                 {error, Reason};
             {error, Reason} ->

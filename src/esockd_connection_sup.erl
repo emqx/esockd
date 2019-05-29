@@ -149,13 +149,12 @@ handle_call({start_connection, Sock}, _From,
                 true ->
                     try start_connection_proc(MFA, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
-                            {reply, {ok, Pid}, State#state{curr_connections = maps:put(Pid, true, Conns)}};
+                            NState = State#state{curr_connections = maps:put(Pid, true, Conns)},
+                            {reply, {ok, Pid}, NState};
                         ignore ->
                             {reply, ignore, State};
                         {error, Reason} ->
-                            {reply, {error, Reason}, State};
-                        What ->
-                            {reply, {error, What}, State}
+                            {reply, {error, Reason}, State}
                     catch
                         _Error:Reason ->
                             {reply, {error, Reason}, State}
@@ -193,7 +192,8 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
                     {reply, ok, State#state{access_rules = [Rule | Rules]}}
             end
     catch
-        _Error:_Reason ->
+        error:Reason ->
+            error_logger:error_msg("Bad access rule: ~p, compile errro: ~p", [RawRule, Reason]),
             {reply, {error, bad_access_rule}, State}
     end;
 
