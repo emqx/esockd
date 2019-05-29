@@ -1,0 +1,4 @@
+[{<<"getopt">>,
+  {git,"https://github.com/emqx/getopt.git",
+       {ref,"215f2083408e1fe562d441aea6062bf5d9e1fb67"}},
+  0}].
