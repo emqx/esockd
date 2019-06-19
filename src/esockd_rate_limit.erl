@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,13 +12,13 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
-%%
+%%--------------------------------------------------------------------
+
 %% @doc Token-bucket based rate limit.
 %%
 %% [Token Bucket](https://en.wikipedia.org/wiki/Token_bucket).
 %%
 %% @end
-
 -module(esockd_rate_limit).
 
 -export([ new/2
@@ -26,24 +27,32 @@
         , check/3
         ]).
 
--record(bucket,
-        { burst   :: pos_integer()
-        , tokens  :: non_neg_integer()
-        , rate    :: float()
-        , lastime :: pos_integer()
-        }).
-
--type(bucket() :: #bucket{}).
-
 -export_type([bucket/0]).
+
+-record(bucket, {
+          burst   :: pos_integer(),
+          tokens  :: non_neg_integer(),
+          rate    :: float(),
+          lastime :: pos_integer()
+         }).
+
+-opaque(bucket() :: #bucket{}).
 
 -spec(new(float() | pos_integer(), pos_integer()) -> bucket()).
 new(Rate, Burst) when is_integer(Burst), 0 < Rate andalso Rate =< Burst ->
-    #bucket{burst = Burst, tokens = Burst, rate = Rate, lastime = os:system_time(milli_seconds)}.
+    #bucket{burst   = Burst,
+            tokens  = Burst,
+            rate    = Rate,
+            lastime = os:system_time(milli_seconds)
+           }.
 
 -spec(info(bucket()) -> map()).
 info(#bucket{rate = Rate, burst = Burst, tokens = Tokens, lastime = Lastime}) ->
-    #{rate => Rate, burst => Burst, tokens => Tokens, lastime => Lastime}.
+    #{rate    => Rate,
+      burst   => Burst,
+      tokens  => Tokens,
+      lastime => Lastime
+     }.
 
 -spec(check(pos_integer(), bucket()) -> {non_neg_integer(), bucket()}).
 check(Tokens, Bucket) ->
