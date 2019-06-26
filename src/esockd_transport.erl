@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_transport).
 
@@ -30,13 +32,13 @@
 -export([ensure_ok_or_exit/2]).
 -export([gc/1]).
 
+-export_type([socket/0]).
+
 -type(ssl_socket() :: #ssl_socket{}).
 -type(proxy_socket() :: #proxy_socket{}).
--type(sock() :: inet:socket() | ssl_socket() | proxy_socket()).
+-type(socket() :: inet:socket() | ssl_socket() | proxy_socket()).
 
--export_type([sock/0]).
-
--spec(type(sock()) -> tcp | ssl | proxy).
+-spec(type(socket()) -> tcp | ssl | proxy).
 type(Sock) when is_port(Sock) ->
     tcp;
 type(#ssl_socket{})  ->
@@ -44,7 +46,7 @@ type(#ssl_socket{})  ->
 type(#proxy_socket{}) ->
     proxy.
 
--spec(is_ssl(sock()) -> boolean()).
+-spec(is_ssl(socket()) -> boolean()).
 is_ssl(Sock) when is_port(Sock) ->
     false;
 is_ssl(#ssl_socket{})  ->
@@ -52,18 +54,18 @@ is_ssl(#ssl_socket{})  ->
 is_ssl(#proxy_socket{socket = Sock}) ->
     is_ssl(Sock).
 
--spec(ready(pid(), sock(), [esockd:sock_fun()]) -> any()).
+-spec(ready(pid(), socket(), [esockd:sock_fun()]) -> any()).
 ready(Pid, Sock, UpgradeFuns) ->
     Pid ! {sock_ready, Sock, UpgradeFuns}.
 
--spec(wait(sock()) -> {ok, sock()} | {error, term()}).
+-spec(wait(socket()) -> {ok, socket()} | {error, term()}).
 wait(Sock) ->
     receive
         {sock_ready, Sock, UpgradeFuns} ->
             upgrade(Sock, UpgradeFuns)
     end.
 
--spec(upgrade(sock(), [esockd:sock_fun()]) -> {ok, sock()} | {error, term()}).
+-spec(upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}).
 upgrade(Sock, []) ->
     {ok, Sock};
 upgrade(Sock, [Upgrade | More]) ->
@@ -77,7 +79,7 @@ upgrade(Sock, [Upgrade | More]) ->
 listen(Port, Opts) ->
     gen_tcp:listen(Port, Opts).
 
--spec(controlling_process(sock(), pid()) -> ok | {error, Reason} when
+-spec(controlling_process(socket(), pid()) -> ok | {error, Reason} when
       Reason :: closed | not_owner | badarg | inet:posix()).
 
 controlling_process(Sock, NewOwner) when is_port(Sock) ->
@@ -87,7 +89,7 @@ controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
 controlling_process(#proxy_socket{socket = Sock}, NewOwner) ->
     controlling_process(Sock, NewOwner).
 
--spec(close(sock()) -> ok | {error, term()}).
+-spec(close(socket()) -> ok | {error, term()}).
 close(Sock) when is_port(Sock) ->
     gen_tcp:close(Sock);
 close(#ssl_socket{ssl = SslSock}) ->
@@ -95,7 +97,7 @@ close(#ssl_socket{ssl = SslSock}) ->
 close(#proxy_socket{socket = Sock}) ->
     close(Sock).
 
--spec(fast_close(sock()) -> ok).
+-spec(fast_close(socket()) -> ok).
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
@@ -112,7 +114,7 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
 fast_close(#proxy_socket{socket = Sock}) ->
     fast_close(Sock).
 
--spec(send(sock(), iodata()) -> ok | {error, Reason} when
+-spec(send(socket(), iodata()) -> ok | {error, Reason} when
       Reason :: closed | timeout | inet:posix()).
 send(Sock, Data) when is_port(Sock) ->
     gen_tcp:send(Sock, Data);
@@ -122,7 +124,7 @@ send(#proxy_socket{socket = Sock}, Data) ->
     send(Sock, Data).
 
 %% @doc Port command to write data.
--spec(async_send(sock(), iodata()) -> ok | {error, Reason} when
+-spec(async_send(socket(), iodata()) -> ok | {error, Reason} when
       Reason :: close | timeout | inet:posix()).
 async_send(Sock, Data) when is_port(Sock) ->
     try erlang:port_command(Sock, Data, []) of
@@ -141,7 +143,7 @@ async_send(Sock = #ssl_socket{ssl = SslSock}, Data) ->
 async_send(#proxy_socket{socket = Sock}, Data) ->
     async_send(Sock, Data).
 
--spec(recv(sock(), non_neg_integer())
+-spec(recv(socket(), non_neg_integer())
       -> {ok, iodata()} | {error, closed | inet:posix()}).
 recv(Sock, Length) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length);
@@ -150,7 +152,7 @@ recv(#ssl_socket{ssl = SslSock}, Length) ->
 recv(#proxy_socket{socket = Sock}, Length) ->
     recv(Sock, Length).
 
--spec(recv(sock(), non_neg_integer(), timeout())
+-spec(recv(socket(), non_neg_integer(), timeout())
       -> {ok, iodata()} | {error, closed | inet:posix()}).
 recv(Sock, Length, Timeout) when is_port(Sock) ->
     gen_tcp:recv(Sock, Length, Timeout);
@@ -160,11 +162,11 @@ recv(#proxy_socket{socket = Sock}, Length, Timeout) ->
     recv(Sock, Length, Timeout).
 
 %% @doc Async receive data.
--spec(async_recv(sock(), non_neg_integer()) -> {ok, reference()}).
+-spec(async_recv(socket(), non_neg_integer()) -> {ok, reference()}).
 async_recv(Sock, Length) ->
     async_recv(Sock, Length, infinity).
 
--spec(async_recv(sock(), non_neg_integer(), timeout()) -> {ok, reference()}).
+-spec(async_recv(socket(), non_neg_integer(), timeout()) -> {ok, reference()}).
 async_recv(Sock = #ssl_socket{ssl = SslSock}, Length, Timeout) ->
     Self = self(),
     Ref = make_ref(),
@@ -180,7 +182,7 @@ async_recv(#proxy_socket{socket = Sock}, Length, Timeout) ->
     async_recv(Sock, Length, Timeout).
 
 %% @doc Get socket options.
--spec(getopts(sock(), [inet:socket_getopt()])
+-spec(getopts(socket(), [inet:socket_getopt()])
       -> {ok, [inet:socket_setopt()]} | {error, inet:posix()}).
 getopts(Sock, OptionNames) when is_port(Sock) ->
     inet:getopts(Sock, OptionNames);
@@ -190,7 +192,7 @@ getopts(#proxy_socket{socket = Sock}, OptionNames) ->
     getopts(Sock, OptionNames).
 
 %% @doc Set socket options
--spec(setopts(sock(), [inet:socket_setopt()]) -> ok | {error, inet:posix()}).
+-spec(setopts(socket(), [inet:socket_setopt()]) -> ok | {error, inet:posix()}).
 setopts(Sock, Opts) when is_port(Sock) ->
     inet:setopts(Sock, Opts);
 setopts(#ssl_socket{ssl = SslSock}, Opts) ->
@@ -199,7 +201,7 @@ setopts(#proxy_socket{socket = Socket}, Opts) ->
     setopts(Socket, Opts).
 
 %% @doc Get socket stats
--spec(getstat(sock(), [inet:stat_option()])
+-spec(getstat(socket(), [inet:stat_option()])
       -> {ok, [{inet:stat_option(), integer()}]} | {error, inet:posix()}).
 getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
@@ -209,7 +211,7 @@ getstat(#proxy_socket{socket = Sock}, Stats) ->
     getstat(Sock, Stats).
 
 %% @doc Sockname
--spec(sockname(sock()) -> {ok, {inet:ip_address(), inet:port_number()}} |
+-spec(sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()}} |
                           {error, inet:posix()}).
 sockname(Sock) when is_port(Sock) ->
     inet:sockname(Sock);
@@ -219,7 +221,7 @@ sockname(#proxy_socket{dst_addr = DstAddr, dst_port = DstPort}) ->
     {ok, {DstAddr, DstPort}}.
 
 %% @doc Peername
--spec(peername(sock()) -> {ok, {inet:ip_address(), inet:port_number()}} |
+-spec(peername(socket()) -> {ok, {inet:ip_address(), inet:port_number()}} |
                           {error, inet:posix()}).
 peername(Sock) when is_port(Sock) ->
     inet:peername(Sock);
@@ -229,7 +231,7 @@ peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
     {ok, {SrcAddr, SrcPort}}.
 
 %% @doc Socket peercert
--spec(peercert(sock()) -> nossl | binary() | list(pp2_additional_ssl_field()) |
+-spec(peercert(socket()) -> nossl | binary() | list(pp2_additional_ssl_field()) |
                           {error, term()}).
 peercert(Sock) when is_port(Sock) ->
     nossl;
@@ -245,7 +247,7 @@ peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl, AdditionalInfo, []).
 
 %% @doc Peercert subject
--spec(peer_cert_subject(sock()) -> undefined | binary()).
+-spec(peer_cert_subject(socket()) -> undefined | binary()).
 peer_cert_subject(Sock) when is_port(Sock) ->
     undefined;
 peer_cert_subject(#ssl_socket{ssl = SslSock}) ->
@@ -259,7 +261,7 @@ peer_cert_subject(Sock = #proxy_socket{}) ->
     peer_cert_common_name(Sock).
 
 %% @doc Peercert common name
--spec(peer_cert_common_name(sock()) -> undefined | binary()).
+-spec(peer_cert_common_name(socket()) -> undefined | binary()).
 peer_cert_common_name(Sock) when is_port(Sock) ->
     undefined;
 peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
@@ -273,7 +275,7 @@ peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
                         proplists:get_value(pp2_ssl, AdditionalInfo, [])).
 
 %% @doc Shutdown socket
--spec(shutdown(sock(), How) -> ok | {error, inet:posix()} when
+-spec(shutdown(socket(), How) -> ok | {error, inet:posix()} when
     How :: read | write | read_write).
 shutdown(Sock, How) when is_port(Sock) ->
     gen_tcp:shutdown(Sock, How);
