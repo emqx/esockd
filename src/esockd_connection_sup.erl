@@ -83,7 +83,7 @@ start_connection(Sup, Sock, UpgradeFuns) ->
     end.
 
 %% @doc Start the connection process.
--spec(start_connection_proc(esockd:mfargs(), esockd_transport:sock())
+-spec(start_connection_proc(esockd:mfargs(), esockd_transport:socket())
       -> {ok, pid()} | ignore | {error, term()}).
 start_connection_proc(M, Sock) when is_atom(M) ->
     M:start_link(?TRANSPORT, Sock);

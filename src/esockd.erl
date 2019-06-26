@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd).
 
@@ -65,12 +67,22 @@
         , to_string/1
         ]).
 
+-export_type([ proto/0
+             , transport/0
+             , udp_transport/0
+             , socket/0
+             , sock_fun/0
+             , mfargs/0
+             , option/0
+             , listen_on/0
+             ]).
+
 -type(proto() :: atom()).
 -type(transport() :: module()).
 -type(udp_transport() :: {udp | dtls, pid(), inet:socket()}).
--type(sock() :: esockd_transport:sock()).
+-type(socket() :: esockd_transport:socket()).
 -type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
--type(sock_fun() :: fun((esockd_transport:sock()) -> {ok, esockd_transport:sock()} | {error, term()})).
+-type(sock_fun() :: fun((esockd_transport:socket()) -> {ok, esockd_transport:socket()} | {error, term()})).
 -type(option() :: {acceptors, pos_integer()}
                 | {max_connections, pos_integer()}
                 | {max_conn_rate, pos_integer() | {pos_integer(), pos_integer()}}
@@ -87,19 +99,9 @@
 -type(host() :: inet:ip_address() | string()).
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
 
--export_type([ proto/0
-             , transport/0
-             , udp_transport/0
-             , sock/0
-             , sock_fun/0
-             , mfargs/0
-             , option/0
-             , listen_on/0
-             ]).
-
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 %% @doc Start esockd application.
 -spec(start() -> ok).
