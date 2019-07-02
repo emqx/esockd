@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_dtls_acceptor_sup).
 
@@ -18,7 +20,9 @@
 
 -export([start_link/3]).
 
--export([start_acceptor/2, count_acceptors/1]).
+-export([ start_acceptor/2
+        , count_acceptors/1
+        ]).
 
 -export([init/1]).
 

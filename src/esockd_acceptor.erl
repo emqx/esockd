@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_acceptor).
 
@@ -19,7 +21,11 @@
 -include("esockd.hrl").
 
 -export([start_link/6]).
--export([accepting/3, suspending/3]).
+
+%% state callbacks
+-export([ accepting/3
+        , suspending/3
+        ]).
 
 %% gen_statem Callbacks
 -export([ init/1
@@ -28,16 +34,16 @@
         , code_change/4
         ]).
 
--record(state,
-        { lsock :: inet:socket()
-        , sockmod :: module()
-        , sockname :: {inet:ip_address(), inet:port_number()}
-        , tune_fun :: esockd:sock_fun()
-        , upgrade_funs :: [esockd:sock_fun()]
-        , stats_fun :: fun()
-        , limit_fun :: fun()
-        , conn_sup :: pid()
-        , accept_ref :: term()
+-record(state, {
+          lsock        :: inet:socket(),
+          sockmod      :: module(),
+          sockname     :: {inet:ip_address(), inet:port_number()},
+          tune_fun     :: esockd:sock_fun(),
+          upgrade_funs :: [esockd:sock_fun()],
+          stats_fun    :: fun(),
+          limit_fun    :: fun(),
+          conn_sup     :: pid(),
+          accept_ref   :: term()
         }).
 
 %% @doc Start an acceptor
@@ -46,9 +52,9 @@
 start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
     gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
     rand:seed(exsplus, erlang:timestamp()),

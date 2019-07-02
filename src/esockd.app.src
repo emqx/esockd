@@ -7,6 +7,7 @@
   {applications, [kernel, stdlib, ssl]},
   {mod, {esockd_app, []}},
   {env, []},
+  {maintainers,["Feng Lee <feng@emqx.io>"]},
   {licenses, ["Apache-2.0"]},
   {links, [{"Github", "https://github.com/emqx/esockd"}]}
 ]}.

@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_listener).
 
@@ -33,20 +35,22 @@
         , code_change/3
         ]).
 
--record(state,
-        { proto :: atom()
-        , listen_on :: esockd:listen_on()
-        , options :: [esockd:option()]
-        , lsock :: inet:socket()
-        , laddr :: inet:ip_address()
-        , lport :: inet:port_number()
-        }).
+-record(state, {
+          proto     :: atom(),
+          listen_on :: esockd:listen_on(),
+          options   :: [esockd:option()],
+          lsock     :: inet:socket(),
+          laddr     :: inet:ip_address(),
+          lport     :: inet:port_number()
+         }).
 
 -define(ACCEPTOR_POOL, 16).
--define(DEFAULT_TCP_OPTIONS, [{nodelay, true},
-                              {reuseaddr, true},
-                              {send_timeout, 30000},
-                              {send_timeout_close, true}]).
+-define(DEFAULT_TCP_OPTIONS,
+        [{nodelay, true},
+         {reuseaddr, true},
+         {send_timeout, 30000},
+         {send_timeout_close, true}
+        ]).
 
 -spec(start_link(atom(), esockd:listen_on(), [esockd:option()], pid())
       -> {ok, pid()} | ignore | {error, term()}).

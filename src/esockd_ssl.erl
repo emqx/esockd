@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -16,6 +17,7 @@
 %%
 %% The Initial Developer of the Original Code is GoPivotal, Inc.
 %% Copyright (c) 2007-2016 Pivotal Software, Inc.  All rights reserved.
+%%--------------------------------------------------------------------
 
 -module(esockd_ssl).
 
@@ -87,9 +89,9 @@ find_by_type(Type, {rdnSequence, RDNs}) ->
         L  -> [format_asn1_value(V) || V <- L]
     end.
 
-%%--------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Formatting functions
-%%--------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 %% Format and rdnSequence as a RFC4514 subject string.
 format_rdn_sequence({rdnSequence, Seq}) ->

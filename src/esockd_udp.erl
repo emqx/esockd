@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_udp).
 
@@ -35,9 +37,9 @@
 -define(ERROR_MSG(Format, Args),
         error_logger:error_msg("[~s]: " ++ Format, [?MODULE | Args])).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 -spec(server(atom(), esockd:listen_on(), [gen_udp:option()], mfa())
       -> {ok, pid()} | {error, term()}).
@@ -62,9 +64,9 @@ count_peers(Pid) ->
 stop(Pid) ->
     gen_server:stop(Pid, normal, infinity).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([Proto, Port, Opts, MFA]) ->
     process_flag(trap_exit, true),
@@ -144,9 +146,9 @@ terminate(_Reason, #state{sock = Sock}) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%-----------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Internel functions
-%%-----------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 store_peer(Peer, Pid, State = #state{peers = Peers}) ->
     State#state{peers = maps:put(Pid, Peer, maps:put(Peer, Pid, Peers))}.

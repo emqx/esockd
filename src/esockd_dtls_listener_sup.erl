@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_dtls_listener_sup).
 
@@ -20,8 +22,8 @@
 
 -define(DTLS_OPTS, [{protocol, dtls}, {mode, binary}, {reuseaddr, true}]).
 
--spec(start_link(atom(), {inet:ip_address(),inet:port_number()} | inet:port_number(), [esockd:option()], mfa())
-      -> {ok, pid()} | {error, term()}).
+-spec(start_link(atom(), {inet:ip_address(),inet:port_number()} | inet:port_number(),
+                 [esockd:option()], mfa()) -> {ok, pid()} | {error, term()}).
 start_link(Proto, {Host, Port}, Opts, MFA) ->
     start_link(Proto, Port, merge_addr(Host, Opts), MFA);
 start_link(Proto, Port, Opts, MFA) ->
@@ -55,9 +57,9 @@ start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
 merge_addr(Addr, Opts) ->
     lists:keystore(ip, 1, Opts, {ip, Addr}).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Supervisor callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([]) ->
     {ok, {{one_for_all, 10, 3600}, []}}.

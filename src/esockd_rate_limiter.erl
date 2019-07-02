@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 %% @doc A simple ets-based rate limiter.
 -module(esockd_rate_limiter).
@@ -100,11 +102,11 @@ tokens(Name) ->
 
 -spec(stop() -> ok).
 stop() ->
-    gen_server:stop(?TAB).
+    gen_server:stop(?SERVER).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([]) ->
     _ = ets:new(?TAB, [public, set, named_table, {write_concurrency, true}]),
