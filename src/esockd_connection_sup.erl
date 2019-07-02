@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_connection_sup).
 
@@ -47,13 +49,13 @@
 
 -type(shutdown() :: brutal_kill | infinity | pos_integer()).
 
--record(state,
-        { curr_connections :: map()
-        , max_connections :: pos_integer()
-        , access_rules :: list()
-        , shutdown :: shutdown()
-        , mfargs :: mfa()
-        }).
+-record(state, {
+          curr_connections :: map(),
+          max_connections :: pos_integer(),
+          access_rules :: list(),
+          shutdown :: shutdown(),
+          mfargs :: mfa()
+         }).
 
 -define(DEFAULT_MAX_CONNS, 1024).
 -define(TRANSPORT, esockd_transport).
@@ -65,9 +67,9 @@
 start_link(Opts, MFA) ->
     gen_server:start_link(?MODULE, [Opts, MFA], []).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 %% @doc Start connection.
 start_connection(Sup, Sock, UpgradeFuns) ->
@@ -120,9 +122,9 @@ deny(Sup, CIDR) ->
 call(Sup, Req) ->
     gen_server:call(Sup, Req, infinity).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([Opts, MFA]) ->
     process_flag(trap_exit, true),
@@ -225,9 +227,9 @@ terminate(_Reason, State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Internal functions
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 allowed(Addr, Rules) ->
     case esockd_access:match(Addr, Rules) of

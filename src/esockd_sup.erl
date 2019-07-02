@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_sup).
 
@@ -38,9 +40,9 @@
 %% supervisor callback
 -export([init/1]).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 -spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
@@ -147,9 +149,9 @@ return_ok_or_error([{ok, _Pid}|Results]) ->
 return_ok_or_error([{error, Reason}|_]) ->
     {error, Reason}.
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Supervisor callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([]) ->
     SupFlags = #{strategy => one_for_one,

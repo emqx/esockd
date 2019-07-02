@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_server).
 
@@ -41,9 +43,9 @@
 -define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 -spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
@@ -80,16 +82,17 @@ update_counter(Key, Num) ->
 del_stats({Protocol, ListenOn}) ->
     gen_server:cast(?SERVER, {del, {Protocol, ListenOn}}).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% gen_server callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([]) ->
-    _ = ets:new(?STATS_TAB, [public, set, named_table, {write_concurrency, true}]),
+    _ = ets:new(?STATS_TAB, [public, set, named_table,
+                             {write_concurrency, true}]),
     {ok, #state{}}.
 
 handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
-    _ = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
+    true = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
     {reply, ok, State, hibernate};
 
 handle_call(Req, _From, State) ->

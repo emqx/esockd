@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_dtls_acceptor).
 
@@ -33,19 +35,23 @@
         , code_change/4
         ]).
 
--record(state,
-        { sup
-        , mfargs
-        , max_conns
-        , limit_fun
-        , peername
-        , lsock
-        , sock
-        , channel
-        }).
+-record(state, {
+          sup       :: pid(),
+          mfargs    :: mfa(),
+          max_conns :: non_neg_integer(),
+          limit_fun :: fun(),
+          peername  :: {inet:ip_address(), inet:port_number()},
+          lsock     :: inet:socket(),
+          sock      :: ssl:sslsocket(),
+          channel   :: pid()
+         }).
 
 start_link(Sup, Opts, MFA, LimitFun, LSock) ->
     gen_statem:start_link(?MODULE, [Sup, Opts, MFA, LimitFun, LSock], []).
+
+%%--------------------------------------------------------------------
+%% gen_statem callbacks
+%%--------------------------------------------------------------------
 
 init([Sup, Opts, MFA, LimitFun, LSock]) ->
     process_flag(trap_exit, true),
@@ -58,29 +64,8 @@ max_conns(Opts) ->
 
 callback_mode() -> state_functions.
 
-waiting_for_sock(internal, accept, State = #state{sup = Sup, lsock = LSock, mfargs = {M, F, Args}}) ->
-    rate_limit(
-      fun() ->
-          {ok, Sock} = ssl:transport_accept(LSock),
-          esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
-          {ok, Peername} = ssl:peername(Sock),
-          case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
-              {ok, SslSock} ->
-                  try erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
-                      {ok, Pid} ->
-                          true = link(Pid),
-                          {next_state, waiting_for_data,
-                           State#state{sock = SslSock, peername = Peername, channel = Pid}};
-                      {error, Reason} ->
-                          {stop, Reason, State}
-                  catch
-                      _Error:Reason ->
-                          shutdown(Reason, State)
-                  end;
-              {error, Reason} ->
-                  shutdown(Reason, State#state{sock = Sock})
-          end
-      end, State);
+waiting_for_sock(internal, accept, State) ->
+    rate_limit(fun accept/1, State);
 
 waiting_for_sock(EventType, EventContent, StateData) ->
     handle_event(EventType, EventContent, waiting_for_sock, StateData).
@@ -121,13 +106,38 @@ terminate(_Reason, _StateName, #state{sock = Sock}) ->
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
-shutdown(Reason, State) ->
-    {stop, {shutdown, Reason}, State}.
+%%--------------------------------------------------------------------
+%% Internal functions
+%%--------------------------------------------------------------------
+
+accept(State = #state{sup = Sup, lsock = LSock, mfargs = {M, F, Args}}) ->
+    {ok, Sock} = ssl:transport_accept(LSock),
+    esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
+    {ok, Peername} = ssl:peername(Sock),
+    case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
+        {ok, SslSock} ->
+            try erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
+                {ok, Pid} ->
+                    true = link(Pid),
+                    {next_state, waiting_for_data,
+                     State#state{sock = SslSock, peername = Peername, channel = Pid}};
+                {error, Reason} ->
+                    {stop, Reason, State}
+            catch
+                _Error:Reason ->
+                    shutdown(Reason, State)
+            end;
+        {error, Reason} ->
+            shutdown(Reason, State#state{sock = Sock})
+    end.
 
 rate_limit(Fun, State = #state{limit_fun = RateLimit}) ->
     case RateLimit(1) of
         I when I =< 0 ->
             {next_state, suspending, State, 1000};
-        _ -> Fun()
+        _ -> Fun(State)
     end.
+
+shutdown(Reason, State) ->
+    {stop, {shutdown, Reason}, State}.
 

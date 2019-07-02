@@ -13,6 +13,10 @@ clean: distclean
 distclean:
 	@rm -rf _build erl_crash.dump rebar3.crashdump rebar.lock
 
+.PHONY: xref
+xref:
+	$(REBAR) xref
+
 .PHONY: eunit
 eunit: compile
 	$(REBAR) eunit verbose=truen

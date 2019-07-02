@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,13 +12,21 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 %% copy emqx/src/emqx_keepalive here.
 -module(esockd_keepalive).
 
 -export([start/3, check/1, cancel/1]).
 
--record(keepalive, {statfun, statval, tsec, tmsg, tref, repeat = 0}).
+-record(keepalive, {
+          statfun,
+          statval,
+          tsec,
+          tmsg,
+          tref,
+          repeat = 0
+         }).
 
 -type(keepalive() :: #keepalive{}).
 
@@ -30,8 +39,12 @@ start(_, 0, _) ->
 start(StatFun, TimeoutSec, TimeoutMsg) ->
     try StatFun() of
         {ok, StatVal} ->
-            {ok, #keepalive{statfun = StatFun, statval = StatVal, tsec = TimeoutSec,
-                            tmsg = TimeoutMsg, tref = timer(TimeoutSec, TimeoutMsg)}};
+            {ok, #keepalive{statfun = StatFun,
+                            statval = StatVal,
+                            tsec = TimeoutSec,
+                            tmsg = TimeoutMsg,
+                            tref = timer(TimeoutSec, TimeoutMsg)
+                           }};
         {error, Error} ->
             {error, Error}
     catch
