@@ -21,7 +21,8 @@
 %% @end
 -module(esockd_rate_limit).
 
--export([ new/2
+-export([ new/1
+        , new/2
         , info/1
         , check/2
         , check/3
@@ -38,7 +39,10 @@
 
 -opaque(bucket() :: #bucket{}).
 
--spec(new(float() | pos_integer(), pos_integer()) -> bucket()).
+-spec(new({float()|pos_integer(), pos_integer()}) -> bucket()).
+new({Rate, Burst}) -> new(Rate, Burst).
+
+-spec(new(float()|pos_integer(), pos_integer()) -> bucket()).
 new(Rate, Burst) when is_integer(Burst), 0 < Rate andalso Rate =< Burst ->
     #bucket{burst   = Burst,
             tokens  = Burst,
