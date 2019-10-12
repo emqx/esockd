@@ -1,13 +1,15 @@
-{application, esockd, [
+{application, esockd,
+ [{description, "General Non-blocking TCP/SSL and UDP/DTLS Server"},
   {id, "esockd"},
   {vsn, "git"},
-  {description, "General Non-blocking TCP/SSL Server"},
   {modules, []},
   {registered, []},
   {applications, [kernel, stdlib, ssl]},
   {mod, {esockd_app, []}},
   {env, []},
-  {maintainers,["Feng Lee <feng@emqx.io>"]},
   {licenses, ["Apache-2.0"]},
-  {links, [{"Github", "https://github.com/emqx/esockd"}]}
+  {maintainers, ["EMQ X Team <contact@emqx.io>"]},
+  {links, [{"Homepage", "https://emqx.io/"},
+           {"Github", "https://github.com/emqx/esockd"}
+          ]}
 ]}.
