@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_rate_limiter_SUITE).
+-module(esockd_transport_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -29,39 +29,78 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, Config) ->
     Config.
 
-t_start_link(_) ->
+t_type(_) ->
     error('TODO').
 
-t_create(_) ->
+t_is_ssl(_) ->
     error('TODO').
 
-t_consume(_) ->
+t_wait(_) ->
     error('TODO').
 
-t_buckets(_) ->
+t_close(_) ->
     error('TODO').
 
-t_stop(_) ->
+t_send(_) ->
     error('TODO').
 
-t_init(_) ->
+t_async_send(_) ->
     error('TODO').
 
-t_handle_call(_) ->
+t_recv(_) ->
     error('TODO').
 
-t_handle_cast(_) ->
+t_async_recv(_) ->
     error('TODO').
 
-t_handle_info(_) ->
+t_getopts(_) ->
     error('TODO').
 
-t_terminate(_) ->
+t_setopts(_) ->
     error('TODO').
 
-t_code_change(_) ->
+t_getstat(_) ->
     error('TODO').
 
-t_delete(_) ->
+t_sockname(_) ->
+    error('TODO').
+
+t_peercert(_) ->
+    error('TODO').
+
+t_peer_cert_subject(_) ->
+    error('TODO').
+
+t_peer_cert_common_name(_) ->
+    error('TODO').
+
+t_shutdown(_) ->
+    error('TODO').
+
+t_ensure_ok_or_exit(_) ->
+    error('TODO').
+
+t_gc(_) ->
+    error('TODO').
+
+t_proxy_upgrade_fun(_) ->
+    error('TODO').
+
+t_ssl_upgrade_fun(_) ->
+    error('TODO').
+
+t_fast_close(_) ->
+    error('TODO').
+
+t_listen(_) ->
+    error('TODO').
+
+t_peername(_) ->
+    error('TODO').
+
+t_ready(_) ->
+    error('TODO').
+
+t_controlling_process(_) ->
     error('TODO').
 

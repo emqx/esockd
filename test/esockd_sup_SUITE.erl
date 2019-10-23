@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_rate_limiter_SUITE).
+-module(esockd_sup_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -29,39 +29,39 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, Config) ->
     Config.
 
-t_start_link(_) ->
-    error('TODO').
-
-t_create(_) ->
-    error('TODO').
-
-t_consume(_) ->
-    error('TODO').
-
-t_buckets(_) ->
-    error('TODO').
-
-t_stop(_) ->
+t_child_id(_) ->
     error('TODO').
 
 t_init(_) ->
     error('TODO').
 
-t_handle_call(_) ->
+t_start_link(_) ->
     error('TODO').
 
-t_handle_cast(_) ->
+t_listener(_) ->
     error('TODO').
 
-t_handle_info(_) ->
+t_listeners(_) ->
     error('TODO').
 
-t_terminate(_) ->
+t_restart_listener(_) ->
     error('TODO').
 
-t_code_change(_) ->
+t_stop_listener(_) ->
     error('TODO').
 
-t_delete(_) ->
+t_child_spec(_) ->
+    error('TODO').
+
+t_dtls_child_spec(_) ->
+    error('TODO').
+
+t_udp_child_spec(_) ->
+    error('TODO').
+
+t_start_child(_) ->
+    error('TODO').
+
+t_start_listener(_) ->
     error('TODO').
 

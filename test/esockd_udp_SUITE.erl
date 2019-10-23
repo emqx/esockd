@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_rate_limiter_SUITE).
+-module(esockd_udp_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -29,16 +29,10 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, Config) ->
     Config.
 
-t_start_link(_) ->
+t_server(_) ->
     error('TODO').
 
-t_create(_) ->
-    error('TODO').
-
-t_consume(_) ->
-    error('TODO').
-
-t_buckets(_) ->
+t_count_peers(_) ->
     error('TODO').
 
 t_stop(_) ->
@@ -60,8 +54,5 @@ t_terminate(_) ->
     error('TODO').
 
 t_code_change(_) ->
-    error('TODO').
-
-t_delete(_) ->
     error('TODO').
 

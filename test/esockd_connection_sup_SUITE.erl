@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_rate_limiter_SUITE).
+-module(esockd_connection_sup_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -30,18 +30,6 @@ end_per_testcase(_TestCase, Config) ->
     Config.
 
 t_start_link(_) ->
-    error('TODO').
-
-t_create(_) ->
-    error('TODO').
-
-t_consume(_) ->
-    error('TODO').
-
-t_buckets(_) ->
-    error('TODO').
-
-t_stop(_) ->
     error('TODO').
 
 t_init(_) ->
@@ -62,6 +50,27 @@ t_terminate(_) ->
 t_code_change(_) ->
     error('TODO').
 
-t_delete(_) ->
+t_start_connection(_) ->
+    error('TODO').
+
+t_deny(_) ->
+    error('TODO').
+
+t_allow(_) ->
+    error('TODO').
+
+t_access_rules(_) ->
+    error('TODO').
+
+t_get_shutdown_count(_) ->
+    error('TODO').
+
+t_count_connections(_) ->
+    error('TODO').
+
+t_set_max_connections(_) ->
+    error('TODO').
+
+t_get_max_connections(_) ->
     error('TODO').
 

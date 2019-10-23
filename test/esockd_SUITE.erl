@@ -53,6 +53,8 @@
                 {shutdown, 3000},
                 {max_conn_rate, {1000, 1}},
                 {access_rules, [{allow, all}]}]).
+		
+		
 
 all() ->
     [{group, esockd},
@@ -116,6 +118,79 @@ init_per_suite(Config) ->
 
 end_per_suite(_Config) ->
     application:stop(esockd).
+    
+
+t_open(_) ->
+    error('TODO').
+
+t_open_udp(_) ->
+    error('TODO').
+
+t_udp_child_spec(_) ->
+    error('TODO').
+
+t_open_dtls(_) ->
+    error('TODO').
+
+t_dtls_child_spec(_) ->
+    error('TODO').
+
+t_child_spec(_) ->
+    error('TODO').
+
+t_close(_) ->
+    error('TODO').
+
+t_reopen(_) ->
+    error('TODO').
+
+t_listeners(_) ->
+    error('TODO').
+
+t_listener(_) ->
+    error('TODO').
+
+t_get_stats(_) ->
+    error('TODO').
+
+t_get_options(_) ->
+    error('TODO').
+
+t_get_acceptors(_) ->
+    error('TODO').
+
+t_get_max_connections(_) ->
+    error('TODO').
+
+t_set_max_connections(_) ->
+    error('TODO').
+
+t_get_current_connections(_) ->
+    error('TODO').
+
+t_get_shutdown_count(_) ->
+    error('TODO').
+
+t_get_access_rules(_) ->
+    error('TODO').
+
+t_allow(_) ->
+    error('TODO').
+
+t_deny(_) ->
+    error('TODO').
+
+t_parse_opt(_) ->
+    error('TODO').
+
+t_ulimit(_) ->
+    error('TODO').
+
+t_to_string(_) ->
+    error('TODO').
+
+t_fixaddr(_) ->
+    error('TODO').    
 
 %%--------------------------------------------------------------------
 %% esockd

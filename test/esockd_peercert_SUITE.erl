@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_rate_limiter_SUITE).
+-module(esockd_peercert_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -29,39 +29,9 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, Config) ->
     Config.
 
-t_start_link(_) ->
+t_subject(_) ->
     error('TODO').
 
-t_create(_) ->
-    error('TODO').
-
-t_consume(_) ->
-    error('TODO').
-
-t_buckets(_) ->
-    error('TODO').
-
-t_stop(_) ->
-    error('TODO').
-
-t_init(_) ->
-    error('TODO').
-
-t_handle_call(_) ->
-    error('TODO').
-
-t_handle_cast(_) ->
-    error('TODO').
-
-t_handle_info(_) ->
-    error('TODO').
-
-t_terminate(_) ->
-    error('TODO').
-
-t_code_change(_) ->
-    error('TODO').
-
-t_delete(_) ->
+t_common_name(_) ->
     error('TODO').
 

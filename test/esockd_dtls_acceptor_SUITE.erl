@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_rate_limiter_SUITE).
+-module(esockd_dtls_acceptor_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -32,36 +32,27 @@ end_per_testcase(_TestCase, Config) ->
 t_start_link(_) ->
     error('TODO').
 
-t_create(_) ->
-    error('TODO').
-
-t_consume(_) ->
-    error('TODO').
-
-t_buckets(_) ->
-    error('TODO').
-
-t_stop(_) ->
-    error('TODO').
-
 t_init(_) ->
     error('TODO').
 
-t_handle_call(_) ->
+t_callback_mode(_) ->
     error('TODO').
 
-t_handle_cast(_) ->
+t_waiting_for_sock(_) ->
     error('TODO').
 
-t_handle_info(_) ->
+t_waiting_for_data(_) ->
+    error('TODO').
+
+t_suspending(_) ->
+    error('TODO').
+
+t_handle_event(_) ->
     error('TODO').
 
 t_terminate(_) ->
     error('TODO').
 
 t_code_change(_) ->
-    error('TODO').
-
-t_delete(_) ->
     error('TODO').
 
