@@ -28,7 +28,7 @@
         , check/3
         ]).
 
--export_type([bucket/0]).
+-export_type([config/0, bucket/0]).
 
 -record(bucket, {
           burst   :: pos_integer(),
@@ -38,6 +38,8 @@
          }).
 
 -opaque(bucket() :: #bucket{}).
+
+-opaque(config() :: {float()|pos_integer(), pos_integer()}).
 
 -spec(new({float()|pos_integer(), pos_integer()}) -> bucket()).
 new({Rate, Burst}) -> new(Rate, Burst).
