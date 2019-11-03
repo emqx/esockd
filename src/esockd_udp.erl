@@ -70,18 +70,23 @@ stop(Pid) ->
 
 init([Proto, Port, Opts, MFA]) ->
     process_flag(trap_exit, true),
-    case gen_udp:open(Port, esockd_util:merge_opts([binary, {reuseaddr, true}], Opts)) of
+    case gen_udp:open(Port, esockd:merge_opts([binary, {reuseaddr, true}], Opts)) of
         {ok, Sock} ->
             %% Trigger the udp_passive event
             inet:setopts(Sock, [{active, 1}]),
-            %% error_logger:info_msg("~s opened on udp ~p~n", [Proto, Port]),
-            {ok, #state{proto = Proto, sock = Sock, port = Port, peers = #{}, mfa = MFA}};
+            State = #state{proto = Proto,
+                           sock  = Sock,
+                           port  = Port,
+                           peers = #{},
+                           mfa   = MFA
+                          },
+            {ok, State};
         {error, Reason} ->
             {stop, Reason}
     end.
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
-    {reply, maps:size(Peers) div 2, State, hibernate};
+    {reply, maps:size(Peers) div 2, State};
 
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("unexpected call: ~p", [Req]),
@@ -106,12 +111,12 @@ handle_info({udp, Sock, IP, InPortNo, Packet},
                     {noreply, store_peer(Peer, Pid, State)};
                 {error, Reason} ->
                     ?ERROR_MSG("Error returned. udp channel: ~s, reason: ~p",
-                               [esockd_net:format(Peer), Reason]),
+                               [esockd:format(Peer), Reason]),
                     {noreply, State}
             catch
                 _Error:Reason ->
                     ?ERROR_MSG("Failed to start udp channel: ~s, reason: ~p",
-                               [esockd_net:format(Peer), Reason]),
+                               [esockd:format(Peer), Reason]),
                     {noreply, State}
             end
     end;
@@ -132,7 +137,7 @@ handle_info({datagram, Peer = {IP, Port}, Packet}, State = #state{sock = Sock}) 
     case gen_udp:send(Sock, IP, Port, Packet) of
         ok -> ok;
         {error, Reason} ->
-            ?ERROR_MSG("Dropped packet to: ~s, reason: ~s", [esockd_net:format(Peer), Reason])
+            ?ERROR_MSG("Dropped packet to: ~s, reason: ~s", [esockd:format(Peer), Reason])
     end,
     {noreply, State};
 

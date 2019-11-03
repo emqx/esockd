@@ -23,48 +23,29 @@
 
 all() -> esockd_ct:all(?MODULE).
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
-
-end_per_testcase(_TestCase, Config) ->
-    Config.
-
-t_start_link(_) ->
-    error('TODO').
-
-t_init_stats(_) ->
-    error('TODO').
-
-t_inc_stats(_) ->
-    error('TODO').
-
-t_dec_stats(_) ->
-    error('TODO').
-
-t_init(_) ->
-    error('TODO').
-
-t_handle_call(_) ->
-    error('TODO').
-
-t_handle_cast(_) ->
-    error('TODO').
-
-t_handle_info(_) ->
-    error('TODO').
-
-t_terminate(_) ->
-    error('TODO').
-
-t_code_change(_) ->
-    error('TODO').
+t_inc_dec_stats(_) ->
+    {ok, _} = esockd_server:start_link(),
+    Name = {echo, 3000},
+    esockd_server:init_stats(Name, accepting),
+    esockd_server:inc_stats(Name, accepting, 2),
+    esockd_server:inc_stats(Name, accepting, 2),
+    esockd_server:dec_stats(Name, accepting, 1),
+    [{accepting, 3}] = esockd_server:get_stats(Name),
+    ok = esockd_server:del_stats(Name),
+    ok = timer:sleep(100),
+    [] = esockd_server:get_stats(Name),
+    ok = esockd_server:stop().
 
 t_stats_fun(_) ->
-    error('TODO').
+    {ok, _} = esockd_server:start_link(),
+    StatsFun = esockd_server:stats_fun({echo, 3000}, accepting),
+    ok = lists:foreach(StatsFun, [{inc, 1}, {inc, 2}, {inc, 3}, {dec, 1}]),
+    [{accepting, 5}] = esockd_server:get_stats({echo, 3000}),
+    ok = esockd_server:stop().
 
-t_del_stats(_) ->
-    error('TODO').
-
-t_get_stats(_) ->
-    error('TODO').
+t_handle_unexpected(_) ->
+    {reply, ignored, state} = esockd_server:handle_call(req, from, state),
+    {noreply, state} = esockd_server:handle_cast(msg, state),
+    {noreply, state} = esockd_server:handle_info(info, state),
+    {ok, state} = esockd_server:code_change('OldVsn', state, extra).
 

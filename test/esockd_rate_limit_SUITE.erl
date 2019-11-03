@@ -23,18 +23,25 @@
 
 all() -> esockd_ct:all(?MODULE).
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
-
-end_per_testcase(_TestCase, Config) ->
-    Config.
-
-t_new(_) ->
-    error('TODO').
-
 t_info(_) ->
-    error('TODO').
+    Rl = esockd_rate_limit:new({1, 10}),
+    Info = esockd_rate_limit:info(Rl),
+    ?assertMatch(#{rate   := 1,
+                   burst  := 10,
+                   tokens := 10
+                  }, Info),
+    ?assert(os:system_time(milli_seconds) >= maps:get(time, Info)).
 
 t_check(_) ->
-    error('TODO').
+    %% 1 per ms
+    Rl = esockd_rate_limit:new({1, 10}),
+    #{tokens := 10} = esockd_rate_limit:info(Rl),
+    {0, Rl1} = esockd_rate_limit:check(5, Rl),
+    #{tokens := 5} = esockd_rate_limit:info(Rl1),
+    {0, Rl2} = esockd_rate_limit:check(5, Rl1),
+    #{tokens := 0} = esockd_rate_limit:info(Rl2),
+    {5, Rl3} = esockd_rate_limit:check(5, Rl2),
+    #{tokens := 0} = esockd_rate_limit:info(Rl3),
+    timer:sleep(5),
+    {0, Rl4} = esockd_rate_limit:check(5, Rl3).
 

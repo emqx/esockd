@@ -110,7 +110,7 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
                     close(Sock); %% quiet... haproxy check
                 {error, Reason} ->
                     error_logger:error_msg("Failed to start connection on ~s: ~p",
-                                           [esockd_net:format(Sockname), Reason]),
+                                           [esockd:format(Sockname), Reason]),
                     close(Sock)
                 end;
         {error, enotconn} ->
@@ -121,7 +121,7 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
             close(Sock);
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
-                                   [esockd_net:format(Sockname), Reason]),
+                                   [esockd:format(Sockname), Reason]),
             close(Sock)
     end,
     rate_limit(State);
@@ -142,7 +142,8 @@ accepting(info, {inet_async, LSock, Ref, {error, Reason}},
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
           State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
     when Reason =:= emfile; Reason =:= enfile ->
-    error_logger:error_msg("Accept error on ~s: ~s", [esockd_net:format(Sockname), Reason]),
+    error_logger:error_msg("Accept error on ~s: ~s",
+                           [esockd:format(Sockname), Reason]),
     {next_state, suspending, State, 1000};
 
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},

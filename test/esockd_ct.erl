@@ -16,11 +16,20 @@
 
 -module(esockd_ct).
 
--export([all/1]).
+-export([all/1, certfile/1, keyfile/1]).
 
 %% @doc Get all the test cases in a CT suite.
 all(Suite) ->
     lists:usort([F || {F, 1} <- Suite:module_info(exports),
                       string:substr(atom_to_list(F), 1, 2) == "t_"
                 ]).
+
+certfile(Config) ->
+    filename:join([test_dir(Config), "certs", "test.crt"]).
+
+keyfile(Config) ->
+    filename:join([test_dir(Config), "certs", "test.key"]).
+
+test_dir(Config) ->
+    filename:dirname(filename:dirname(proplists:get_value(data_dir, Config))).
 

@@ -1,4 +1,5 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%--------------------------------------------------------------------
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(tcp_window).
 
@@ -41,7 +43,7 @@ main(Port, How) when is_integer(Port) ->
     start_client(Port).
 
 start_server(Transport, Sock, How) ->
-	{ok, spawn_link(?MODULE, server_init, [Transport, Sock, How])}.
+    {ok, spawn_link(?MODULE, server_init, [Transport, Sock, How])}.
 
 server_init(Transport, Sock, How) ->
     case Transport:wait(Sock) of
@@ -55,19 +57,18 @@ server_init(Transport, Sock, How) ->
     end.
 
 server_loop(Transport, Sock, SendFun) ->
-	case Transport:recv(Sock, 0) of
-		{ok, Data} ->
-			{ok, Peername} = Transport:peername(Sock),
-            io:format("Server recv: ~p from (~s)~n",
-                      [Data, esockd_net:format(peername, Peername)]),
-			SendFun(Data),
+    case Transport:recv(Sock, 0) of
+        {ok, Data} ->
+            {ok, Peername} = Transport:peername(Sock),
+            io:format("Server recv: ~p from (~s)~n", [Data, esockd:format(Peername)]),
+            SendFun(Data),
             %% flood the tcp window of client
             send_loop(Transport, Sock, SendFun, Data, 0);
-		{error, Reason} ->
+        {error, Reason} ->
             io:format("server tcp error ~s~n", [Reason]),
             Transport:fast_close(Sock),
-			{stop, Reason}
-	end.
+            {stop, Reason}
+    end.
 
 send_loop(Transport, Sock, SendFun, Data, Count) ->
     case SendFun(Data) of
@@ -88,7 +89,7 @@ send_loop(Transport, Sock, SendFun, Data, Count) ->
     end.
 
 start_client(Port) ->
-	case gen_tcp:connect("127.0.0.1", Port, ?TCP_OPTIONS, 60000) of
+    case gen_tcp:connect("127.0.0.1", Port, ?TCP_OPTIONS, 60000) of
         {ok, Sock} ->
             inet:setopts(Sock, [{active, false}]),
             client_loop(Sock, 0);

@@ -1,4 +1,5 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%--------------------------------------------------------------------
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 %%% @doc Proxy protcol -> Echo server.
 -module(proxy_protocol_server).
@@ -42,7 +44,7 @@ start(Port) when is_integer(Port) ->
     esockd:open(echo, Port, Options, {?MODULE, start_link, []}).
 
 start_link(Transport, Sock) ->
-	{ok, proc_lib:spawn_link(?MODULE, init, [[Transport, Sock]])}.
+    {ok, proc_lib:spawn_link(?MODULE, init, [[Transport, Sock]])}.
 
 init([Transport, Sock]) ->
     case Transport:wait(Sock) of
@@ -62,19 +64,19 @@ handle_cast(_Msg, State) ->
     {noreply, State}.
 
 handle_info({tcp, _Sock, Data}, State = #state{transport = Transport, socket = Sock}) ->
-	{ok, Peername} = Transport:peername(Sock),
-    io:format("Data from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
-	Transport:send(Sock, Data),
-	Transport:setopts(Sock, [{active, once}]),
+    {ok, Peername} = Transport:peername(Sock),
+    io:format("Data from ~s: ~s~n", [esockd:format(Peername), Data]),
+    Transport:send(Sock, Data),
+    Transport:setopts(Sock, [{active, once}]),
     {noreply, State};
 
 handle_info({tcp_error, _Sock, Reason}, State) ->
-	io:format("TCP Error: ~s~n", [Reason]),
+    io:format("TCP Error: ~s~n", [Reason]),
     {stop, {shutdown, Reason}, State};
 
 handle_info({tcp_closed, _Sock}, State) ->
-	io:format("TCP closed~n"),
-	{stop, normal, State};
+    io:format("TCP closed~n"),
+    {stop, normal, State};
 
 handle_info(_Info, State) ->
     {noreply, State}.

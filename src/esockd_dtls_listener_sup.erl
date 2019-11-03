@@ -27,7 +27,7 @@
 start_link(Proto, {Host, Port}, Opts, MFA) ->
     start_link(Proto, Port, merge_addr(Host, Opts), MFA);
 start_link(Proto, Port, Opts, MFA) ->
-    case ssl:listen(Port, esockd_util:merge_opts(
+    case ssl:listen(Port, esockd:merge_opts(
                             ?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
         {ok, LSock} ->
             %% error_logger:info_msg("~s opened on dtls ~w~n", [Proto, Port]),

@@ -14,27 +14,24 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_keepalive_SUITE).
+-module(udp_echo_server).
 
--compile(export_all).
--compile(nowarn_export_all).
+-export([start_link/2]).
 
--include_lib("eunit/include/eunit.hrl").
+-export([init/2, loop/2]).
 
-all() -> esockd_ct:all(?MODULE).
+start_link(Transport, Peer) ->
+	{ok, spawn_link(?MODULE, init, [Transport, Peer])}.
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
+init(Transport, Peer) ->
+    loop(Transport, Peer).
 
-end_per_testcase(_TestCase, Config) ->
-    Config.
-
-t_start(_) ->
-    error('TODO').
-
-t_check(_) ->
-    error('TODO').
-
-t_cancel(_) ->
-    error('TODO').
+loop(Transport, Peer) ->
+    receive
+        {datagram, _From, <<"stop">>} ->
+            exit(normal);
+        {datagram, From, Packet} ->
+            From ! {datagram, Peer, Packet},
+            loop(Transport, Peer)
+    end.
 

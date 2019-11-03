@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0]).
+-export([start_link/0, stop/0]).
 
 %% stats API
 -export([ stats_fun/2
@@ -50,6 +50,9 @@
 -spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-spec(stop() -> ok).
+stop() -> gen_server:stop(?SERVER).
 
 -spec(stats_fun({atom(), esockd:listen_on()}, atom()) -> fun()).
 stats_fun({Protocol, ListenOn}, Metric) ->
@@ -97,7 +100,7 @@ handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
-    {reply, ignore, State}.
+    {reply, ignored, State}.
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),

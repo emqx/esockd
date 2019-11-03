@@ -1,4 +1,5 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%--------------------------------------------------------------------
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 %% @doc Simple echo server.
 -module(gen_echo_server).
@@ -60,7 +62,7 @@ handle_cast(_Msg, State) ->
 
 handle_info({tcp, Sock, Data}, State = #state{transport = Transport, socket = Sock}) ->
     {ok, Peername} = Transport:peername(Sock),
-    io:format("Data from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
+    io:format("Data from ~s: ~s~n", [esockd:format(Peername), Data]),
     Transport:send(Sock, Data),
     Transport:setopts(Sock, [{active, once}]),
     {noreply, State};

@@ -25,56 +25,56 @@
         , new/2
         , info/1
         , check/2
-        , check/3
         ]).
 
 -export_type([config/0, bucket/0]).
 
 -record(bucket, {
-          burst   :: pos_integer(),
-          tokens  :: non_neg_integer(),
-          rate    :: float(),
-          lastime :: pos_integer()
+          burst  :: pos_integer(),
+          tokens :: non_neg_integer(),
+          rate   :: float(),
+          time   :: pos_integer()
          }).
 
 -opaque(bucket() :: #bucket{}).
 
 -opaque(config() :: {float()|pos_integer(), pos_integer()}).
 
+%% @doc Create a rate limit. The time unit of rate is Millisecond.
 -spec(new({float()|pos_integer(), pos_integer()}) -> bucket()).
 new({Rate, Burst}) -> new(Rate, Burst).
 
 -spec(new(float()|pos_integer(), pos_integer()) -> bucket()).
 new(Rate, Burst) when is_integer(Burst), 0 < Rate andalso Rate =< Burst ->
-    #bucket{burst   = Burst,
-            tokens  = Burst,
-            rate    = Rate,
-            lastime = os:system_time(milli_seconds)
+    #bucket{burst  = Burst,
+            tokens = Burst,
+            rate   = Rate,
+            time   = erlang:system_time(milli_seconds)
            }.
 
 -spec(info(bucket()) -> map()).
-info(#bucket{rate = Rate, burst = Burst, tokens = Tokens, lastime = Lastime}) ->
-    #{rate    => Rate,
-      burst   => Burst,
-      tokens  => Tokens,
-      lastime => Lastime
+info(#bucket{rate = Rate, burst = Burst, tokens = Tokens, time = Lastime}) ->
+    #{rate   => Rate,
+      burst  => Burst,
+      tokens => Tokens,
+      time   => Lastime
      }.
 
 -spec(check(pos_integer(), bucket()) -> {non_neg_integer(), bucket()}).
 check(Tokens, Bucket) ->
-    check(Tokens, os:system_time(milli_seconds), Bucket).
+    check(Tokens, erlang:system_time(milli_seconds), Bucket).
 
 -spec(check(pos_integer(), integer(), bucket()) -> {non_neg_integer(), bucket()}).
-check(Tokens, Now, Bucket = #bucket{burst   = Burst,
-                                    tokens  = Remaining,
-                                    rate    = Rate,
-                                    lastime = Lastime}) ->
-    Limit = min(Burst, Remaining + round((Rate * (Now - Lastime)) / 1000)),
+check(Tokens, Now, Bucket = #bucket{burst  = Burst,
+                                    tokens = Remaining,
+                                    rate   = Rate,
+                                    time   = Lastime}) ->
+    Limit = min(Burst, Remaining + round(Rate * (Now - Lastime))),
     case Limit >= Tokens of
         true  -> %% Tokens available
-            {0, Bucket#bucket{tokens = Limit - Tokens, lastime = Now}};
+            {0, Bucket#bucket{tokens = Limit - Tokens, time = Now}};
         false -> %% Tokens not enough
-            Pause = round((Tokens - Remaining)*1000/Rate),
-            {Pause, Bucket#bucket{tokens = 0, lastime = Now}}
+            Pause = round((Tokens - Remaining)/Rate),
+            {Pause, Bucket#bucket{tokens = 0, time = Now}}
     end.
 

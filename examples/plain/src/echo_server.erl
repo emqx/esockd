@@ -1,4 +1,5 @@
-%% Copyright (c) 2018 EMQ Technologies Co., Ltd. All Rights Reserved.
+%%--------------------------------------------------------------------
+%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 %% @doc Simple echo server.
 -module(echo_server).
@@ -46,14 +48,14 @@ accept(Parent, LSock) ->
     recvloop(Sock).
 
 recvloop(Sock) ->
-	case gen_tcp:recv(Sock, 0, 30000) of
-		{ok, Data} ->
-			{ok, Peername} = inet:peername(Sock),
-            io:format("Data from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
-			gen_tcp:send(Sock, Data),
-			recvloop(Sock);
-		{error, Reason} ->
-			io:format("TCP closed for ~s~n", [Reason]),
-			{stop, Reason}
-	end.
+    case gen_tcp:recv(Sock, 0, 30000) of
+        {ok, Data} ->
+            {ok, Peername} = inet:peername(Sock),
+            io:format("Data from ~s: ~s~n", [esockd:format(Peername), Data]),
+            gen_tcp:send(Sock, Data),
+            recvloop(Sock);
+        {error, Reason} ->
+            io:format("TCP closed for ~s~n", [Reason]),
+            {stop, Reason}
+    end.
 

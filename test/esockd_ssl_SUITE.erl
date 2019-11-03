@@ -24,23 +24,31 @@
 all() -> esockd_ct:all(?MODULE).
 
 init_per_testcase(_TestCase, Config) ->
-    Config.
+    CertFile = esockd_ct:certfile(Config),
+    [{cert, pem_decode(CertFile)}|Config].
 
 end_per_testcase(_TestCase, Config) ->
     Config.
 
-t_peer_cert_issuer(_) ->
-    error('TODO').
+pem_decode(CertFile) ->
+    {ok, CertBin} = file:read_file(CertFile),
+    [{'Certificate', DerCert, _}] = public_key:pem_decode(CertBin),
+    DerCert.
 
-t_peer_cert_subject_items(_) ->
-    error('TODO').
+cert(Config) -> proplists:get_value(cert, Config).
 
-t_peer_cert_validity(_) ->
-    error('TODO').
+t_peer_cert_issuer(Config) ->
+    esockd_ssl:peer_cert_issuer(cert(Config)).
 
-t_peer_cert_common_name(_) ->
-    error('TODO').
+t_peer_cert_subject_items(Config) ->
+    esockd_ssl:peer_cert_subject_items(cert(Config), {0,9,2342,19200300,100,1,1}).
 
-t_peer_cert_subject(_) ->
-    error('TODO').
+t_peer_cert_validity(Config) ->
+    esockd_ssl:peer_cert_validity(cert(Config)).
+
+t_peer_cert_common_name(Config) ->
+    esockd_ssl:peer_cert_common_name(cert(Config)).
+
+t_peer_cert_subject(Config) ->
+    esockd_ssl:peer_cert_subject(cert(Config)).
 

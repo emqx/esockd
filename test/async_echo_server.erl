@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(echo_server).
+-module(async_echo_server).
 
 -export([start_link/2]).
 
@@ -33,13 +33,18 @@ init(Transport, RawSock) ->
     end.
 
 loop(Transport, Sock) ->
-	case Transport:recv(Sock, 0) of
-        {ok, Data} ->
+    {ok, Ref} = Transport:async_recv(Sock, 0),
+    receive
+        {inet_async, _Sock, Ref, {ok, Data}} ->
             %%{ok, Peername} = Transport:peername(Sock),
             %%io:format("RECV from ~s: ~s~n", [esockd:format(Peername), Data]),
-            Transport:send(Sock, Data),
+            ok = Transport:async_send(Sock, Data),
             loop(Transport, Sock);
-        {error, Reason} ->
-            exit({shutdown, Reason})
-	end.
+        {inet_async, _Sock, Ref, {error, Reason}} ->
+            exit(Reason);
+        {inet_reply, _Sock ,ok} ->
+            loop(Transport, Sock);
+        {inet_reply, _Sock, {error, Reason}} ->
+            exit(Reason)
+    end.
 

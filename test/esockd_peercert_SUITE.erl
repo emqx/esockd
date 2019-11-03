@@ -23,15 +23,22 @@
 
 all() -> esockd_ct:all(?MODULE).
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
+t_subject(Config) ->
+    undefined = esockd_peercert:subject(nossl),
+    undefined = esockd_peercert:subject(undefined),
+    DerCert = pem_decode(esockd_ct:certfile(Config)),
+    _Subject = esockd_peercert:subject(DerCert),
+    <<"C=CH">> = esockd_peercert:subject([{pp2_ssl_cn, <<"C=CH">>}]).
 
-end_per_testcase(_TestCase, Config) ->
-    Config.
+t_common_name(Config) ->
+    undefined = esockd_peercert:common_name(nossl),
+    undefined = esockd_peercert:common_name(undefined),
+    DerCert = pem_decode(esockd_ct:certfile(Config)),
+    _CN = esockd_peercert:common_name(DerCert),
+    <<"C=CH">> = esockd_peercert:common_name([{pp2_ssl_cn, <<"C=CH">>}]).
 
-t_subject(_) ->
-    error('TODO').
-
-t_common_name(_) ->
-    error('TODO').
+pem_decode(CertFile) ->
+    {ok, CertBin} = file:read_file(CertFile),
+    [{'Certificate', DerCert, _}] = public_key:pem_decode(CertBin),
+    DerCert.
 

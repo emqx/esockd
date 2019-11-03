@@ -139,6 +139,6 @@ rate_limit_fun(Bucket, Opts) ->
     end.
 
 rate_limit_fun(Bucket, Limit, Period) ->
-    ok = esockd_rate_limiter:create(Bucket, Limit, Period),
-    fun(I) -> esockd_rate_limiter:consume(Bucket, I) end.
+    ok = esockd_limiter:create(Bucket, Limit, Period),
+    fun(I) -> esockd_limiter:consume(Bucket, I) end.
 
