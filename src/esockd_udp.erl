@@ -32,8 +32,22 @@
         , code_change/3
         ]).
 
--record(state, {proto, sock, port, peers, mfa}).
+-type(maybe(T) :: undefined | T).
 
+-record(state, {
+          proto       :: atom(),
+          sock        :: inet:socket(),
+          port        :: inet:port_number(),
+          rate_limit  :: maybe(esockd_rate_limit:bucket()),
+          limit_timer :: maybe(reference()),
+          max_peers   :: infinity | pos_integer(),
+          peers       :: map(),
+          mfa         :: mfa()
+         }).
+
+-define(ACTIVE_N, 100).
+-define(ENABLED(X), (X =/= undefined)).
+-define(DEFAULT_OPTS, [binary, {reuseaddr, true}]).
 -define(ERROR_MSG(Format, Args),
         error_logger:error_msg("[~s]: " ++ Format, [?MODULE | Args])).
 
@@ -61,8 +75,7 @@ count_peers(Pid) ->
     gen_server:call(Pid, count_peers).
 
 -spec(stop(pid()) -> ok).
-stop(Pid) ->
-    gen_server:stop(Pid, normal, infinity).
+stop(Pid) -> gen_server:stop(Pid).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -70,61 +83,85 @@ stop(Pid) ->
 
 init([Proto, Port, Opts, MFA]) ->
     process_flag(trap_exit, true),
-    case gen_udp:open(Port, esockd:merge_opts([binary, {reuseaddr, true}], Opts)) of
+    {UdpOpts, State} = parse_opt(Opts, [], #state{proto = Proto,
+                                                  port  = Port,
+                                                  max_peers = infinity,
+                                                  peers = #{},
+                                                  mfa   = MFA}),
+    case gen_udp:open(Port, esockd:merge_opts(?DEFAULT_OPTS, UdpOpts)) of
         {ok, Sock} ->
             %% Trigger the udp_passive event
             inet:setopts(Sock, [{active, 1}]),
-            State = #state{proto = Proto,
-                           sock  = Sock,
-                           port  = Port,
-                           peers = #{},
-                           mfa   = MFA
-                          },
-            {ok, State};
+            {ok, State#state{sock = Sock}};
         {error, Reason} ->
             {stop, Reason}
     end.
+
+parse_opt([], Acc, State) ->
+    {Acc, State};
+parse_opt([{max_conn_rate, Rate}|Opts], Acc, State) ->
+    Rl = esockd_rate_limit:new(Rate, Rate), %% Burst = Rate
+    parse_opt(Opts, Acc, State#state{rate_limit = Rl});
+parse_opt([{max_connections, Max}|Opts], Acc, State) ->
+    parse_opt(Opts, Acc, State#state{max_peers = Max});
+parse_opt([Opt|Opts], Acc, State) ->
+    parse_opt(Opts, [Opt|Acc], State).
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
     {reply, maps:size(Peers) div 2, State};
 
 handle_call(Req, _From, State) ->
-    ?ERROR_MSG("unexpected call: ~p", [Req]),
+    ?ERROR_MSG("Unexpected call: ~p", [Req]),
     {reply, ignored, State}.
 
 handle_cast(Msg, State) ->
-    ?ERROR_MSG("unexpected cast: ~p", [Msg]),
+    ?ERROR_MSG("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
-handle_info({udp, Sock, IP, InPortNo, Packet},
-            State = #state{sock = Sock, peers = Peers, mfa = {M, F, Args}}) ->
-    Peer = {IP, InPortNo},
-    case maps:find(Peer, Peers) of
+handle_info({udp, Sock, IP, InPortNo, Packet}, State = #state{sock = Sock, peers = Peers}) ->
+    case maps:find(Peer = {IP, InPortNo}, Peers) of
         {ok, Pid} ->
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
-            try erlang:apply(M, F, [{udp, self(), Sock}, Peer | Args]) of
+            try should_throttle(State) orelse
+                start_channel({udp, self(), Sock}, Peer, State) of
+                true ->
+                    ?ERROR_MSG("Cannot create udp channel for peer ~s due to throttling.",
+                               [esockd:format(Peer)]),
+                    {noreply, State};
                 {ok, Pid} ->
                     _Ref = erlang:monitor(process, Pid),
                     Pid ! {datagram, self(), Packet},
                     {noreply, store_peer(Peer, Pid, State)};
                 {error, Reason} ->
-                    ?ERROR_MSG("Error returned. udp channel: ~s, reason: ~p",
+                    ?ERROR_MSG("Failed to start udp channel for peer ~s, reason: ~p",
                                [esockd:format(Peer), Reason]),
                     {noreply, State}
             catch
                 _Error:Reason ->
-                    ?ERROR_MSG("Failed to start udp channel: ~s, reason: ~p",
+                    ?ERROR_MSG("Exception occurred when starting udp channel for peer ~s, reason: ~p",
                                [esockd:format(Peer), Reason]),
                     {noreply, State}
             end
     end;
 
-handle_info({udp_passive, Sock}, State) ->
-    %% TODO: rate limit here?
-    inet:setopts(Sock, [{active, 100}]),
-    {noreply, State, hibernate};
+handle_info({udp_passive, Sock}, State = #state{sock = Sock, rate_limit = Rl}) ->
+    NState = case ?ENABLED(Rl) andalso esockd_rate_limit:check(Rl) of
+                 false ->
+                     activate_sock(State);
+                 {0, Rl1} ->
+                     activate_sock(State#state{rate_limit = Rl1});
+                 {Pause, Rl1} ->
+                     ?ERROR_MSG("Pause ~w(ms) due to rate limit.", [Pause]),
+                     TRef = erlang:start_timer(Pause, self(), activate_sock),
+                     State#state{rate_limit = Rl1, limit_timer = TRef}
+             end,
+    {noreply, NState, hibernate};
+
+handle_info({timeout, TRef, activate_sock}, State = #state{limit_timer = TRef}) ->
+    NState = State#state{limit_timer = undefined},
+    {noreply, activate_sock(NState)};
 
 handle_info({'DOWN', _MRef, process, DownPid, _Reason}, State = #state{peers = Peers}) ->
     case maps:find(DownPid, Peers) of
@@ -142,7 +179,7 @@ handle_info({datagram, Peer = {IP, Port}, Packet}, State = #state{sock = Sock}) 
     {noreply, State};
 
 handle_info(Info, State) ->
-    ?ERROR_MSG("unexpected info: ~p", [Info]),
+    ?ERROR_MSG("Unexpected info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{sock = Sock}) ->
@@ -154,6 +191,24 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% Internel functions
 %%--------------------------------------------------------------------
+
+-compile({inline,
+          [ should_throttle/1
+          , start_channel/3
+          , activate_sock/1
+          , store_peer/3
+          , erase_peer/3
+          ]}).
+
+should_throttle(#state{max_peers = infinity}) -> false;
+should_throttle(#state{max_peers = MaxLimit, peers = Peers}) ->
+    (maps:size(Peers) div 2) > MaxLimit.
+
+start_channel(Transport, Peer, #state{mfa = {M, F, Args}}) ->
+    erlang:apply(M, F, [Transport, Peer | Args]).
+
+activate_sock(State = #state{sock = Sock}) ->
+    inet:setopts(Sock, [{active, ?ACTIVE_N}]), State.
 
 store_peer(Peer, Pid, State = #state{peers = Peers}) ->
     State#state{peers = maps:put(Pid, Peer, maps:put(Peer, Pid, Peers))}.
