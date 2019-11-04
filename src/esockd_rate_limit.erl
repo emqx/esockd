@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
-%% @doc Token-bucket based rate limit.
+%% @doc Token-bucket based Rate Limit.
 %%
 %% [Token Bucket](https://en.wikipedia.org/wiki/Token_bucket).
 %%
@@ -30,9 +30,9 @@
 -export_type([config/0, bucket/0]).
 
 -record(bucket, {
+          rate   :: float(),
           burst  :: pos_integer(),
           tokens :: non_neg_integer(),
-          rate   :: float(),
           time   :: pos_integer()
          }).
 
@@ -40,15 +40,15 @@
 
 -opaque(config() :: {float()|pos_integer(), pos_integer()}).
 
-%% @doc Create a rate limit. The time unit of rate is Millisecond.
+%% @doc Create a rate limit. The time unit of rate is second.
 -spec(new({float()|pos_integer(), pos_integer()}) -> bucket()).
 new({Rate, Burst}) -> new(Rate, Burst).
 
 -spec(new(float()|pos_integer(), pos_integer()) -> bucket()).
 new(Rate, Burst) when is_integer(Burst), 0 < Rate andalso Rate =< Burst ->
-    #bucket{burst  = Burst,
+    #bucket{rate   = Rate,
+            burst  = Burst,
             tokens = Burst,
-            rate   = Rate,
             time   = erlang:system_time(milli_seconds)
            }.
 
@@ -65,16 +65,16 @@ check(Tokens, Bucket) ->
     check(Tokens, erlang:system_time(milli_seconds), Bucket).
 
 -spec(check(pos_integer(), integer(), bucket()) -> {non_neg_integer(), bucket()}).
-check(Tokens, Now, Bucket = #bucket{burst  = Burst,
+check(Tokens, Now, Bucket = #bucket{rate   = Rate,
+                                    burst  = Burst,
                                     tokens = Remaining,
-                                    rate   = Rate,
                                     time   = Lastime}) ->
-    Limit = min(Burst, Remaining + round(Rate * (Now - Lastime))),
+    Limit = min(Burst, Remaining + round((Rate * (Now - Lastime)) / 1000)),
     case Limit >= Tokens of
         true  -> %% Tokens available
             {0, Bucket#bucket{tokens = Limit - Tokens, time = Now}};
         false -> %% Tokens not enough
-            Pause = round((Tokens - Remaining)/Rate),
+            Pause = round((Tokens - Remaining) * 1000 / Rate),
             {Pause, Bucket#bucket{tokens = 0, time = Now}}
     end.
 

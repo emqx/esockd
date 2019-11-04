@@ -43,16 +43,16 @@
 
 -type(bucket_name() :: term()).
 
--opaque(bucket_info() :: #{name   => bucket_name(),
-                           limit  => pos_integer(),
-                           period => pos_integer(),
-                           tokens => pos_integer(),
-                           time   => integer()
+-opaque(bucket_info() :: #{name     => bucket_name(),
+                           capacity => pos_integer(),
+                           interval => pos_integer(),
+                           tokens   => pos_integer(),
+                           lastime  => integer()
                           }).
 
 -export_type([bucket_info/0]).
 
-%%-record(bucket, {name, limit, period, time}).
+%%-record(bucket, {name, capacity, interval, lastime}).
 
 -define(TAB, ?MODULE).
 -define(SERVER, ?MODULE).
@@ -65,12 +65,12 @@ start_link() ->
 get_all() ->
     [bucket_info(Bucket) || Bucket = {{bucket, _}, _, _, _} <- ets:tab2list(?TAB)].
 
-bucket_info({{bucket, Name}, Limit, Period, Time}) ->
-    #{name   => Name,
-      limit  => Limit,
-      period => Period,
-      tokens => tokens(Name),
-      time   => Time
+bucket_info({{bucket, Name}, Capacity, Interval, LastTime}) ->
+    #{name     => Name,
+      capacity => Capacity,
+      interval => Interval,
+      tokens   => tokens(Name),
+      lasttime => LastTime
      }.
 
 tokens(Name) ->
@@ -81,13 +81,13 @@ stop() ->
     gen_server:stop(?SERVER).
 
 -spec(create(bucket_name(), pos_integer()) -> ok).
-create(Name, Limit) when is_integer(Limit), Limit > 0 ->
-    create(Name, Limit, 1).
+create(Name, Capacity) when is_integer(Capacity), Capacity > 0 ->
+    create(Name, Capacity , 1).
 
 -spec(create(bucket_name(), pos_integer(), pos_integer()) -> ok).
-create(Name, Limit, Period) when is_integer(Limit), Limit > 0,
-                                 is_integer(Period), Period > 0 ->
-    gen_server:call(?SERVER, {create, Name, Limit, Period}).
+create(Name, Capacity , Interval) when is_integer(Capacity), Capacity > 0,
+                                       is_integer(Interval), Interval > 0 ->
+    gen_server:call(?SERVER, {create, Name, Capacity, Interval}).
 
 -spec(lookup(bucket_name()) -> undefined | bucket_info()).
 lookup(Name) ->
@@ -113,8 +113,8 @@ consume(Name, Tokens) when is_integer(Tokens), Tokens > 0 ->
 pause_time(Name, Now) ->
     case ets:lookup(?TAB, {bucket, Name}) of
         [] -> 1000; %% Pause 1 second if the bucket is deleted.
-        [{_Bucket, _Limit, Period, Time}] ->
-            max(1, Time + Period * 1000 - Now)
+        [{_Bucket, _Capacity, Interval, LastTime}] ->
+            max(1, LastTime + (Interval * 1000) - Now)
     end.
 
 -spec(delete(bucket_name()) -> ok).
@@ -129,10 +129,10 @@ init([]) ->
     _ = ets:new(?TAB, [public, set, named_table, {write_concurrency, true}]),
     {ok, #{countdown => #{}, timer => undefined}}.
 
-handle_call({create, Name, Limit, Period}, _From, State = #{countdown := Countdown}) ->
-    true = ets:insert(?TAB, {{tokens, Name}, Limit}),
-    true = ets:insert(?TAB, {{bucket, Name}, Limit, Period, erlang:system_time(millisecond)}),
-    NCountdown = maps:put({bucket, Name}, Period, Countdown),
+handle_call({create, Name, Capacity, Interval}, _From, State = #{countdown := Countdown}) ->
+    true = ets:insert(?TAB, {{tokens, Name}, Capacity}),
+    true = ets:insert(?TAB, {{bucket, Name}, Capacity, Interval, erlang:system_time(millisecond)}),
+    NCountdown = maps:put({bucket, Name}, Interval, Countdown),
     {reply, ok, ensure_countdown_timer(State#{countdown := NCountdown})};
 
 handle_call(Req, _From, State) ->
@@ -152,10 +152,10 @@ handle_cast(Msg, State) ->
 handle_info({timeout, Timer, countdown}, State = #{countdown := Countdown, timer := Timer}) ->
     Countdown1 = maps:fold(
                    fun(Key = {bucket, Name}, 1, Map) ->
-                           [{_Key, Limit, Period, _Last}] = ets:lookup(?TAB, Key),
-                           true = ets:update_element(?TAB, {tokens, Name}, {2, Limit}),
+                           [{_Key, Capacity, Interval, _LastTime}] = ets:lookup(?TAB, Key),
+                           true = ets:update_element(?TAB, {tokens, Name}, {2, Capacity}),
                            true = ets:update_element(?TAB, {bucket, Name}, {4, erlang:system_time(millisecond)}),
-                           maps:put(Key, Period, Map);
+                           maps:put(Key, Interval, Map);
                       (Key, C, Map) when C > 1 ->
                            maps:put(Key, C-1, Map)
                    end, #{}, Countdown),

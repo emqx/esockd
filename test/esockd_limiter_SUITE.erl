@@ -31,15 +31,15 @@ t_crud_limiter(_) ->
     {ok, _} = esockd_limiter:start_link(),
     ok = esockd_limiter:create(bucket1, 10),
     ok = esockd_limiter:create(bucket2, 1000, 10),
-    #{name   := bucket1,
-      limit  := 10,
-      period := 1,
-      tokens := 10
+    #{name     := bucket1,
+      capacity := 10,
+      interval := 1,
+      tokens   := 10
      } = esockd_limiter:lookup(bucket1),
-    #{name   := bucket2,
-      limit  := 1000,
-      period := 10,
-      tokens := 1000
+    #{name     := bucket2,
+      capacity := 1000,
+      interval := 10,
+      tokens   := 1000
      } = esockd_limiter:lookup(bucket2),
     Limiters = esockd_limiter:get_all(),
     ?assertEqual(2, length(Limiters)),
@@ -53,10 +53,10 @@ t_crud_limiter(_) ->
 t_consume(_) ->
     {ok, _} = esockd_limiter:start_link(),
     ok = esockd_limiter:create(bucket, 10, 2),
-    #{name   := bucket,
-      limit  := 10,
-      period := 2,
-      tokens := 10
+    #{name     := bucket,
+      capacity := 10,
+      interval := 2,
+      tokens   := 10
      } = esockd_limiter:lookup(bucket),
     {9, 0} = esockd_limiter:consume(bucket),
     #{tokens := 9} = esockd_limiter:lookup(bucket),
