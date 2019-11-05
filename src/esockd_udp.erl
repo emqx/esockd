@@ -112,7 +112,7 @@ handle_call(count_peers, _From, State = #state{peers = Peers}) ->
 
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("Unexpected call: ~p", [Req]),
-    {reply, ignored, State}.
+    {reply, ignore, State}.
 
 handle_cast(Msg, State) ->
     ?ERROR_MSG("Unexpected cast: ~p", [Msg]),

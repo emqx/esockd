@@ -73,7 +73,7 @@ t_get_set_max_connections(_) ->
                   end).
 
 t_handle_unexpected(_) ->
-    {reply, ignored, state} = esockd_connection_sup:handle_call(req, from, state),
+    {reply, ignore, state} = esockd_connection_sup:handle_call(req, from, state),
     {noreply, state} = esockd_connection_sup:handle_cast(msg, state),
     {noreply, state} = esockd_connection_sup:handle_info(info, state).
 

@@ -110,15 +110,15 @@ handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
+    error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
     {noreply, State}.
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
+    error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
+    error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,

@@ -99,19 +99,19 @@ handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
     {reply, ok, State, hibernate};
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
-    {reply, ignored, State}.
+    error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
+    {reply, ignore, State}.
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
+    error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
+    error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->

@@ -204,11 +204,11 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     end;
 
 handle_call(Req, _From, State) ->
-    ?ERROR_MSG("unexpected call: ~p", [Req]),
-    {reply, ignored, State}.
+    ?ERROR_MSG("Unexpected call: ~p", [Req]),
+    {reply, ignore, State}.
 
 handle_cast(Msg, State) ->
-    ?ERROR_MSG("unexpected cast: ~p", [Msg]),
+    ?ERROR_MSG("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
 handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
@@ -217,12 +217,12 @@ handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
             connection_crashed(Pid, Reason, State),
             {noreply, State#state{curr_connections = Conns1}};
         error ->
-            ?ERROR_MSG("unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
+            ?ERROR_MSG("Unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
             {noreply, State}
     end;
 
 handle_info(Info, State) ->
-    ?ERROR_MSG("unexpected info: ~p", [Info]),
+    ?ERROR_MSG("Unexpected info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->

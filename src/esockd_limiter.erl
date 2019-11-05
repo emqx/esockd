@@ -136,8 +136,8 @@ handle_call({create, Name, Capacity, Interval}, _From, State = #{countdown := Co
     {reply, ok, ensure_countdown_timer(State#{countdown := NCountdown})};
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("unexpected call: ~p", [Req]),
-    {reply, ignored, State}.
+    error_logger:error_msg("Unexpected call: ~p", [Req]),
+    {reply, ignore, State}.
 
 handle_cast({delete, Name}, State = #{countdown := Countdown}) ->
     true = ets:delete(?TAB, {bucket, Name}),
@@ -146,7 +146,7 @@ handle_cast({delete, Name}, State = #{countdown := Countdown}) ->
     {noreply, State#{countdown := NCountdown}};
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("unexpected cast: ~p~n", [Msg]),
+    error_logger:error_msg("Unexpected cast: ~p~n", [Msg]),
     {noreply, State}.
 
 handle_info({timeout, Timer, countdown}, State = #{countdown := Countdown, timer := Timer}) ->
@@ -163,7 +163,7 @@ handle_info({timeout, Timer, countdown}, State = #{countdown := Countdown, timer
     {noreply, ensure_countdown_timer(NState)};
 
 handle_info(Info, State) ->
-    error_logger:error_msg("unexpected info: ~p~n", [Info]),
+    error_logger:error_msg("Unexpected info: ~p~n", [Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->

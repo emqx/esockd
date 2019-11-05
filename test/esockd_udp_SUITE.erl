@@ -86,7 +86,7 @@ udp_echo_loop(Transport, Peer) ->
     end.
 
 t_handle_call(_) ->
-    {reply, ignored, state} = esockd_udp:handle_call(req, from, state).
+    {reply, ignore, state} = esockd_udp:handle_call(req, from, state).
 
 t_handle_cast(_) ->
     {noreply, state} = esockd_udp:handle_cast(msg, state).

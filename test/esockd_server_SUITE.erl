@@ -44,7 +44,7 @@ t_stats_fun(_) ->
     ok = esockd_server:stop().
 
 t_handle_unexpected(_) ->
-    {reply, ignored, state} = esockd_server:handle_call(req, from, state),
+    {reply, ignore, state} = esockd_server:handle_call(req, from, state),
     {noreply, state} = esockd_server:handle_cast(msg, state),
     {noreply, state} = esockd_server:handle_info(info, state),
     {ok, state} = esockd_server:code_change('OldVsn', state, extra).

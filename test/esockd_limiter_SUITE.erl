@@ -72,7 +72,7 @@ t_consume(_) ->
     ok = esockd_limiter:stop().
 
 t_handle_call(_) ->
-    {reply, ignored, state} = esockd_limiter:handle_call(req, '_From', state).
+    {reply, ignore, state} = esockd_limiter:handle_call(req, '_From', state).
 
 t_handle_cast(_) ->
   {noreply, state} = esockd_limiter:handle_cast(msg, state).
