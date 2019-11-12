@@ -83,6 +83,7 @@ stop(Pid) -> gen_server:stop(Pid).
 
 init([Proto, Port, Opts, MFA]) ->
     process_flag(trap_exit, true),
+    put(incoming_peers, 0),
     {UdpOpts, State} = parse_opt(Opts, [], #state{proto = Proto,
                                                   port  = Port,
                                                   max_peers = infinity,
@@ -124,6 +125,7 @@ handle_info({udp, Sock, IP, InPortNo, Packet}, State = #state{sock = Sock, peers
             Pid ! {datagram, self(), Packet},
             {noreply, State};
         error ->
+            put(incoming_peers, get(incoming_peers) + 1),
             try should_throttle(State) orelse
                 start_channel({udp, self(), Sock}, Peer, State) of
                 true ->
@@ -147,7 +149,8 @@ handle_info({udp, Sock, IP, InPortNo, Packet}, State = #state{sock = Sock, peers
     end;
 
 handle_info({udp_passive, Sock}, State = #state{sock = Sock, rate_limit = Rl}) ->
-    NState = case ?ENABLED(Rl) andalso esockd_rate_limit:check(Rl) of
+    NState = case ?ENABLED(Rl) andalso
+                  esockd_rate_limit:check(put(incoming_peers, 0), Rl) of
                  false ->
                      activate_sock(State);
                  {0, Rl1} ->
