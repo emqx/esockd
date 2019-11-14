@@ -17,37 +17,41 @@
 %% @doc Async Recv Echo Server.
 -module(async_recv_echo_server).
 
--include("../../../include/esockd.hrl").
+-include("esockd.hrl").
 
 -behaviour(gen_server).
 
 %% start
--export([start/0, start/1]).
+-export([start/1]).
 
 -export([start_link/2]).
 
 %% gen_server Function Exports
--export([init/1, handle_call/3, handle_cast/2, handle_info/2,
-         terminate/2, code_change/3]).
+-export([ init/1
+        , handle_call/3
+        , handle_cast/2
+        , handle_info/2
+        , terminate/2
+        , code_change/3
+        ]).
 
 -record(state, {transport, socket}).
 
-start() -> start(5000).
-start([Port]) when is_atom(Port) ->
-    start(list_to_integer(atom_to_list(Port)));
-start(Port) when is_integer(Port) ->
-    [{ok, _} =  application:ensure_all_started(App)
-     || App <- [crypto, ssl, esockd]],
+start(Port) ->
+    ok = esockd:start(),
     TcpOpts = [binary,
                {reuseaddr, true},
                {backlog, 512},
-               {nodelay, false}],
+               {nodelay, false}
+              ],
     SslOpts = [{certfile, "./crt/demo.crt"},
-               {keyfile,  "./crt/demo.key"}],
+               {keyfile,  "./crt/demo.key"}
+              ],
     Options = [{acceptors, 8},
                {max_connections, 100000},
                {tcp_options, TcpOpts},
-               {ssl_options, SslOpts}],
+               {ssl_options, SslOpts}
+              ],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, Options, MFArgs).
 

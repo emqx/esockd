@@ -4,7 +4,7 @@
   {vsn, "git"},
   {modules, []},
   {registered, []},
-  {applications, [kernel, stdlib, ssl]},
+  {applications, [kernel, stdlib, sasl, ssl]},
   {mod, {esockd_app, []}},
   {env, []},
   {licenses, ["Apache-2.0"]},

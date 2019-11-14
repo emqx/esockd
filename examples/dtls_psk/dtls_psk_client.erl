@@ -16,7 +16,11 @@
 
 -module(dtls_psk_client).
 
--export([connect/0, connect/1, send/2, user_lookup/3]).
+-export([ connect/0
+        , connect/1
+        , send/2
+        , user_lookup/3
+        ]).
 
 connect() ->
     connect(5000).
@@ -49,4 +53,6 @@ opts() ->
      {user_lookup_fun, {fun user_lookup/3,
                           #{<<"psk_a">> => <<"shared_secret_a">>,
                             <<"psk_b">> => <<"shared_secret_b">>}}},
-     {cb_info, {gen_udp, udp, udp_close, udp_error}}].
+     {cb_info, {gen_udp, udp, udp_close, udp_error}}
+    ].
+

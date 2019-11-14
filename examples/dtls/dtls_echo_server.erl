@@ -14,30 +14,34 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(udp_echo_server).
+-module(dtls_echo_server).
 
--export([start/0, start/1]).
+-export([start/1]).
 
 -export([start_link/2, loop/2]).
 
--define(UDP_OPTS, [binary, {reuseaddr, true}]).
-
-start() -> start(5000).
 start(Port) ->
     ok = esockd:start(),
-    esockd:open_udp('echo/udp', Port, [{udp_options, ?UDP_OPTS}], {?MODULE, start_link, []}).
+    PrivDir = code:priv_dir(esockd),
+    DtlsOpts = [{mode, binary}, {reuseaddr, true},
+                {certfile, filename:join(PrivDir, "demo.crt")},
+                {keyfile, filename:join(PrivDir, "demo.key")}
+               ],
+    Opts = [{acceptors, 4},
+            {max_connections, 1000},
+            {dtls_options, DtlsOpts}
+           ],
+    MFArgs = {?MODULE, start_link, []},
+    {ok, _} = esockd:open_dtls('echo/dtls', Port, Opts, MFArgs).
 
 start_link(Transport, Peer) ->
     {ok, spawn_link(?MODULE, loop, [Transport, Peer])}.
 
-loop(Transport = {udp, Server, Sock}, Peer = {IP, Port}) ->
+loop(Transport = {dtls, SockPid, _}, Peer) ->
     receive
-        {datagram, Server, Packet} ->
+        {datagram, SockPid, Packet} ->
             io:format("~s - ~p~n", [esockd:format(Peer), Packet]),
-            %% Reply by pid
-            Server ! {datagram, Peer, Packet},
-            %% Reply by sock
-            ok = gen_udp:send(Sock, IP, Port, Packet),
+            SockPid ! {datagram, Peer, Packet},
             loop(Transport, Peer)
     end.
 

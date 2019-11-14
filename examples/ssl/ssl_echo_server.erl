@@ -16,21 +16,23 @@
 
 -module(ssl_echo_server).
 
--export([start/0, start/1]).
+-export([start/1]).
 
 -export([start_link/2, init/2, loop/2]).
 
-start() -> start(5000).
-
 start(Port) ->
     ok = esockd:start(),
+    PrivDir = code:priv_dir(esockd),
     TcpOpts = [binary, {reuseaddr, true}],
-    SslOpts = [{certfile, "./crt/demo.crt"}, {keyfile,  "./crt/demo.key"}],
+    SslOpts = [{certfile, filename:join(PrivDir, "demo.crt")},
+               {keyfile, filename:join(PrivDir, "demo.key")}
+              ],
     Opts = [{acceptors, 4},
             {max_connections, 1000},
             {tcp_options, TcpOpts},
-            {ssl_options, SslOpts}],
-    {ok, _} = esockd:open('echo/ssl', Port, Opts, ssl_echo_server).
+            {ssl_options, SslOpts}
+           ],
+    {ok, _} = esockd:open('echo/ssl', Port, Opts, ?MODULE).
 
 start_link(Transport, Sock) ->
     {ok, spawn_link(?MODULE, init, [Transport, Sock])}.

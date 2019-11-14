@@ -16,25 +16,22 @@
 
 -module(simple_echo_server).
 
--export([start/0, start/1]).
+-export([start/1]).
 
 -export([start_link/2, init/2, loop/2]).
 
 -define(TCP_OPTIONS, [binary, {reuseaddr, true}, {nodelay, false}]).
 
 %% @doc Start echo server.
-start() -> start(5000).
-%% shell
-start([Port]) when is_atom(Port) ->
-    start(list_to_integer(atom_to_list(Port)));
-start(Port) when is_integer(Port) ->
-    [{ok, _} = application:ensure_all_started(App) || App <- [sasl, esockd]],
+start(Port) ->
+    ok = esockd:start(),
     Access = application:get_env(esockd, access, [{allow, all}]),
     SockOpts = [{access_rules, Access},
                 {acceptors, 8},
                 {shutdown, infinity},
                 {max_connections, 1000000},
-                {tcp_options, ?TCP_OPTIONS}],
+                {tcp_options, ?TCP_OPTIONS}
+               ],
     MFArgs = {?MODULE, start_link, []},
     esockd:open(echo, Port, SockOpts, MFArgs).
 

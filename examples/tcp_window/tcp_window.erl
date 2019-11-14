@@ -16,9 +16,12 @@
 
 -module(tcp_window).
 
--export([main/0, main/1]).
+-export([start/2]).
 
--export([start_server/3, server_init/3, server_loop/3]).
+-export([ start_server/3
+        , server_init/3
+        , server_loop/3
+        ]).
 
 -define(TCP_OPTIONS, [binary,
                       {packet, raw},
@@ -26,14 +29,11 @@
                       {recbuf, 1024},
                       {sndbuf, 1024},
                       {send_timeout, 5000},
-                      {send_timeout_close, true}]).
+                      {send_timeout_close, true}
+                     ]).
 
-main() -> main(5000, sync).
-
-main([Port, How]) when is_atom(Port) ->
-    main(list_to_integer(atom_to_list(Port)), How).
-
-main(Port, How) when is_integer(Port) ->
+-spec(start(inet:port_number(), sync|async|async_force|async_nosuspend) -> ok).
+start(Port, How) when is_integer(Port) ->
     lists:foreach(fun application:ensure_all_started/1, [sasl, crypto, esockd]),
     Options = [{acceptors, 1},
                {shutdown, infinity},

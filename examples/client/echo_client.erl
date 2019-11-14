@@ -17,13 +17,9 @@
 %% @doc Echo test client
 -module(echo_client).
 
--export([start/1, start/3, send/2, run/4, connect/4, loop/2]).
+-export([start/3, send/2, run/4, connect/4, loop/2]).
 
 -define(TCP_OPTIONS, [binary, {packet, raw}, {active, true}]).
-
-%%shell
-start([Host, Port, Num]) when is_atom(Host), is_atom(Port), is_atom(Num) ->
-    start(atom_to_list(Host), a2i(Port), a2i(Num)).
 
 start(Host, Port, Num) ->
     spawn(?MODULE, run, [self(), Host, Port, Num]),
@@ -71,6 +67,4 @@ loop(Num, Sock) ->
 
 send(N, Sock) ->
     gen_tcp:send(Sock, [integer_to_list(N), ":", <<"Hello, eSockd!">>]).
-
-a2i(A) -> list_to_integer(atom_to_list(A)).
 

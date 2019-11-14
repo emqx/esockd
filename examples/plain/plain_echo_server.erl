@@ -15,17 +15,14 @@
 %%--------------------------------------------------------------------
 
 %% @doc Simple echo server.
--module(echo_server).
+-module(plain_echo_server).
 
--export([start/0, start/1]).
+-export([start/1]).
+
 -export([accept/2, recvloop/1]).
 
 %% @doc Start echo server.
-start() -> start(5000).
-%% shell
-start([Port]) when is_atom(Port) ->
-    start(list_to_integer(atom_to_list(Port)));
-start(Port) when is_integer(Port) ->
+start(Port) ->
     ok = esockd:start(),
     {ok, LSock} = gen_tcp:listen(Port, [{active, false}]),
     io:format("Listening on ~p~n", [Port]),

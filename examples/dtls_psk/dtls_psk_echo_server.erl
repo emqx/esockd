@@ -16,12 +16,10 @@
 
 -module(dtls_psk_echo_server).
 
--export([start/0, start/1]).
+-export([start/1]).
 
 -export([start_link/2, loop/2]).
 
-start() ->
-    start(5000).
 start(Port) ->
     [{ok, _} = application:ensure_all_started(App) || App <- [sasl, crypto, ssl, esockd]],
     DtlsOpts = [{mode, binary}, {reuseaddr, true}] ++ psk_opts(),
