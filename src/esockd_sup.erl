@@ -158,12 +158,12 @@ init([]) ->
                  intensity => 10,
                  period => 100
                 },
-    Limiter = #{id => rate_limiter,
-                start => {esockd_rate_limiter, start_link, []},
+    Limiter = #{id => esockd_limiter,
+                start => {esockd_limiter, start_link, []},
                 restart => permanent,
                 shutdown => 5000,
                 type => worker,
-                modules => [esockd_rate_limiter]
+                modules => [esockd_limiter]
                },
     Server = #{id => esockd_server,
                start => {esockd_server, start_link, []},

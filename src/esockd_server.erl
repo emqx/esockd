@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/0]).
+-export([start_link/0, stop/0]).
 
 %% stats API
 -export([ stats_fun/2
@@ -50,6 +50,9 @@
 -spec(start_link() -> {ok, pid()} | ignore | {error, term()}).
 start_link() ->
     gen_server:start_link({local, ?SERVER}, ?MODULE, [], []).
+
+-spec(stop() -> ok).
+stop() -> gen_server:stop(?SERVER).
 
 -spec(stats_fun({atom(), esockd:listen_on()}, atom()) -> fun()).
 stats_fun({Protocol, ListenOn}, Metric) ->
@@ -96,7 +99,7 @@ handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
     {reply, ok, State, hibernate};
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
+    error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
     {reply, ignore, State}.
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
@@ -104,11 +107,11 @@ handle_cast({del, {Protocol, ListenOn}}, State) ->
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
+    error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
+    error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, _State) ->

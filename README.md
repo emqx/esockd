@@ -37,7 +37,6 @@ A Simple TCP Echo Server:
         case Transport:recv(Sock, 0) of
             {ok, Data} ->
                 {ok, Peername} = Transport:peername(Sock),
-                io:format("RECV from ~s: ~s~n", [esockd_net:format(peername, Peername), Data]),
                 Transport:send(Sock, Data),
                 loop(Transport, Sock);
             {error, Reason} ->

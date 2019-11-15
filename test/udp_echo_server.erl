@@ -14,22 +14,24 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_ct).
+-module(udp_echo_server).
 
--export([all/1, certfile/1, keyfile/1]).
+-export([start_link/2]).
 
-%% @doc Get all the test cases in a CT suite.
-all(Suite) ->
-    lists:usort([F || {F, 1} <- Suite:module_info(exports),
-                      string:substr(atom_to_list(F), 1, 2) == "t_"
-                ]).
+-export([init/2, loop/2]).
 
-certfile(Config) ->
-    filename:join([test_dir(Config), "certs", "test.crt"]).
+start_link(Transport, Peer) ->
+	{ok, spawn_link(?MODULE, init, [Transport, Peer])}.
 
-keyfile(Config) ->
-    filename:join([test_dir(Config), "certs", "test.key"]).
+init(Transport, Peer) ->
+    loop(Transport, Peer).
 
-test_dir(Config) ->
-    filename:dirname(filename:dirname(proplists:get_value(data_dir, Config))).
+loop(Transport, Peer) ->
+    receive
+        {datagram, _From, <<"stop">>} ->
+            exit(normal);
+        {datagram, From, Packet} ->
+            From ! {datagram, Peer, Packet},
+            loop(Transport, Peer)
+    end.
 

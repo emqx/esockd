@@ -22,18 +22,16 @@
 
 -opaque(peercert() :: binary() | proplists:proplist()).
 
--spec(subject(nossl | undefined | peercert())
-      -> undefined | binary()).
+-spec(subject(nossl | undefined | peercert()) -> undefined | binary()).
 subject(nossl)     -> undefined;
 subject(undefined) -> undefined;
 subject(Cert) when is_binary(Cert) ->
     esockd_ssl:peer_cert_subject(Cert);
 subject(PP2Info) when is_list(PP2Info) ->
-    %%TODO: DN is not available in ppv2 additional info:(
+    %%Notice: DN is not available in ppv2 additional info
     proplists:get_value(pp2_ssl_cn, PP2Info).
 
--spec(common_name(nossl | undefined | peercert())
-      -> undefined | binary()).
+-spec(common_name(nossl | undefined | peercert()) -> undefined | binary()).
 common_name(nossl)     -> undefined;
 common_name(undefined) -> undefined;
 common_name(Cert) when is_binary(Cert) ->

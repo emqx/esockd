@@ -22,7 +22,7 @@
 -export([recv/3]).
 
 -ifdef(TEST).
--export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2]).
+-export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2, parse_pp2_ssl/1]).
 -endif.
 
 %% Protocol Command
@@ -199,3 +199,4 @@ inet_family(?UNIX)   -> unix.
 
 bool(1) -> true;
 bool(_) -> false.
+

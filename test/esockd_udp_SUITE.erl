@@ -29,30 +29,71 @@ init_per_testcase(_TestCase, Config) ->
 end_per_testcase(_TestCase, Config) ->
     Config.
 
-t_server(_) ->
-    error('TODO').
+%%--------------------------------------------------------------------
+%% Test cases for UDP Server
+%%--------------------------------------------------------------------
+
+t_udp_server(_) ->
+    with_udp_server(
+      fun(_Srv, Port) ->
+              {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+              ok = udp_send_and_recv(Sock, Port, <<"hello">>),
+              ok = udp_send_and_recv(Sock, Port, <<"world">>)
+      end).
 
 t_count_peers(_) ->
-    error('TODO').
+    with_udp_server(
+      fun(Srv, Port) ->
+              {ok, Sock1} = gen_udp:open(0, [binary, {active, false}]),
+              ok = udp_send_and_recv(Sock1, Port, <<"hello">>),
+              {ok, Sock2} = gen_udp:open(0, [binary, {active, false}]),
+              ok = udp_send_and_recv(Sock2, Port, <<"world">>),
+              ?assertEqual(2, esockd_udp:count_peers(Srv))
+      end).
 
-t_stop(_) ->
-    error('TODO').
+t_peer_down(_) ->
+    with_udp_server(
+      fun(Srv, Port) ->
+              {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+              ok = udp_send_and_recv(Sock, Port, <<"hello">>),
+              ?assertEqual(1, esockd_udp:count_peers(Srv)),
+              ok = gen_udp:send(Sock, {127,0,0,1}, Port, <<"stop">>),
+              timer:sleep(100),
+              ?assertEqual(0, esockd_udp:count_peers(Srv))
+      end).
 
-t_init(_) ->
-    error('TODO').
+udp_send_and_recv(Sock, Port, Data) ->
+    ok = gen_udp:send(Sock, {127,0,0,1}, Port, Data),
+    {ok, {_Addr, Port, Data}} = gen_udp:recv(Sock, 0),
+    ok.
+
+with_udp_server(TestFun) ->
+    MFA = {?MODULE, udp_echo_init, []},
+    {ok, Srv} = esockd_udp:server(test, {{127,0,0,1}, 6000}, [], MFA),
+    TestFun(Srv, 6000),
+    ok = esockd_udp:stop(Srv).
+
+udp_echo_init(Transport, Peer) ->
+    {ok, spawn(fun() -> udp_echo_loop(Transport, Peer) end)}.
+
+udp_echo_loop(Transport, Peer) ->
+    receive
+        {datagram, From, <<"stop">>} ->
+            exit(normal);
+        {datagram, From, Packet} ->
+            From ! {datagram, Peer, Packet},
+            udp_echo_loop(Transport, Peer)
+    end.
 
 t_handle_call(_) ->
-    error('TODO').
+    {reply, ignore, state} = esockd_udp:handle_call(req, from, state).
 
 t_handle_cast(_) ->
-    error('TODO').
+    {noreply, state} = esockd_udp:handle_cast(msg, state).
 
 t_handle_info(_) ->
-    error('TODO').
-
-t_terminate(_) ->
-    error('TODO').
+    {noreply, state} = esockd_udp:handle_info(info, state).
 
 t_code_change(_) ->
-    error('TODO').
+    {ok, state} = esockd_udp:code_change(oldvsn, state, extra).
 

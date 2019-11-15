@@ -23,15 +23,43 @@
 
 all() -> esockd_ct:all(?MODULE).
 
-init_per_testcase(_TestCase, Config) ->
-    Config.
-
-end_per_testcase(_TestCase, Config) ->
-    Config.
-
-t_compile(_) ->
-    error('TODO').
+%%--------------------------------------------------------------------
+%% Access
+%%--------------------------------------------------------------------
 
 t_match(_) ->
-    error('TODO').
+    Rules = [esockd_access:compile({deny,  "192.168.1.1"}),
+             esockd_access:compile({allow, "192.168.1.0/24"}),
+             esockd_access:compile({deny,  all})],
+    ?assertEqual({matched, deny}, esockd_access:match({192,168,1,1}, Rules)),
+    ?assertEqual({matched, allow}, esockd_access:match({192,168,1,4}, Rules)),
+    ?assertEqual({matched, allow}, esockd_access:match({192,168,1,60}, Rules)),
+    ?assertEqual({matched, deny}, esockd_access:match({10,10,10,10}, Rules)).
+
+t_nomatch(_) ->
+    Rules = [esockd_access:compile({deny,  "192.168.1.1"}),
+             esockd_access:compile({allow, "192.168.1.0/24"})
+            ],
+    ?assertEqual(nomatch, esockd_access:match({10,10,10,10}, Rules)).
+
+t_match_localhost(_) ->
+    Rules = [esockd_access:compile({allow, "127.0.0.1"}),
+             esockd_access:compile({deny, all})],
+    ?assertEqual({matched, allow}, esockd_access:match({127,0,0,1}, Rules)),
+    ?assertEqual({matched, deny}, esockd_access:match({192,168,0,1}, Rules)).
+
+t_match_allow(_) ->
+    Rules = [esockd_access:compile({deny, "10.10.0.0/16"}),
+             esockd_access:compile({allow, all})],
+    ?assertEqual({matched, deny}, esockd_access:match({10,10,0,10}, Rules)),
+    ?assertEqual({matched, allow}, esockd_access:match({127,0,0,1}, Rules)),
+    ?assertEqual({matched, allow}, esockd_access:match({192,168,0,1}, Rules)).
+
+t_match_ipv6(_) ->
+    Rules = [esockd_access:compile({deny, "2001:abcd::/64"}),
+             esockd_access:compile({allow, all})],
+    {ok, Addr1} = inet:parse_address("2001:abcd::10"),
+    {ok, Addr2} = inet:parse_address("2001::10"),
+    ?assertEqual({matched, deny}, esockd_access:match(Addr1, Rules)),
+    ?assertEqual({matched, allow}, esockd_access:match(Addr2, Rules)).
 

@@ -82,7 +82,7 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
             end, lists:seq(1, AcceptorNum)),
             {ok, {LAddr, LPort}} = inet:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
-            %%                      [Proto, esockd_net:ntoab(LAddr), LPort, AcceptorNum]),
+            %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
             {ok, #state{proto = Proto, listen_on = ListenOn, options = Opts,
                         lsock = LSock, laddr = LAddr, lport = LPort}};
         {error, Reason} ->
@@ -92,8 +92,8 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
     end.
 
 sockopts(Opts) ->
-    TcpOpts = proplists:get_value(tcp_options, Opts, []),
-    esockd_util:merge_opts(?DEFAULT_TCP_OPTIONS, TcpOpts).
+    esockd:merge_opts(?DEFAULT_TCP_OPTIONS,
+                      proplists:get_value(tcp_options, Opts, [])).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
@@ -110,21 +110,21 @@ handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
 
 handle_call(Req, _From, State) ->
-    error_logger:error_msg("[~s] unexpected call: ~p", [?MODULE, Req]),
+    error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
     {noreply, State}.
 
 handle_cast(Msg, State) ->
-    error_logger:error_msg("[~s] unexpected cast: ~p", [?MODULE, Msg]),
+    error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
 handle_info(Info, State) ->
-    error_logger:error_msg("[~s] unexpected info: ~p", [?MODULE, Info]),
+    error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
 
 terminate(_Reason, #state{proto = Proto, listen_on = ListenOn,
                           lsock = LSock, laddr = Addr, lport = Port}) ->
-    error_logger:info_msg("~s stopped on ~s~n", [Proto, esockd_net:format({Addr, Port})]),
-    esockd_rate_limiter:delete({listener, Proto, ListenOn}),
+    error_logger:info_msg("~s stopped on ~s~n", [Proto, esockd:format({Addr, Port})]),
+    esockd_limiter:delete({listener, Proto, ListenOn}),
     esockd_server:del_stats({Proto, ListenOn}),
     esockd_transport:fast_close(LSock).
 

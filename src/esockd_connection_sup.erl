@@ -20,7 +20,7 @@
 
 -import(proplists, [get_value/3]).
 
--export([start_link/2]).
+-export([start_link/2, stop/1]).
 
 -export([ start_connection/3
         , count_connections/1
@@ -63,9 +63,13 @@
         error_logger:error_msg("[~s] " ++ Format, [?MODULE | Args])).
 
 %% @doc Start connection supervisor.
--spec(start_link([esockd:option()], esockd:mfargs()) -> {ok, pid()} | ignore | {error, term()}).
+-spec(start_link([esockd:option()], esockd:mfargs())
+      -> {ok, pid()} | ignore | {error, term()}).
 start_link(Opts, MFA) ->
     gen_server:start_link(?MODULE, [Opts, MFA], []).
+
+-spec(stop(pid()) -> ok).
+stop(Pid) -> gen_server:stop(Pid).
 
 %%--------------------------------------------------------------------
 %% API
@@ -106,7 +110,7 @@ get_max_connections(Sup) when is_pid(Sup) ->
 set_max_connections(Sup, MaxConns) when is_pid(Sup) ->
     call(Sup, {set_max_connections, MaxConns}).
 
--spec(get_shutdown_count(pid()) -> integer()).
+-spec(get_shutdown_count(pid()) -> [{atom(), integer()}]).
 get_shutdown_count(Sup) ->
     call(Sup, get_shutdown_count).
 
@@ -200,11 +204,11 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     end;
 
 handle_call(Req, _From, State) ->
-    ?ERROR_MSG("unexpected call: ~p", [Req]),
-    {reply, ignored, State}.
+    ?ERROR_MSG("Unexpected call: ~p", [Req]),
+    {reply, ignore, State}.
 
 handle_cast(Msg, State) ->
-    ?ERROR_MSG("unexpected cast: ~p", [Msg]),
+    ?ERROR_MSG("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
 handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
@@ -213,12 +217,12 @@ handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
             connection_crashed(Pid, Reason, State),
             {noreply, State#state{curr_connections = Conns1}};
         error ->
-            ?ERROR_MSG("unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
+            ?ERROR_MSG("Unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
             {noreply, State}
     end;
 
 handle_info(Info, State) ->
-    ?ERROR_MSG("unexpected info: ~p", [Info]),
+    ?ERROR_MSG("Unexpected info: ~p", [Info]),
     {noreply, State}.
 
 terminate(_Reason, State) ->

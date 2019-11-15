@@ -14,22 +14,31 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_ct).
+-module(udp_echo_server).
 
--export([all/1, certfile/1, keyfile/1]).
+-export([start/1]).
 
-%% @doc Get all the test cases in a CT suite.
-all(Suite) ->
-    lists:usort([F || {F, 1} <- Suite:module_info(exports),
-                      string:substr(atom_to_list(F), 1, 2) == "t_"
-                ]).
+-export([start_link/2, loop/2]).
 
-certfile(Config) ->
-    filename:join([test_dir(Config), "certs", "test.crt"]).
+-define(UDP_OPTS, [binary, {reuseaddr, true}]).
 
-keyfile(Config) ->
-    filename:join([test_dir(Config), "certs", "test.key"]).
+start(Port) ->
+    ok = esockd:start(),
+    Opts = [{udp_options, ?UDP_OPTS}],
+    MFA = {?MODULE, start_link, []},
+    esockd:open_udp('echo/udp', Port, Opts, MFA).
 
-test_dir(Config) ->
-    filename:dirname(filename:dirname(proplists:get_value(data_dir, Config))).
+start_link(Transport, Peer) ->
+    {ok, spawn_link(?MODULE, loop, [Transport, Peer])}.
+
+loop(Transport = {udp, Server, Sock}, Peer = {IP, Port}) ->
+    receive
+        {datagram, Server, Packet} ->
+            io:format("~s - ~p~n", [esockd:format(Peer), Packet]),
+            %% Reply by pid
+            Server ! {datagram, Peer, Packet},
+            %% Reply by sock
+            ok = gen_udp:send(Sock, IP, Port, Packet),
+            loop(Transport, Peer)
+    end.
 

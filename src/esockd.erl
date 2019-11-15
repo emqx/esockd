@@ -61,10 +61,12 @@
         ]).
 
 %% Utility functions
--export([ parse_opt/1
+-export([ merge_opts/2
+        , parse_opt/1
         , ulimit/0
         , fixaddr/1
         , to_string/1
+        , format/1
         ]).
 
 -export_type([ proto/0
@@ -247,8 +249,18 @@ allow({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
     LSup = listener({Proto, ListenOn}),
     ConnSup = esockd_listener_sup:connection_sup(LSup),
-
     esockd_connection_sup:deny(ConnSup, CIDR).
+
+%% @doc Deny access address
+-spec(merge_opts(proplists:proplist(), proplists:proplist())
+      -> proplists:proplist()).
+merge_opts(Defaults, Options) ->
+    lists:foldl(
+      fun({Opt, Val}, Acc) ->
+          lists:keystore(Opt, 1, Acc, {Opt, Val});
+         (Opt, Acc) ->
+          lists:usort([Opt | Acc])
+      end, Defaults, Options).
 
 %% @doc Parse option.
 parse_opt(Options) ->
@@ -291,7 +303,7 @@ parse_opt([_|Opts], Acc) ->
 %% @doc System 'ulimit -n'
 -spec(ulimit() -> pos_integer()).
 ulimit() ->
-    proplists:get_value(max_fds, erlang:system_info(check_io)).
+    proplists:get_value(max_fds, hd(erlang:system_info(check_io))).
 
 with_listener({Proto, ListenOn}, Fun) ->
     with_listener({Proto, ListenOn}, Fun, []).
@@ -308,8 +320,7 @@ with_listener(LSup, Fun, Args) when is_pid(LSup) ->
 to_string(Port) when is_integer(Port) ->
     integer_to_list(Port);
 to_string({Addr, Port}) ->
-    {IPAddr, Port} = fixaddr({Addr, Port}),
-    inet:ntoa(IPAddr) ++ ":" ++ integer_to_list(Port).
+    format(fixaddr({Addr, Port})).
 
 %% @doc Parse Address
 fixaddr(Port) when is_integer(Port) ->
@@ -319,6 +330,10 @@ fixaddr({Addr, Port}) when is_list(Addr), is_integer(Port) ->
 fixaddr({Addr, Port}) when is_tuple(Addr), is_integer(Port) ->
     case esockd_cidr:is_ipv6(Addr) or esockd_cidr:is_ipv4(Addr) of
         true  -> {Addr, Port};
-        false -> error(invalid_ipaddr)
+        false -> error({invalid_ipaddr, Addr})
     end.
+
+-spec(format({inet:ip_address(), inet:port_number()}) -> string()).
+format({Addr, Port}) ->
+    inet:ntoa(Addr) ++ ":" ++ integer_to_list(Port).
 
