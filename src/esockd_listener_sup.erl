@@ -1,3 +1,4 @@
+%%--------------------------------------------------------------------
 %% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,6 +12,7 @@
 %% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 %% See the License for the specific language governing permissions and
 %% limitations under the License.
+%%--------------------------------------------------------------------
 
 -module(esockd_listener_sup).
 
@@ -26,9 +28,9 @@
 %% supervisor callback
 -export([init/1]).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% API
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 %% @doc Start listener supervisor
 -spec(start_link(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
@@ -84,16 +86,16 @@ child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _}
                <- supervisor:which_children(Sup), Id =:= ChildId]).
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Supervisor callbacks
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 init([]) ->
     {ok, {{rest_for_one, 10, 3600}, []}}.
 
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 %% Sock tune/upgrade functions
-%%------------------------------------------------------------------------------
+%%--------------------------------------------------------------------
 
 buffer_tune_fun(Opts) ->
     buffer_tune_fun(proplists:get_value(buffer, Opts),
@@ -134,11 +136,11 @@ rate_limit_fun(Bucket, Opts) ->
             fun(_) -> {1, 0} end;
         I when is_integer(I) ->
             rate_limit_fun(Bucket, I, 1);
-        {Limit, Period} ->
-            rate_limit_fun(Bucket, Limit, Period)
+        {Capacity, Interval} ->
+            rate_limit_fun(Bucket, Capacity, Interval)
     end.
 
-rate_limit_fun(Bucket, Limit, Period) ->
-    ok = esockd_rate_limiter:create(Bucket, Limit, Period),
-    fun(I) -> esockd_rate_limiter:consume(Bucket, I) end.
+rate_limit_fun(Bucket, Capacity, Interval) ->
+    ok = esockd_limiter:create(Bucket, Capacity, Interval),
+    fun(I) -> esockd_limiter:consume(Bucket, I) end.
 

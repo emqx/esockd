@@ -14,32 +14,24 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(echo_server).
+-module(udp_echo_server).
 
 -export([start_link/2]).
 
-%% Callbacks
 -export([init/2, loop/2]).
 
-start_link(Transport, RawSock) ->
-	{ok, spawn_link(?MODULE, init, [Transport, RawSock])}.
+start_link(Transport, Peer) ->
+	{ok, spawn_link(?MODULE, init, [Transport, Peer])}.
 
-init(Transport, RawSock) ->
-    case Transport:wait(RawSock) of
-        {ok, Sock} ->
-            loop(Transport, Sock);
-        {error, Reason} ->
-            {error, Reason}
+init(Transport, Peer) ->
+    loop(Transport, Peer).
+
+loop(Transport, Peer) ->
+    receive
+        {datagram, _From, <<"stop">>} ->
+            exit(normal);
+        {datagram, From, Packet} ->
+            From ! {datagram, Peer, Packet},
+            loop(Transport, Peer)
     end.
-
-loop(Transport, Sock) ->
-	case Transport:recv(Sock, 0) of
-        {ok, Data} ->
-            %%{ok, Peername} = Transport:peername(Sock),
-            %%io:format("RECV from ~s: ~s~n", [esockd:format(Peername), Data]),
-            Transport:send(Sock, Data),
-            loop(Transport, Sock);
-        {error, Reason} ->
-            exit({shutdown, Reason})
-	end.
 

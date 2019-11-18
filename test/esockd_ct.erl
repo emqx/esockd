@@ -14,32 +14,22 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(echo_server).
+-module(esockd_ct).
 
--export([start_link/2]).
+-export([all/1, certfile/1, keyfile/1]).
 
-%% Callbacks
--export([init/2, loop/2]).
+%% @doc Get all the test cases in a CT suite.
+all(Suite) ->
+    lists:usort([F || {F, 1} <- Suite:module_info(exports),
+                      string:substr(atom_to_list(F), 1, 2) == "t_"
+                ]).
 
-start_link(Transport, RawSock) ->
-	{ok, spawn_link(?MODULE, init, [Transport, RawSock])}.
+certfile(Config) ->
+    filename:join([test_dir(Config), "certs", "test.crt"]).
 
-init(Transport, RawSock) ->
-    case Transport:wait(RawSock) of
-        {ok, Sock} ->
-            loop(Transport, Sock);
-        {error, Reason} ->
-            {error, Reason}
-    end.
+keyfile(Config) ->
+    filename:join([test_dir(Config), "certs", "test.key"]).
 
-loop(Transport, Sock) ->
-	case Transport:recv(Sock, 0) of
-        {ok, Data} ->
-            %%{ok, Peername} = Transport:peername(Sock),
-            %%io:format("RECV from ~s: ~s~n", [esockd:format(Peername), Data]),
-            Transport:send(Sock, Data),
-            loop(Transport, Sock);
-        {error, Reason} ->
-            exit({shutdown, Reason})
-	end.
+test_dir(Config) ->
+    filename:dirname(filename:dirname(proplists:get_value(data_dir, Config))).
 

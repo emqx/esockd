@@ -23,7 +23,10 @@ eunit: compile
 
 .PHONY: ct
 ct: compile
-	$(REBAR) ct -v
+	$(REBAR) as test ct -v
+
+cover:
+	$(REBAR) cover
 
 .PHONY: dialyzer
 dialyzer:
