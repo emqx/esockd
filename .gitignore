@@ -30,3 +30,4 @@ erlang.mk
 _build/
 rebar3.crashdump
 *.swp
+.rebar3/

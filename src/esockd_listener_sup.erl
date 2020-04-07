@@ -66,8 +66,11 @@ start_link(Proto, ListenOn, Opts, MFA) ->
                      shutdown => 16#ffffffff,
                      type => worker,
                      modules => [esockd_listener]},
-    {ok, _Listener} = supervisor:start_child(Sup, ListenerSpec),
-    {ok, Sup}.
+    case supervisor:start_child(Sup, ListenerSpec) of
+        {ok, _} -> {ok, Sup};
+        {error, {Reason, _ChildSpec}} ->
+            {error, Reason}
+    end.
 
 %% @doc Get listener.
 -spec(listener(pid()) -> pid()).
