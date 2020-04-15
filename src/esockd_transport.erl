@@ -101,13 +101,13 @@ fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
     {Pid, MRef} = spawn_monitor(fun() -> ssl:close(SslSock) end),
-    erlang:send_after(?SSL_CLOSE_TIMEOUT, self(), {Pid, ssl_close_timeout}),
+    TRef = erlang:send_after(?SSL_CLOSE_TIMEOUT, self(), {Pid, ssl_close_timeout}),
     receive
         {Pid, ssl_close_timeout} ->
             erlang:demonitor(MRef, [flush]),
             exit(Pid, kill);
         {'DOWN', MRef, process, Pid, _Reason} ->
-            ok
+            erlang:cancel_timer(TRef)
     end,
     catch port_close(Sock), ok;
 fast_close(#proxy_socket{socket = Sock}) ->
