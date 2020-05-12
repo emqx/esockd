@@ -16,11 +16,39 @@
 
 -module(esockd_dtls_listener_sup).
 
--export([start_link/4]).
+-behaviour(supervisor).
 
+%% APIs
+-export([ start_link/4
+        , acceptor_sup/1
+        ]).
+
+%% get/set
+-export([ get_options/1
+        , get_acceptors/1
+        , get_max_connections/1
+        , get_current_connections/1
+        , get_shutdown_count/1
+        ]).
+
+-export([ set_max_connections/2 ]).
+
+-export([ get_access_rules/1
+        , allow/2
+        , deny/2
+        ]).
+
+%% supervisor callbacks
 -export([init/1]).
 
 -define(DTLS_OPTS, [{protocol, dtls}, {mode, binary}, {reuseaddr, true}]).
+
+-define(ERROR_MSG(Format, Args),
+        error_logger:error_msg("[~s]: " ++ Format, [?MODULE | Args])).
+
+%%--------------------------------------------------------------------
+%% APIs
+%%--------------------------------------------------------------------
 
 -spec(start_link(atom(), {inet:ip_address(),inet:port_number()} | inet:port_number(),
                  [esockd:option()], mfa()) -> {ok, pid()} | {error, term()}).
@@ -45,6 +73,7 @@ start_link(Proto, Port, Opts, MFA) ->
             {error, Reason}
     end.
 
+%% @private
 start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
     Spec = #{id => acceptor_sup,
              start => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA, LimitFun]},
@@ -54,8 +83,53 @@ start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
              modules => [esockd_dtls_acceptor_sup]},
     supervisor:start_child(Sup, Spec).
 
+%% @private
 merge_addr(Addr, Opts) ->
     lists:keystore(ip, 1, Opts, {ip, Addr}).
+
+%% @doc Get acceptor supervisor.
+-spec(acceptor_sup(pid()) -> pid()).
+acceptor_sup(Sup) ->
+    child_pid(Sup, acceptor_sup).
+
+%%--------------------------------------------------------------------
+%% GET/SET APIs
+%%--------------------------------------------------------------------
+
+get_options(_LSup) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    [].
+
+get_acceptors(LSup) ->
+    esockd_dtls_acceptor_sup:count_acceptors(acceptor_sup(LSup)).
+
+get_max_connections(_LSup) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    [].
+
+get_current_connections(_LSup) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    0.
+
+get_shutdown_count(_LSup) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    0.
+
+set_max_connections(_LSup, MaxLimit) when is_integer(MaxLimit) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    ok.
+
+get_access_rules(_LSup) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    [].
+
+allow(_LSup, _CIDR) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    ok.
+
+deny(_LSup, _CIDR) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    ok.
 
 %%--------------------------------------------------------------------
 %% Supervisor callbacks
@@ -63,4 +137,12 @@ merge_addr(Addr, Opts) ->
 
 init([]) ->
     {ok, {{one_for_all, 10, 3600}, []}}.
+
+%%--------------------------------------------------------------------
+%% Uitls
+%%--------------------------------------------------------------------
+
+child_pid(Sup, ChildId) ->
+    hd([Pid || {Id, Pid, _, _}
+               <- supervisor:which_children(Sup), Id =:= ChildId]).
 

@@ -25,6 +25,21 @@
 %% export for dtls_listener_sup
 -export([rate_limit_fun/2]).
 
+%% get/set
+-export([ get_options/1
+        , get_acceptors/1
+        , get_max_connections/1
+        , get_current_connections/1
+        , get_shutdown_count/1
+        ]).
+
+-export([ set_max_connections/2 ]).
+
+-export([ get_access_rules/1
+        , allow/2
+        , deny/2
+        ]).
+
 %% supervisor callback
 -export([init/1]).
 
@@ -88,6 +103,37 @@ acceptor_sup(Sup) -> child_pid(Sup, acceptor_sup).
 child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _}
                <- supervisor:which_children(Sup), Id =:= ChildId]).
+
+%%--------------------------------------------------------------------
+%% Get/Set APIs
+%%--------------------------------------------------------------------
+
+get_options(Sup) ->
+    esockd_listener:options(listener(Sup)).
+
+get_acceptors(Sup) ->
+    esockd_acceptor_sup:count_acceptors(acceptor_sup(Sup)).
+
+get_max_connections(Sup) ->
+    esockd_connection_sup:get_max_connections(connection_sup(Sup)).
+
+set_max_connections(Sup, MaxConns) ->
+    esockd_connection_sup:set_max_connections(connection_sup(Sup), MaxConns).
+
+get_current_connections(Sup) ->
+    esockd_connection_sup:count_connections(connection_sup(Sup)).
+
+get_shutdown_count(Sup) ->
+    esockd_connection_sup:get_shutdown_count(connection_sup(Sup)).
+
+get_access_rules(Sup) ->
+    esockd_connection_sup:access_rules(connection_sup(Sup)).
+
+allow(Sup, CIDR) ->
+    esockd_connection_sup:allow(connection_sup(Sup), CIDR).
+
+deny(Sup, CIDR) ->
+    esockd_connection_sup:deny(connection_sup(Sup), CIDR).
 
 %%--------------------------------------------------------------------
 %% Supervisor callbacks

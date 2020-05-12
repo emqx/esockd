@@ -182,74 +182,50 @@ get_stats({Proto, ListenOn}) when is_atom(Proto) ->
 %% @doc Get options
 -spec(get_options({atom(), listen_on()}) -> undefined | pos_integer()).
 get_options({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_options/1);
-get_options(LSup) when is_pid(LSup) ->
-    esockd_listener:options(esockd_listener_sup:listener(LSup)).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get acceptors number
 -spec(get_acceptors({atom(), listen_on()}) -> undefined | pos_integer()).
 get_acceptors({Proto, ListenOn}) ->
-    with_listener({Proto, ListenOn}, fun get_acceptors/1);
-get_acceptors(LSup) when is_pid(LSup) ->
-    AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
-    esockd_acceptor_sup:count_acceptors(AcceptorSup).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get max connections
 -spec(get_max_connections({atom(), listen_on()} | pid()) -> undefined | pos_integer()).
 get_max_connections({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_max_connections/1);
-get_max_connections(LSup) when is_pid(LSup) ->
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:get_max_connections(ConnSup).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Set max connections
--spec(set_max_connections({atom(), listen_on()} | pid(), pos_integer())
+-spec(set_max_connections({atom(), listen_on()}, pos_integer())
       -> undefined | pos_integer()).
 set_max_connections({Proto, ListenOn}, MaxConns) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun set_max_connections/2, [MaxConns]);
-set_max_connections(LSup, MaxConns) when is_pid(LSup) ->
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:set_max_connections(ConnSup, MaxConns).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [MaxConns]).
 
 %% @doc Get current connections
 -spec(get_current_connections({atom(), listen_on()}) -> undefined | non_neg_integer()).
 get_current_connections({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_current_connections/1);
-get_current_connections(LSup) when is_pid(LSup) ->
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:count_connections(ConnSup).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get shutdown count
 -spec(get_shutdown_count({atom(), listen_on()}) -> undefined | pos_integer()).
 get_shutdown_count({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_shutdown_count/1);
-get_shutdown_count(LSup) when is_pid(LSup) ->
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:get_shutdown_count(ConnSup).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get access rules
 -spec(get_access_rules({atom(), listen_on()}) -> [esockd_access:rule()] | undefined).
 get_access_rules({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, fun get_access_rules/1);
-get_access_rules(LSup) when is_pid(LSup) ->
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:access_rules(ConnSup).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Allow access address
 -spec(allow({atom(), listen_on()}, all | esockd_cidr:cidr_string())
       -> ok | {error, term()}).
 allow({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
-    LSup = listener({Proto, ListenOn}),
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:allow(ConnSup, CIDR).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [CIDR]).
 
 %% @doc Deny access address
 -spec(deny({atom(), listen_on()}, all | esockd_cidr:cidr_string())
       -> ok | {error, term()}).
 deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
-    LSup = listener({Proto, ListenOn}),
-    ConnSup = esockd_listener_sup:connection_sup(LSup),
-    esockd_connection_sup:deny(ConnSup, CIDR).
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [CIDR]).
 
 %% @doc Deny access address
 -spec(merge_opts(proplists:proplist(), proplists:proplist())
@@ -309,12 +285,12 @@ with_listener({Proto, ListenOn}, Fun) ->
     with_listener({Proto, ListenOn}, Fun, []).
 
 with_listener({Proto, ListenOn}, Fun, Args) ->
-    LSup = listener({Proto, ListenOn}),
-    with_listener(LSup, Fun, Args);
-with_listener(undefined, _Fun, _Args) ->
-    undefined;
-with_listener(LSup, Fun, Args) when is_pid(LSup) ->
-    erlang:apply(Fun, [LSup | Args]).
+    case esockd_sup:listener_and_module({Proto, ListenOn}) of
+        undefined ->
+            {error, not_found};
+        {LSup, Mod} ->
+            erlang:apply(Mod, Fun, [LSup | Args])
+    end.
 
 -spec(to_string(listen_on()) -> string()).
 to_string(Port) when is_integer(Port) ->

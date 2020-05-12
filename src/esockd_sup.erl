@@ -29,6 +29,7 @@
 
 -export([ listeners/0
         , listener/1
+        , listener_and_module/1
         ]).
 
 -export([ child_spec/4
@@ -109,6 +110,13 @@ listeners() ->
 listener({Proto, ListenOn}) ->
     ChildId = child_id(Proto, ListenOn),
     case [Pid || {Id, Pid, _Type, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
+        [] -> undefined;
+        L  -> hd(L)
+    end.
+
+listener_and_module({Proto, ListenOn}) ->
+    ChildId = child_id(Proto, ListenOn),
+    case [{Pid, Mod} || {Id, Pid, _Type, [Mod|_]} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
         [] -> undefined;
         L  -> hd(L)
     end.

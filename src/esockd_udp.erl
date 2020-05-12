@@ -23,6 +23,21 @@
         , stop/1
         ]).
 
+%% get/set
+-export([ get_options/1
+        , get_acceptors/1
+        , get_max_connections/1
+        , get_current_connections/1
+        , get_shutdown_count/1
+        ]).
+
+-export([ set_max_connections/2 ]).
+
+-export([ get_access_rules/1
+        , allow/2
+        , deny/2
+        ]).
+
 %% gen_server callbacks
 -export([ init/1
         , handle_call/3
@@ -78,6 +93,42 @@ count_peers(Pid) ->
 stop(Pid) -> gen_server:stop(Pid).
 
 %%--------------------------------------------------------------------
+%% GET/SET APIs
+%%--------------------------------------------------------------------
+
+get_options(_Pid) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    [].
+
+get_acceptors(_Pid) ->
+    1.
+
+get_max_connections(Pid) ->
+    gen_server:call(Pid, max_peers).
+
+get_current_connections(Pid) ->
+    gen_server:call(Pid, count_peers).
+
+get_shutdown_count(Pid) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    0.
+
+set_max_connections(Pid, MaxLimit) when is_integer(MaxLimit) ->
+    gen_server:call(Pid, {max_peers, MaxLimit}).
+
+get_access_rules(_Pid) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    [].
+
+allow(_Pid, _CIDR) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    ok.
+
+deny(_Pid, _CIDR) ->
+    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
+    ok.
+
+%%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
@@ -110,6 +161,12 @@ parse_opt([Opt|Opts], Acc, State) ->
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
     {reply, maps:size(Peers) div 2, State};
+
+handle_call(max_peers, _From, State = #state{max_peers = MaxLimit}) ->
+    {reply, MaxLimit, State};
+
+handle_call({max_peers, MaxLimit}, _From, State) ->
+    {reply, ok, State#state{max_peers = MaxLimit}};
 
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("Unexpected call: ~p", [Req]),
