@@ -44,7 +44,7 @@ start_acceptor(AcceptorSup, LSock) ->
 %% @doc Count acceptors.
 -spec(count_acceptors(AcceptorSup :: pid()) -> pos_integer()).
 count_acceptors(AcceptorSup) ->
-    length(supervisor:which_children(AcceptorSup)).
+    proplists:get_value(active, supervisor:count_children(AcceptorSup), 0).
 
 %%--------------------------------------------------------------------
 %% Supervisor callbacks

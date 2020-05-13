@@ -18,9 +18,16 @@
 
 -behaviour(supervisor).
 
+-import(esockd_listener_sup,
+        [ buffer_tune_fun/1
+        , rate_limit_fun/2
+        ]).
+
 %% APIs
 -export([ start_link/4
+        , listener/1
         , acceptor_sup/1
+        , connection_sup/1
         ]).
 
 %% get/set
@@ -41,8 +48,6 @@
 %% supervisor callbacks
 -export([init/1]).
 
--define(DTLS_OPTS, [{protocol, dtls}, {mode, binary}, {reuseaddr, true}]).
-
 -define(ERROR_MSG(Format, Args),
         error_logger:error_msg("[~s]: " ++ Format, [?MODULE | Args])).
 
@@ -50,93 +55,97 @@
 %% APIs
 %%--------------------------------------------------------------------
 
--spec(start_link(atom(), {inet:ip_address(),inet:port_number()} | inet:port_number(),
+-spec(start_link(atom(), esockd:listen_on(),
                  [esockd:option()], mfa()) -> {ok, pid()} | {error, term()}).
-start_link(Proto, {Host, Port}, Opts, MFA) ->
-    start_link(Proto, Port, merge_addr(Host, Opts), MFA);
-start_link(Proto, Port, Opts, MFA) ->
-    case ssl:listen(Port, esockd:merge_opts(
-                            ?DTLS_OPTS, proplists:get_value(dtls_options, Opts, []))) of
-        {ok, LSock} ->
-            %% error_logger:info_msg("~s opened on dtls ~w~n", [Proto, Port]),
-            {ok, Sup} = supervisor:start_link(?MODULE, []),
-            LimitFun = esockd_listener_sup:rate_limit_fun({dtls, Proto, Port}, Opts),
-            {ok, AcceptorSup} = start_acceptor_sup(Sup, Opts, MFA, LimitFun),
-            AcceptorNum = proplists:get_value(acceptors, Opts, 8),
-            lists:foreach(fun(_) ->
-                {ok, _Pid} = esockd_dtls_acceptor_sup:start_acceptor(AcceptorSup, LSock)
-            end, lists:seq(1, AcceptorNum)),
-            {ok, Sup};
-        {error, Reason} ->
-            error_logger:error_msg("DTLS failed to listen on ~p - ~p (~s)",
-                                   [Port, Reason, inet:format_error(Reason)]),
+start_link(Proto, ListenOn, Opts, MFA) ->
+    {ok, Sup} = supervisor:start_link(?MODULE, []),
+    %% Start connection sup
+    %%
+    %% !!! IMPORTANT: It's same as tcp/ssl `esockd_connection_sup`
+    ConnSupSpec = #{id => connection_sup,
+                    start => {esockd_connection_sup, start_link, [Opts, MFA]},
+                    restart => transient,
+                    shutdown => infinity,
+                    type => supervisor,
+                    modules => [esockd_connection_sup]},
+    {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
+
+    %% State acceptor sup
+    TuneFun = buffer_tune_fun(Opts),
+    UpgradeFuns = upgrade_funs(Opts),
+    StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
+    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, Opts),
+    AcceptorSupSpec = #{id => acceptor_sup,
+                        start => {esockd_dtls_acceptor_sup, start_link,
+                                  [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
+                        restart => transient,
+                        shutdown => infinity,
+                        type => supervisor,
+                        modules => [esockd_dtls_acceptor_sup]},
+    {ok, AcceptorSup} = supervisor:start_child(Sup, AcceptorSupSpec),
+    %% Start listener
+    ListenerSpec = #{id => listener,
+                     start => {esockd_dtls_listener, start_link,
+                               [Proto, ListenOn, Opts, AcceptorSup]},
+                     restart => transient,
+                     shutdown => 16#ffffffff,
+                     type => worker,
+                     modules => [esockd_dtls_listener]},
+    case supervisor:start_child(Sup, ListenerSpec) of
+        {ok, _} -> {ok, Sup};
+        {error, {Reason, _ChildSpec}} ->
             {error, Reason}
     end.
 
-%% @private
-start_acceptor_sup(Sup, Opts, MFA, LimitFun) ->
-    Spec = #{id => acceptor_sup,
-             start => {esockd_dtls_acceptor_sup, start_link, [Opts, MFA, LimitFun]},
-             restart => transient,
-             shutdown => infinity,
-             type => supervisor,
-             modules => [esockd_dtls_acceptor_sup]},
-    supervisor:start_child(Sup, Spec).
+%% @doc Get listener.
+-spec(listener(pid()) -> pid()).
+listener(Sup) -> child_pid(Sup, listener).
 
-%% @private
-merge_addr(Addr, Opts) ->
-    lists:keystore(ip, 1, Opts, {ip, Addr}).
+%% @doc Get connection supervisor.
+-spec(connection_sup(pid()) -> pid()).
+connection_sup(Sup) -> child_pid(Sup, connection_sup).
 
 %% @doc Get acceptor supervisor.
 -spec(acceptor_sup(pid()) -> pid()).
-acceptor_sup(Sup) ->
-    child_pid(Sup, acceptor_sup).
+acceptor_sup(Sup) -> child_pid(Sup, acceptor_sup).
 
 %%--------------------------------------------------------------------
 %% GET/SET APIs
 %%--------------------------------------------------------------------
 
-get_options(_LSup) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    [].
+get_options(Sup) ->
+    esockd_dtls_listener:options(listener(Sup)).
 
-get_acceptors(LSup) ->
-    esockd_dtls_acceptor_sup:count_acceptors(acceptor_sup(LSup)).
+get_acceptors(Sup) ->
+    esockd_dtls_acceptor_sup:count_acceptors(acceptor_sup(Sup)).
 
-get_max_connections(_LSup) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    [].
+get_max_connections(Sup) ->
+    esockd_connection_sup:get_max_connections(connection_sup(Sup)).
 
-get_current_connections(_LSup) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    0.
+set_max_connections(Sup, MaxConns) ->
+    esockd_connection_sup:set_max_connections(connection_sup(Sup), MaxConns).
 
-get_shutdown_count(_LSup) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    0.
+get_current_connections(Sup) ->
+    esockd_connection_sup:count_connections(connection_sup(Sup)).
 
-set_max_connections(_LSup, MaxLimit) when is_integer(MaxLimit) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    ok.
+get_shutdown_count(Sup) ->
+    esockd_connection_sup:get_shutdown_count(connection_sup(Sup)).
 
-get_access_rules(_LSup) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    [].
+get_access_rules(Sup) ->
+    esockd_connection_sup:access_rules(connection_sup(Sup)).
 
-allow(_LSup, _CIDR) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    ok.
+allow(Sup, CIDR) ->
+    esockd_connection_sup:allow(connection_sup(Sup), CIDR).
 
-deny(_LSup, _CIDR) ->
-    ?ERROR_MSG("The ~p not supported ~p yet!!!", [?MODULE, ?FUNCTION_NAME]),
-    ok.
+deny(Sup, CIDR) ->
+    esockd_connection_sup:deny(connection_sup(Sup), CIDR).
 
 %%--------------------------------------------------------------------
 %% Supervisor callbacks
 %%--------------------------------------------------------------------
 
 init([]) ->
-    {ok, {{one_for_all, 10, 3600}, []}}.
+    {ok, {{rest_for_one, 10, 3600}, []}}.
 
 %%--------------------------------------------------------------------
 %% Uitls
@@ -145,4 +154,16 @@ init([]) ->
 child_pid(Sup, ChildId) ->
     hd([Pid || {Id, Pid, _, _}
                <- supervisor:which_children(Sup), Id =:= ChildId]).
+
+upgrade_funs(Opts) ->
+    lists:append([ssl_upgrade_fun(Opts), proxy_upgrade_fun(Opts)]).
+
+ssl_upgrade_fun(Opts) ->
+    [esockd_transport:ssl_upgrade_fun(proplists:get_value(dtls_options, Opts, []))].
+
+proxy_upgrade_fun(Opts) ->
+    case proplists:get_bool(proxy_protocol, Opts) of
+        false -> [];
+        true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
+    end.
 

@@ -18,12 +18,12 @@
 
 -export([start/1]).
 
--export([start_link/2, loop/2]).
+-export([start_link/2, loop/3]).
 
 start(Port) ->
     ok = esockd:start(),
     PrivDir = code:priv_dir(esockd),
-    DtlsOpts = [{mode, binary}, {reuseaddr, true}, {active, 100},
+    DtlsOpts = [{mode, binary}, {reuseaddr, true},
                 {certfile, filename:join(PrivDir, "demo.crt")},
                 {keyfile, filename:join(PrivDir, "demo.key")}
                ],
@@ -35,35 +35,24 @@ start(Port) ->
     {ok, _} = esockd:open_dtls('echo/dtls', Port, Opts, MFArgs).
 
 start_link(Transport, Socket) ->
-    Args = [Transport, Socket],
+    Args = [self(), Transport, Socket],
     CPid = proc_lib:spawn_link(?MODULE, loop, Args),
     {ok, CPid}.
 
-loop(Transport, RawSocket) ->
+loop(Parent, Transport, RawSocket) ->
     case Transport:wait(RawSocket) of
         {ok, Socket} ->
-            {ok, Peername} = Transport:peername(Socket),
-            run_loop(Peername, Transport, Socket);
-        {error, Reason} ->
-            ok = Transport:fast_close(RawSocket),
-            io:format("Wait socket upgrade error ~p~n", [Reason])
+            run_loop(Parent, Transport, Socket);
+        {error, _} ->
+            ok = Transport:fast_close(RawSocket)
     end.
 
-run_loop(Peername, Transport, Socket) ->
+run_loop(Parent, Transport, Socket) ->
     receive
         {ssl, _RawSocket, Packet} ->
-            io:format("~s - ~p~n", [esockd:format(Peername), Packet]),
             Transport:async_send(Socket, Packet),
-            run_loop(Peername, Transport, Socket);
-        {ssl_passive, _RawSocket} ->
-            io:format("~s - enter the passive mode.~n", [esockd:format(Peername)]),
-            Transport:setopts(Socket, [{active, 100}]),
-            run_loop(Peername, Transport, Socket);
-        {inet_reply, _RawSocket, ok} ->
-            run_loop(Peername, Transport, Socket);
-        {ssl_closed, _RawSocket} ->
-            ok;
-        {ssl_error, _RawSocket, Reason} ->
-            io:format("~s error: ~p~n", [esockd:format(Peername), Reason])
+            run_loop(Parent, Transport, Socket);
+        {inet_reply, _Socket, ok} ->
+            run_loop(Parent, Transport, Socket)
     end.
 

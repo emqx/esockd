@@ -18,7 +18,7 @@
 
 -behaviour(supervisor).
 
--export([start_link/3]).
+-export([start_link/5]).
 
 -export([ start_acceptor/2
         , count_acceptors/1
@@ -26,25 +26,34 @@
 
 -export([init/1]).
 
-start_link(Opts, MFA, LimitFun) ->
-    supervisor:start_link(?MODULE, [Opts, MFA, LimitFun]).
+%%--------------------------------------------------------------------
+%% API
+%%--------------------------------------------------------------------
 
+-spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun()) -> {ok, pid()}).
+start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun) ->
+    supervisor:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]).
+
+%% @doc Start a acceptor
 -spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | {error, term()}).
 start_acceptor(Sup, LSock) ->
     supervisor:start_child(Sup, [LSock]).
 
+%% @doc Count acceptors.
+-spec(count_acceptors(Sup :: pid()) -> pos_integer()).
 count_acceptors(Sup) ->
     proplists:get_value(active, supervisor:count_children(Sup), 0).
 
-init([Opts, MFA, LimitFun]) ->
+init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]) ->
     SupFlags = #{strategy => simple_one_for_one,
-                 intensity => 0,
-                 period => 1
+                 intensity => 100,
+                 period => 3600
                 },
     Acceptor = #{id => acceptor,
-                 start => {esockd_dtls_acceptor, start_link, [self(), Opts, MFA, LimitFun]},
+                 start => {esockd_dtls_acceptor, start_link,
+                           [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
                  restart => transient,
-                 shutdown => brutal_kill,
+                 shutdown => 1000,
                  type => worker,
                  modules => [esockd_dtls_acceptor]
                 },

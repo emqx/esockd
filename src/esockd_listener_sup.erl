@@ -20,10 +20,16 @@
 
 -include("esockd.hrl").
 
--export([start_link/4, listener/1, acceptor_sup/1, connection_sup/1]).
+-export([ start_link/4
+        , listener/1
+        , acceptor_sup/1
+        , connection_sup/1
+       ]).
 
 %% export for dtls_listener_sup
--export([rate_limit_fun/2]).
+-export([ buffer_tune_fun/1
+        , rate_limit_fun/2
+        ]).
 
 %% get/set
 -export([ get_options/1

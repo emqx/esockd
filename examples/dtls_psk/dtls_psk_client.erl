@@ -19,6 +19,8 @@
 -export([ connect/0
         , connect/1
         , send/2
+        , recv/2
+        , recv/3
         , user_lookup/3
         ]).
 
@@ -30,6 +32,12 @@ connect(Port) ->
 
 send(Client, Msg) ->
     ssl:send(Client, Msg).
+
+recv(Client, Len) ->
+    ssl:recv(Client, Len).
+
+recv(Client, Len, Timeout) ->
+    ssl:recv(Client, Len, Timeout).
 
 user_lookup(psk, ServerHint, _UserState = PSKs) ->
     ServerPskId = server_suggested_psk_id(ServerHint),
@@ -44,7 +52,7 @@ server_suggested_psk_id(ServerHint) ->
 
 opts() ->
     [{ssl_imp, new},
-     {active, true},
+     {active, false},
      {verify, verify_none},
      {versions, [dtlsv1]},
      {protocol, dtls},

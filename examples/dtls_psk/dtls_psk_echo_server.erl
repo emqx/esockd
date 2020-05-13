@@ -26,24 +26,29 @@ start(Port) ->
     Opts = [{acceptors, 4}, {max_clients, 1000}, {dtls_options, DtlsOpts}],
     {ok, _} = esockd:open_dtls('echo/dtls', Port, Opts, {?MODULE, start_link, []}).
 
-start_link(Transport, Peer) ->
-    {ok, spawn_link(?MODULE, loop, [Transport, Peer])}.
+start_link(Transport, Socket) ->
+    {ok, spawn_link(?MODULE, loop, [Transport, Socket])}.
 
-loop(Transport = {dtls, SockPid, _}, Peer) ->
-    receive
-        {datagram, SockPid, Packet} ->
-            io:format("~s - ~p~n", [esockd:format(Peer), Packet]),
-            SockPid ! {datagram, Peer, Packet},
-            loop(Transport, Peer)
+loop(Transport, RawSocket) ->
+    case Transport:wait(RawSocket) of
+        {ok, Socket} ->
+            {ok, Peername} = Transport:peername(Socket),
+            run_loop(Peername, Transport, Socket);
+        {error, Reason} ->
+            ok = Transport:fast_close(RawSocket),
+            io:format("Wait socket upgrade error ~p~n", [Reason])
     end.
 
-user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
-    ServerPickedPsk = maps:get(<<"psk_a">>, PSKs),
-    io:format("ClientPSKID: ~p, ServerPickedPSK: ~p~n", [ClientPSKID, ServerPickedPsk]),
-    {ok, ServerPickedPsk}.
+run_loop(Peername, Transport, Socket) ->
+    receive
+        {ssl, _Sock, Packet} ->
+            io:format("~s - ~p~n", [esockd:format(Peername), Packet]),
+            Transport:async_send(Socket, Packet),
+            run_loop(Peername, Transport, Socket)
+    end.
 
-psk_opts() -> [
-     {verify, verify_none},
+psk_opts() ->
+    [{verify, verify_none},
      {protocol, dtls},
      {versions, [dtlsv1, 'dtlsv1.2']},
      {ciphers, [{psk,aes_128_cbc,sha}, {rsa_psk,aes_128_cbc,sha256}]},
@@ -51,4 +56,10 @@ psk_opts() -> [
      {user_lookup_fun,
        {fun user_lookup/3, #{<<"psk_a">> => <<"shared_secret_a">>,
                              <<"psk_b">> => <<"shared_secret_b">>}}}
-].
+    ].
+
+user_lookup(psk, ClientPSKID, _UserState = PSKs) ->
+    ServerPickedPsk = maps:get(<<"psk_a">>, PSKs),
+    io:format("ClientPSKID: ~p, ServerPickedPSK: ~p~n", [ClientPSKID, ServerPickedPsk]),
+    {ok, ServerPickedPsk}.
+

@@ -20,124 +20,121 @@
 
 -include("esockd.hrl").
 
--export([start_link/5]).
+-export([start_link/6]).
 
--export([ waiting_for_sock/3
-        , waiting_for_data/3
+-export([ accepting/3
         , suspending/3
         ]).
 
 %% gen_statem callbacks
 -export([ init/1
         , callback_mode/0
-        , handle_event/4
         , terminate/3
         , code_change/4
         ]).
 
 -record(state, {
-          sup       :: pid(),
-          mfargs    :: mfa(),
-          max_conns :: non_neg_integer(),
-          limit_fun :: fun(),
-          peername  :: {inet:ip_address(), inet:port_number()},
-          lsock     :: inet:socket(),
-          sock      :: ssl:sslsocket(),
-          channel   :: pid()
+          lsock        :: inet:socket(),
+          sockmod      :: module(), %% FIXME: NOT-USE
+          sockname     :: {inet:ip_address(), inet:port_number()},
+          tune_fun     :: esockd:sock_fun(),
+          upgrade_funs :: [esockd:sock_fun()],
+          stats_fun    :: fun(),
+          limit_fun    :: fun(),
+          conn_sup     :: pid(),
+          accept_ref   :: term()  %% FIXME: NOT-USE
          }).
 
-start_link(Sup, Opts, MFA, LimitFun, LSock) ->
-    gen_statem:start_link(?MODULE, [Sup, Opts, MFA, LimitFun, LSock], []).
+%% @doc Start an acceptor
+-spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun(), inet:socket())
+      -> {ok, pid()} | {error, term()}).
+start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
+    gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
 
 %%--------------------------------------------------------------------
 %% gen_statem callbacks
 %%--------------------------------------------------------------------
 
-init([Sup, Opts, MFA, LimitFun, LSock]) ->
-    process_flag(trap_exit, true),
-    State = #state{sup = Sup, mfargs = MFA, limit_fun = LimitFun,
-                   max_conns = max_conns(Opts), lsock = LSock},
-    {ok, waiting_for_sock, State, {next_event, internal, accept}}.
-
-max_conns(Opts) ->
-    proplists:get_value(max_connections, Opts, 0).
+init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
+    rand:seed(exsplus, erlang:timestamp()),
+    {ok, Sockname} = ssl:sockname(LSock),
+    {ok, accepting, #state{lsock        = LSock,
+                           sockname     = Sockname,
+                           tune_fun     = TuneFun,
+                           upgrade_funs = UpgradeFuns,
+                           stats_fun    = StatsFun,
+                           limit_fun    = LimitFun,
+                           conn_sup     = ConnSup},
+     {next_event, internal, accept}}.
 
 callback_mode() -> state_functions.
 
-waiting_for_sock(internal, accept, State) ->
-    rate_limit(fun accept/1, State);
+accepting(internal, accept,
+          State = #state{lsock        = LSock,
+                         sockname     = Sockname,
+                         tune_fun     = TuneFun,
+                         upgrade_funs = UpgradeFuns,
+                         stats_fun    = StatsFun,
+                         conn_sup     = ConnSup}) ->
+    case ssl:transport_accept(LSock) of
+        {ok, Sock} ->
+            %% Inc accepted stats.
+            StatsFun({inc, 1}),
 
-waiting_for_sock(EventType, EventContent, StateData) ->
-    handle_event(EventType, EventContent, waiting_for_sock, StateData).
-
-waiting_for_data(info, {ssl, Sock, Data}, State = #state{sock = Sock, channel = Ch}) ->
-    Ch ! {datagram, self(), Data},
-    {keep_state, State};
-
-waiting_for_data(info, {ssl_closed, _Sock}, State) ->
-    {stop, {shutdown, closed}, State};
-
-waiting_for_data(info, {datagram, _To, Data}, State = #state{sock = Sock}) ->
-    case ssl:send(Sock, Data) of
-        ok -> {keep_state, State};
+            case TuneFun(Sock) of
+                {ok, Sock} ->
+                    case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
+                        {ok, _Pid} -> ok;
+                        {error, enotconn} ->
+                            close(Sock); %% quiet...issue #10
+                        {error, einval} ->
+                            close(Sock); %% quiet... haproxy check
+                        {error, Reason} ->
+                            error_logger:error_msg("Failed to start connection on ~s: ~p",
+                                                   [esockd:format(Sockname), Reason]),
+                            close(Sock)
+                        end;
+                {error, enotconn} ->
+                    close(Sock);
+                {error, einval} ->
+                    close(Sock);
+                {error, closed} ->
+                    close(Sock);
+                {error, Reason} ->
+                    error_logger:error_msg("Tune buffer failed on ~s: ~s",
+                                           [esockd:format(Sockname), Reason]),
+                    close(Sock)
+            end,
+            rate_limit(State);
+        {error, Reason} when Reason =:= emfile;
+                             Reason =:= enfile ->
+            {next_state, suspending, State, 1000};
+        {error, closed} ->
+            {stop, normal, State};
         {error, Reason} ->
-            shutdown(Reason, State)
-    end;
-
-waiting_for_data(info, {'EXIT', Ch, Reason}, State = #state{channel = Ch}) ->
-    {stop, Reason, State};
-
-waiting_for_data(EventType, EventContent, StateData) ->
-    handle_event(EventType, EventContent, waiting_for_data, StateData).
+            {stop, Reason, State}
+    end.
 
 suspending(timeout, _Timeout, State) ->
-    {next_state, waiting_for_sock, State, {next_event, internal, accept}}.
+    {next_state, accepting, State, {next_event, internal, accept}}.
 
-handle_event(EventType, EventContent, StateName, StateData) ->
-    error_logger:error_msg("[~s] StateName: ~s, unexpected event(~s, ~p)",
-                           [?MODULE, StateName, EventType, EventContent]),
-    {keep_state, StateData}.
-
-terminate(_Reason, _StateName, #state{sock = undefined}) ->
-    ok;
-terminate(_Reason, _StateName, #state{sock = Sock}) ->
-    ssl:close(Sock).
+terminate(_Reason, _StateName, _State) ->
+    ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
 %%--------------------------------------------------------------------
-%% Internal functions
+%% Internal funcs
 %%--------------------------------------------------------------------
 
-accept(State = #state{sup = Sup, lsock = LSock, mfargs = {M, F, Args}}) ->
-    {ok, Sock} = ssl:transport_accept(LSock),
-    esockd_dtls_acceptor_sup:start_acceptor(Sup, LSock),
-    {ok, Peername} = ssl:peername(Sock),
-    case ssl:handshake(Sock, ?SSL_HANDSHAKE_TIMEOUT) of
-        {ok, SslSock} ->
-            try erlang:apply(M, F, [{dtls, self(), SslSock}, Peername | Args]) of
-                {ok, Pid} ->
-                    true = link(Pid),
-                    {next_state, waiting_for_data,
-                     State#state{sock = SslSock, peername = Peername, channel = Pid}};
-                {error, Reason} ->
-                    {stop, Reason, State}
-            catch
-                _Error:Reason ->
-                    shutdown(Reason, State)
-            end;
-        {error, Reason} ->
-            shutdown(Reason, State#state{sock = Sock})
-    end.
+close(Sock) -> catch port_close(Sock).
 
-rate_limit(Fun, State = #state{limit_fun = RateLimit}) ->
+rate_limit(State = #state{limit_fun = RateLimit}) ->
     case RateLimit(1) of
-        I when I =< 0 ->
-            {next_state, suspending, State, 1000};
-        _ -> Fun(State)
+        {I, Pause} when I =< 0 ->
+            {next_state, suspending, State, Pause};
+        _ ->
+            {keep_state, State, {next_event, internal, accept}}
     end.
-
-shutdown(Reason, State) ->
-    {stop, {shutdown, Reason}, State}.
 

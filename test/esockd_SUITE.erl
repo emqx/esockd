@@ -93,7 +93,7 @@ t_open_dtls(Config) ->
                 {keyfile,  esockd_ct:keyfile(Config)}
                ],
     {ok, _} = esockd:open_dtls(echo, 5000, [{dtls_options, DtlsOpts}],
-                               {udp_echo_server, start_link, []}),
+                               {dtls_echo_server, start_link, []}),
     {ok, Sock} = ssl:connect({127,0,0,1}, 5000, [binary,
                                                  {protocol, dtls},
                                                  {active, false}
