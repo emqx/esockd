@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,16 +20,11 @@
 
 -include("esockd.hrl").
 
--export([ start_link/4
+-export([ start_link/5
         , listener/1
         , acceptor_sup/1
         , connection_sup/1
        ]).
-
-%% export for dtls_listener_sup
--export([ buffer_tune_fun/1
-        , rate_limit_fun/2
-        ]).
 
 %% get/set
 -export([ get_options/1
@@ -46,18 +41,21 @@
         , deny/2
         ]).
 
-%% supervisor callback
+%% supervisor callbacks
 -export([init/1]).
 
+-type listen_type() :: tcp | dtls.
+
 %%--------------------------------------------------------------------
-%% API
+%% APIs
 %%--------------------------------------------------------------------
 
 %% @doc Start listener supervisor
--spec(start_link(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+-spec(start_link(listen_type(), atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> {ok, pid()} | {error, term()}).
-start_link(Proto, ListenOn, Opts, MFA) ->
+start_link(Type, Proto, ListenOn, Opts, MFA) ->
     {ok, Sup} = supervisor:start_link(?MODULE, []),
+
     %% Start connection sup
     ConnSupSpec = #{id => connection_sup,
                     start => {esockd_connection_sup, start_link, [Opts, MFA]},
@@ -66,27 +64,38 @@ start_link(Proto, ListenOn, Opts, MFA) ->
                     type => supervisor,
                     modules => [esockd_connection_sup]},
     {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
+
     %% Start acceptor sup
     TuneFun = buffer_tune_fun(Opts),
-    UpgradeFuns = upgrade_funs(Opts),
+    UpgradeFuns = upgrade_funs(Type, Opts),
     StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
     LimitFun = rate_limit_fun({listener, Proto, ListenOn}, Opts),
+
+    AcceptorSupMod = case Type of
+                         dtls -> esockd_dtls_acceptor_sup;
+                         _ -> esockd_acceptor_sup
+                     end,
     AcceptorSupSpec = #{id => acceptor_sup,
-                        start => {esockd_acceptor_sup, start_link,
+                        start => {AcceptorSupMod, start_link,
                                   [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
                         restart => transient,
                         shutdown => infinity,
                         type => supervisor,
-                        modules => [esockd_acceptor_sup]},
+                        modules => [AcceptorSupMod]},
     {ok, AcceptorSup} = supervisor:start_child(Sup, AcceptorSupSpec),
+
     %% Start listener
+    ListenerMod = case Type of
+                      dtls -> esockd_dtls_listener;
+                      _ -> esockd_listener
+                  end,
     ListenerSpec = #{id => listener,
-                     start => {esockd_listener, start_link,
+                     start => {ListenerMod, start_link,
                                [Proto, ListenOn, Opts, AcceptorSup]},
                      restart => transient,
                      shutdown => 16#ffffffff,
                      type => worker,
-                     modules => [esockd_listener]},
+                     modules => [ListenerMod]},
     case supervisor:start_child(Sup, ListenerSpec) of
         {ok, _} -> {ok, Sup};
         {error, {Reason, _ChildSpec}} ->
@@ -170,13 +179,17 @@ buffer_tune_fun(undefined, true) ->
 buffer_tune_fun(_, _) ->
     fun(Sock) -> {ok, Sock} end.
 
-upgrade_funs(Opts) ->
-    lists:append([ssl_upgrade_fun(Opts), proxy_upgrade_fun(Opts)]).
+upgrade_funs(Type, Opts) ->
+    lists:append([ssl_upgrade_fun(Type, Opts), proxy_upgrade_fun(Opts)]).
 
-ssl_upgrade_fun(Opts) ->
-    case proplists:get_value(ssl_options, Opts) of
+ssl_upgrade_fun(Type, Opts) ->
+    Key = case Type of
+              dtls -> dtls_options;
+              _ -> ssl_options
+          end,
+    case proplists:get_value(Key, Opts) of
         undefined -> [];
-        SslOpts   -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
+        SslOpts -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
 proxy_upgrade_fun(Opts) ->

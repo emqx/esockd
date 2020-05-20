@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -58,7 +58,7 @@ start_listener(Proto, ListenOn, Opts, MFA) ->
       -> supervisor:child_spec()).
 child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
     #{id => child_id(Proto, ListenOn),
-      start => {esockd_listener_sup, start_link, [Proto, ListenOn, Opts, MFA]},
+      start => {esockd_listener_sup, start_link, [tcp, Proto, ListenOn, Opts, MFA]},
       restart => transient,
       shutdown => infinity,
       type => supervisor,
@@ -78,11 +78,11 @@ udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
       -> supervisor:child_spec()).
 dtls_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
     #{id => child_id(Proto, Port),
-      start => {esockd_dtls_listener_sup, start_link, [Proto, Port, Opts, MFA]},
+      start => {esockd_listener_sup, start_link, [dtls, Proto, Port, Opts, MFA]},
       restart => transient,
       shutdown => infinity,
       type => supervisor,
-      modules => [esockd_dtls_listener_sup]}.
+      modules => [esockd_listener_sup]}.
 
 -spec(start_child(supervisor:child_spec()) -> {ok, pid()} | {error, term()}).
 start_child(ChildSpec) ->

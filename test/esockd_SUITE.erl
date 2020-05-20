@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -106,7 +106,7 @@ t_open_dtls(Config) ->
 t_dtls_child_spec(_) ->
     Spec = esockd:dtls_child_spec(echo, 8883, [], {udp_echo_server, start_link, []}),
      #{id := {listener_sup,{echo,8883}},
-       modules := [esockd_dtls_listener_sup],
+       modules := [esockd_listener_sup],
        restart := transient,
        shutdown := infinity,
        type := supervisor
