@@ -130,10 +130,7 @@ open_udp(Proto, Port, Opts, MFA) ->
     esockd_sup:start_child(udp_child_spec(Proto, Port, Opts, MFA)).
 
 udp_child_spec(Proto, Port, Opts, MFA) ->
-    esockd_sup:udp_child_spec(Proto, fixaddr(Port), udp_options(Opts), MFA).
-
-udp_options(Opts) ->
-    proplists:get_value(udp_options, Opts, []).
+    esockd_sup:udp_child_spec(Proto, fixaddr(Port), Opts, MFA).
 
 open_dtls(Proto, ListenOn, Opts, MFA) ->
     esockd_sup:start_child(dtls_child_spec(Proto, ListenOn, Opts, MFA)).
@@ -287,7 +284,7 @@ with_listener({Proto, ListenOn}, Fun) ->
 with_listener({Proto, ListenOn}, Fun, Args) ->
     case esockd_sup:listener_and_module({Proto, ListenOn}) of
         undefined ->
-            {error, not_found};
+            undefined;
         {LSup, Mod} ->
             erlang:apply(Mod, Fun, [LSup | Args])
     end.

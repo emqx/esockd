@@ -143,13 +143,37 @@ t_get_options(_) ->
     {ok, _LSup} = esockd:open(echo, 6000, [{acceptors, 4}],
                               {echo_server, start_link, []}),
     [{acceptors, 4}] = esockd:get_options({echo, 6000}),
-    ok = esockd:close(echo, 6000).
+    ok = esockd:close(echo, 6000),
+    undefined = esockd:get_options({echo, 6000}),
+
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 6000, [{acceptors, 4}],
+                               {dtls_echo_server, start_link, []}),
+    [{acceptors, 4}] = esockd:get_options({dtls_echo, 6000}),
+    ok = esockd:close(dtls_echo, 6000),
+    undefined = esockd:get_options({dtls_echo, 6000}),
+
+    {ok, _LSup2} = esockd:open_udp(udp_echo, 6000, [{acceptors, 4}],
+                               {udp_echo_server, start_link, []}),
+    [{acceptors, 4}] = esockd:get_options({udp_echo, 6000}),
+    ok = esockd:close(udp_echo, 6000),
+    undefined = esockd:get_options({udp_echo, 6000}).
 
 t_get_acceptors(_) ->
-    {ok, _LSup} = esockd:open(echo, {{127,0,0,1}, 6000}, [{acceptors, 4}],
+    {ok, _LSup} = esockd:open(echo, 6000, [{acceptors, 4}],
                               {echo_server, start_link, []}),
-    ?assertEqual(4, esockd:get_acceptors({echo, {{127,0,0,1}, 6000}})),
-    ok = esockd:close(echo, 6000).
+    ?assertEqual(4, esockd:get_acceptors({echo, 6000})),
+    ok = esockd:close(echo, 6000),
+
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 6000, [{acceptors, 4}],
+                               {dtls_echo_server, start_link, []}),
+    ?assertEqual(4, esockd:get_acceptors({dtls_echo, 6000})),
+    ok = esockd:close(dtls_echo, 6000),
+
+    {ok, _LSup2} = esockd:open_udp(udp_echo, 6000, [{acceptors, 4}],
+                               {udp_echo_server, start_link, []}),
+    %% fixed 1
+    ?assertEqual(1, esockd:get_acceptors({udp_echo, 6000})),
+    ok = esockd:close(udp_echo, 6000).
 
 t_get_set_max_connections(_) ->
     {ok, _LSup} = esockd:open(echo, 7000, [{max_connections, 4}],
@@ -157,9 +181,23 @@ t_get_set_max_connections(_) ->
     ?assertEqual(4, esockd:get_max_connections({echo, 7000})),
     esockd:set_max_connections({echo, 7000}, 16),
     ?assertEqual(16, esockd:get_max_connections({echo, 7000})),
-    ok = esockd:close(echo, 7000).
+    ok = esockd:close(echo, 7000),
 
-t_get_current_connections(_) ->
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{max_connections, 4}],
+                               {dtls_echo_server, start_link, []}),
+    ?assertEqual(4, esockd:get_max_connections({dtls_echo, 7000})),
+    esockd:set_max_connections({dtls_echo, 7000}, 16),
+    ?assertEqual(16, esockd:get_max_connections({dtls_echo, 7000})),
+    ok = esockd:close(dtls_echo, 7000),
+
+    {ok, _LSup2} = esockd:open_udp(udp_echo, 7000, [{max_connections, 4}],
+                               {udp_echo_server, start_link, []}),
+    ?assertEqual(4, esockd:get_max_connections({udp_echo, 7000})),
+    esockd:set_max_connections({udp_echo, 7000}, 16),
+    ?assertEqual(16, esockd:get_max_connections({udp_echo, 7000})),
+    ok = esockd:close(udp_echo, 7000).
+
+t_get_current_connections(Config) ->
     {ok, _LSup} = esockd:open(echo, 7000, [], {echo_server, start_link, []}),
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7000, [{active, false}]),
     {ok, Sock2} = gen_tcp:connect("127.0.0.1", 7000, [{active, false}]),
@@ -168,9 +206,33 @@ t_get_current_connections(_) ->
     ok = gen_tcp:close(Sock2),
     timer:sleep(10),
     ?assertEqual(0, esockd:get_current_connections({echo, 7000})),
-    ok = esockd:close(echo, 7000).
+    ok = esockd:close(echo, 7000),
 
-t_get_shutdown_count(_) ->
+    DtlsOpts = [{mode, binary},
+                {reuseaddr, true},
+                {certfile, esockd_ct:certfile(Config)},
+                {keyfile, esockd_ct:keyfile(Config)}
+               ],
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{dtls_options, DtlsOpts}], {dtls_echo_server, start_link, []}),
+    {ok, DtlsSock1} = ssl:connect({127,0,0,1}, 7000, [binary, {protocol, dtls}], 5000),
+    {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, [binary, {protocol, dtls}], 5000),
+    ?assertEqual(2, esockd:get_current_connections({dtls_echo, 7000})),
+    ok = ssl:close(DtlsSock1),
+    ok = ssl:close(DtlsSock2),
+    ok = esockd:close(dtls_echo, 7000),
+
+    {ok, _LSup2} = esockd:open_udp(udp_echo, 7001, [], {udp_echo_server, start_link, []}),
+    {ok, UdpSock1} = gen_udp:open(0, [binary, {active, false}]),
+    {ok, UdpSock2} = gen_udp:open(0, [binary, {active, false}]),
+    gen_udp:send(UdpSock1, {127,0,0,1}, 7001, <<"test">>),
+    gen_udp:send(UdpSock2, {127,0,0,1}, 7001, <<"test">>),
+    timer:sleep(200),
+    ?assertEqual(2, esockd:get_current_connections({udp_echo, 7001})),
+    ok = gen_udp:close(UdpSock1),
+    ok = gen_udp:close(UdpSock2),
+    ok = esockd:close(udp_echo, 7001).
+
+t_get_shutdown_count(Config) ->
     {ok, _LSup} = esockd:open(echo, 7000, [], {echo_server, start_link, []}),
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7000, [{active, false}]),
     {ok, Sock2} = gen_tcp:connect("127.0.0.1", 7000, [{active, false}]),
@@ -178,7 +240,32 @@ t_get_shutdown_count(_) ->
     ok = gen_tcp:close(Sock2),
     timer:sleep(10),
     ?assertEqual([{closed, 2}], esockd:get_shutdown_count({echo, 7000})),
-    ok = esockd:close(echo, 7000).
+    ok = esockd:close(echo, 7000),
+
+    DtlsOpts = [{mode, binary},
+                {reuseaddr, true},
+                {certfile, esockd_ct:certfile(Config)},
+                {keyfile, esockd_ct:keyfile(Config)}
+               ],
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{dtls_options, DtlsOpts}], {dtls_echo_server, start_link, []}),
+    {ok, DtlsSock1} = ssl:connect({127,0,0,1}, 7000, [binary, {protocol, dtls}], 5000),
+    {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, [binary, {protocol, dtls}], 5000),
+    ok = ssl:close(DtlsSock1),
+    ok = ssl:close(DtlsSock2),
+    timer:sleep(200),
+    ?assertEqual([], esockd:get_shutdown_count({dtls_echo, 7000})),
+    ok = esockd:close(dtls_echo, 7000),
+
+    {ok, _LSup2} = esockd:open_udp(udp_echo, 7001, [], {udp_echo_server, start_link, []}),
+    {ok, UdpSock1} = gen_udp:open(0, [binary, {active, false}]),
+    {ok, UdpSock2} = gen_udp:open(0, [binary, {active, false}]),
+    gen_udp:send(UdpSock1, {127,0,0,1}, 7001, <<"test">>),
+    gen_udp:send(UdpSock2, {127,0,0,1}, 7001, <<"test">>),
+    ok = gen_udp:close(UdpSock1),
+    ok = gen_udp:close(UdpSock2),
+    timer:sleep(200),
+    ?assertEqual([], esockd:get_shutdown_count({udp_echo, 7001})),
+    ok = esockd:close(udp_echo, 7001).
 
 t_allow_deny(_) ->
     AccessRules = [{allow, "192.168.1.0/24"}],
@@ -194,7 +281,39 @@ t_allow_deny(_) ->
                   {allow, "10.10.0.0/16"},
                   {allow, "192.168.1.0/24"}
                  ], esockd:get_access_rules({echo, 7000})),
-    ok = esockd:close(echo, 7000).
+    ok = esockd:close(echo, 7000),
+
+    %% dtls
+
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{access_rules, AccessRules}],
+                                   {dtls_echo_server, start_link, []}),
+    ?assertEqual([{allow, "192.168.1.0/24"}], esockd:get_access_rules({dtls_echo, 7000})),
+    ok = esockd:allow({dtls_echo, 7000}, "10.10.0.0/16"),
+    ?assertEqual([{allow, "10.10.0.0/16"},
+                  {allow, "192.168.1.0/24"}
+                 ], esockd:get_access_rules({dtls_echo, 7000})),
+    ok = esockd:deny({dtls_echo, 7000}, "172.16.1.1/16"),
+    ?assertEqual([{deny,  "172.16.0.0/16"},
+                  {allow, "10.10.0.0/16"},
+                  {allow, "192.168.1.0/24"}
+                 ], esockd:get_access_rules({dtls_echo, 7000})),
+    ok = esockd:close(dtls_echo, 7000),
+
+    %% udp
+
+    {ok, _LSup2} = esockd:open_dtls(udp_echo, 7001, [{access_rules, AccessRules}],
+                                   {udp_echo_server, start_link, []}),
+    ?assertEqual([{allow, "192.168.1.0/24"}], esockd:get_access_rules({udp_echo, 7001})),
+    ok = esockd:allow({udp_echo, 7001}, "10.10.0.0/16"),
+    ?assertEqual([{allow, "10.10.0.0/16"},
+                  {allow, "192.168.1.0/24"}
+                 ], esockd:get_access_rules({udp_echo, 7001})),
+    ok = esockd:deny({udp_echo, 7001}, "172.16.1.1/16"),
+    ?assertEqual([{deny,  "172.16.0.0/16"},
+                  {allow, "10.10.0.0/16"},
+                  {allow, "192.168.1.0/24"}
+                 ], esockd:get_access_rules({udp_echo, 7001})),
+    ok = esockd:close(udp_echo, 7001).
 
 t_ulimit(_) ->
     ?assert(is_integer(esockd:ulimit())).

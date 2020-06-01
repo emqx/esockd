@@ -160,8 +160,10 @@ parse_opt([{max_conn_rate, Rate}|Opts], Acc, State) ->
     parse_opt(Opts, Acc, State#state{rate_limit = Rl});
 parse_opt([{max_connections, Max}|Opts], Acc, State) ->
     parse_opt(Opts, Acc, State#state{max_peers = Max});
-parse_opt([Opt|Opts], Acc, State) ->
-    parse_opt(Opts, [Opt|Acc], State).
+parse_opt([{udp_options, UdpOpts}|Opts], Acc, State) ->
+    parse_opt(Opts, UdpOpts ++ Acc, State);
+parse_opt([_|Opts], Acc, State) ->
+    parse_opt(Opts, Acc, State).
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
     {reply, maps:size(Peers) div 2, State};
