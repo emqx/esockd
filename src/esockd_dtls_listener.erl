@@ -39,7 +39,7 @@
           proto     :: atom(),
           listen_on :: esockd:listen_on(),
           options   :: [esockd:option()],
-          lsock     :: inet:socket(),
+          lsock     :: ssl:sslsocket(),
           laddr     :: inet:ip_address(),
           lport     :: inet:port_number()
          }).
@@ -77,7 +77,10 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
         {ok, LSock} ->
             AcceptorNum = proplists:get_value(acceptors, Opts, ?ACCEPTOR_POOL),
             lists:foreach(fun (_) ->
-                {ok, _APid} = esockd_dtls_acceptor_sup:start_acceptor(AcceptorSup, LSock)
+                case esockd_dtls_acceptor_sup:start_acceptor(AcceptorSup, LSock) of
+                    {ok, _APid} -> ok;
+                    {error, Reason} -> exit({start_accepptors_failed, Reason})
+                end
             end, lists:seq(1, AcceptorNum)),
             {ok, {LAddr, LPort}} = ssl:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",

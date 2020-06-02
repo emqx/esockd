@@ -37,7 +37,7 @@
 
 -type(ssl_socket() :: #ssl_socket{}).
 -type(proxy_socket() :: #proxy_socket{}).
--type(socket() :: inet:socket() | ssl_socket() | proxy_socket()).
+-type(socket() :: inet:socket() | ssl_socket() | proxy_socket() | #sslsocket{}).
 
 -spec(type(socket()) -> tcp | ssl | proxy).
 type(Sock) when is_port(Sock) ->
@@ -88,13 +88,12 @@ controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
     ssl:controlling_process(SslSock, NewOwner);
 controlling_process(#proxy_socket{socket = Sock}, NewOwner) ->
     controlling_process(Sock, NewOwner);
-
 %% Before upgrading, the DTLS socket is #sslsocket{}
 %% type, instead of a port().
 %%
 %% See: ssl:transport_accept/1
-controlling_process(SysSsl, NewOwner) when is_record(SysSsl, sslsocket) ->
-    ssl:controlling_process(SysSsl, NewOwner).
+controlling_process(SslSock = #sslsocket{}, NewOwner) ->
+    ssl:controlling_process(SslSock, NewOwner).
 
 -spec(close(socket()) -> ok | {error, term()}).
 close(Sock) when is_port(Sock) ->
@@ -108,6 +107,15 @@ close(#proxy_socket{socket = Sock}) ->
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
+    fast_close_sslsock(SslSock),
+    catch port_close(Sock), ok;
+fast_close(SslSock = #sslsocket{}) ->
+    fast_close_sslsock(SslSock);
+fast_close(#proxy_socket{socket = Sock}) ->
+    fast_close(Sock).
+
+%% @private
+fast_close_sslsock(SslSock) ->
     {Pid, MRef} = spawn_monitor(fun() -> ssl:close(SslSock) end),
     TRef = erlang:send_after(?SSL_CLOSE_TIMEOUT, self(), {Pid, ssl_close_timeout}),
     receive
@@ -116,12 +124,7 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
             exit(Pid, kill);
         {'DOWN', MRef, process, Pid, _Reason} ->
             erlang:cancel_timer(TRef)
-    end,
-    catch port_close(Sock), ok;
-fast_close(#proxy_socket{socket = Sock}) ->
-    fast_close(Sock);
-fast_close(SysSsl) when is_record(SysSsl, sslsocket) ->
-    fast_close(#ssl_socket{ssl = SysSsl}).
+    end.
 
 -spec(send(socket(), iodata()) -> ok | {error, Reason} when
       Reason :: closed | timeout | inet:posix()).
@@ -197,10 +200,10 @@ getopts(Sock, OptionNames) when is_port(Sock) ->
     inet:getopts(Sock, OptionNames);
 getopts(#ssl_socket{ssl = SslSock}, OptionNames) ->
     ssl:getopts(SslSock, OptionNames);
+getopts(SslSock = #sslsocket{}, OptionNames) ->
+    ssl:getopts(SslSock, OptionNames);
 getopts(#proxy_socket{socket = Sock}, OptionNames) ->
-    getopts(Sock, OptionNames);
-getopts(SysSsl, OptionNames) when is_record(SysSsl, sslsocket) ->
-    ssl:getopts(SysSsl, OptionNames).
+    getopts(Sock, OptionNames).
 
 %% @doc Set socket options
 -spec(setopts(socket(), [inet:socket_setopt()]) -> ok | {error, inet:posix()}).
@@ -208,10 +211,10 @@ setopts(Sock, Opts) when is_port(Sock) ->
     inet:setopts(Sock, Opts);
 setopts(#ssl_socket{ssl = SslSock}, Opts) ->
     ssl:setopts(SslSock, Opts);
+setopts(SslSock = #sslsocket{}, Opts) ->
+    ssl:setopts(SslSock, Opts);
 setopts(#proxy_socket{socket = Socket}, Opts) ->
-    setopts(Socket, Opts);
-setopts(SysSsl, Opts) when is_record(SysSsl, sslsocket) ->
-    ssl:setopts(SysSsl, Opts).
+    setopts(Socket, Opts).
 
 %% @doc Get socket stats
 -spec(getstat(socket(), [inet:stat_option()])
@@ -220,10 +223,10 @@ getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
 getstat(#ssl_socket{tcp = Sock}, Stats) ->
     inet:getstat(Sock, Stats);
+getstat(SslSock = #sslsocket{}, Stats) ->
+    ssl:getstat(SslSock, Stats);
 getstat(#proxy_socket{socket = Sock}, Stats) ->
-    getstat(Sock, Stats);
-getstat(SysSsl, Stats) when is_record(SysSsl, sslsocket) ->
-    ssl:getstat(SysSsl, Stats).
+    getstat(Sock, Stats).
 
 %% @doc Sockname
 -spec(sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()}} |
@@ -232,10 +235,10 @@ sockname(Sock) when is_port(Sock) ->
     inet:sockname(Sock);
 sockname(#ssl_socket{ssl = SslSock}) ->
     ssl:sockname(SslSock);
+sockname(SslSock = #sslsocket{}) ->
+    ssl:sockname(SslSock);
 sockname(#proxy_socket{dst_addr = DstAddr, dst_port = DstPort}) ->
-    {ok, {DstAddr, DstPort}};
-sockname(SysSsl) when is_record(SysSsl, sslsocket) ->
-    ssl:sockname(SysSsl).
+    {ok, {DstAddr, DstPort}}.
 
 %% @doc Peername
 -spec(peername(socket()) -> {ok, {inet:ip_address(), inet:port_number()}} |
@@ -250,8 +253,8 @@ peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
 %% type, instead of a port().
 %%
 %% See: ssl:transport_accept/1
-peername(SysSsl) when is_record(SysSsl, sslsocket) ->
-    ssl:peername(SysSsl).
+peername(SslSock = #sslsocket{}) ->
+    ssl:peername(SslSock).
 
 %% @doc Socket peercert
 -spec(peercert(socket()) -> nossl | binary() | list(pp2_additional_ssl_field()) |
@@ -266,10 +269,14 @@ peercert(#ssl_socket{ssl = SslSock}) ->
             undefined;
         Error -> Error
     end;
+peercert(SslSock = #sslsocket{}) ->
+    case ssl:peercert(SslSock) of
+        {ok, Cert} -> Cert;
+        {error, no_peercert} -> undefined;
+        Error -> Error
+    end;
 peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
-    proplists:get_value(pp2_ssl, AdditionalInfo, []);
-peercert(SysSsl) when is_record(SysSsl, sslsocket) ->
-    peercert(#ssl_socket{ssl = SysSsl}).
+    proplists:get_value(pp2_ssl, AdditionalInfo, []).
 
 %% @doc Peercert subject
 -spec(peer_cert_subject(socket()) -> undefined | binary()).

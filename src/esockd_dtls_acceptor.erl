@@ -34,7 +34,7 @@
         ]).
 
 -record(state, {
-          lsock        :: inet:socket(),
+          lsock        :: ssl:sslsocket(),
           sockmod      :: module(), %% FIXME: NOT-USE
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
@@ -128,7 +128,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %% Internal funcs
 %%--------------------------------------------------------------------
 
-close(Sock) -> catch port_close(Sock).
+close(Sock) -> ssl:close(Sock).
 
 rate_limit(State = #state{limit_fun = RateLimit}) ->
     case RateLimit(1) of

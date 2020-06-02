@@ -59,7 +59,7 @@
           peers        :: map(),
           options      :: [esockd:option()],
           access_rules :: list(),
-          mfa          :: mfa()
+          mfa          :: esockd:mfargs()
          }).
 
 -define(ACTIVE_N, 100).
@@ -136,34 +136,35 @@ init([Proto, Port, Opts, MFA]) ->
     RawRules = proplists:get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
 
-    {UdpOpts, State} = parse_opt(Opts, [], #state{proto = Proto,
-                                                  port  = Port,
-                                                  max_peers = infinity,
-                                                  peers = #{},
-                                                  access_rules = AccessRules,
-                                                  options = Opts,
-                                                  mfa   = MFA}),
-
+    UdpOpts = proplists:get_value(udp_options, Opts, []),
     case gen_udp:open(Port, esockd:merge_opts(?DEFAULT_OPTS, UdpOpts)) of
         {ok, Sock} ->
             %% Trigger the udp_passive event
             inet:setopts(Sock, [{active, 1}]),
-            {ok, State#state{sock = Sock}};
+
+            {ok, parse_opt(Opts,
+                           #state{proto = Proto,
+                                  sock = Sock,
+                                  port = Port,
+                                  max_peers = infinity,
+                                  peers = #{},
+                                  access_rules = AccessRules,
+                                  options = Opts,
+                                  mfa = MFA})};
         {error, Reason} ->
             {stop, Reason}
     end.
 
-parse_opt([], Acc, State) ->
-    {Acc, State};
-parse_opt([{max_conn_rate, Rate}|Opts], Acc, State) ->
+%% @private
+parse_opt([], State) ->
+    State;
+parse_opt([{max_conn_rate, Rate}|Opts], State) ->
     Rl = esockd_rate_limit:new(Rate, Rate), %% Burst = Rate
-    parse_opt(Opts, Acc, State#state{rate_limit = Rl});
-parse_opt([{max_connections, Max}|Opts], Acc, State) ->
-    parse_opt(Opts, Acc, State#state{max_peers = Max});
-parse_opt([{udp_options, UdpOpts}|Opts], Acc, State) ->
-    parse_opt(Opts, UdpOpts ++ Acc, State);
-parse_opt([_|Opts], Acc, State) ->
-    parse_opt(Opts, Acc, State).
+    parse_opt(Opts, State#state{rate_limit = Rl});
+parse_opt([{max_connections, Max}|Opts], State) ->
+    parse_opt(Opts, State#state{max_peers = Max});
+parse_opt([_|Opts], State) ->
+    parse_opt(Opts, State).
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
     {reply, maps:size(Peers) div 2, State};

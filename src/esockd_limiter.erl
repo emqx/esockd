@@ -43,11 +43,11 @@
 
 -type(bucket_name() :: term()).
 
--opaque(bucket_info() :: #{name     => bucket_name(),
-                           capacity => pos_integer(),
-                           interval => pos_integer(),
-                           tokens   => pos_integer(),
-                           lastime  => integer()
+-opaque(bucket_info() :: #{name      => bucket_name(),
+                           capacity  => pos_integer(),
+                           interval  => pos_integer(),
+                           tokens    => pos_integer(),
+                           lasttime  => integer()
                           }).
 
 -export_type([bucket_info/0]).

@@ -54,7 +54,7 @@
           max_connections :: pos_integer(),
           access_rules :: list(),
           shutdown :: shutdown(),
-          mfargs :: mfa()
+          mfargs :: esockd:mfargs()
          }).
 
 -define(DEFAULT_MAX_CONNS, 1024).

@@ -168,10 +168,10 @@ buffer_tune_fun(Opts) ->
 %% when 'buffer' is undefined, and 'tune_buffer' is enabled...
 buffer_tune_fun(undefined, true) ->
     fun(Sock) ->
-        case inet:getopts(Sock, [sndbuf, recbuf, buffer]) of
+        case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
             {ok, BufSizes} ->
                 BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-                inet:setopts(Sock, [{buffer, BufSz}]),
+                esockd_transport:setopts(Sock, [{buffer, BufSz}]),
                 {ok, Sock};
             Error -> Error
         end

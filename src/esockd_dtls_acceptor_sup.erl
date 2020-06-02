@@ -35,7 +35,7 @@ start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun) ->
     supervisor:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]).
 
 %% @doc Start a acceptor
--spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | {error, term()}).
+-spec(start_acceptor(pid(), ssl:sslsocket()) -> {ok, pid()} | {error, term()}).
 start_acceptor(Sup, LSock) ->
     supervisor:start_child(Sup, [LSock]).
 
