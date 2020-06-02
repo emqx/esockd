@@ -171,7 +171,7 @@ buffer_tune_fun(undefined, true) ->
         case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
             {ok, BufSizes} ->
                 BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-                esockd_transport:setopts(Sock, [{buffer, BufSz}]),
+                _ = esockd_transport:setopts(Sock, [{buffer, BufSz}]),
                 {ok, Sock};
             Error -> Error
         end

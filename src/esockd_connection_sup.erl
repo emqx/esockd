@@ -332,7 +332,7 @@ wait_children(_Shutdown, _Pids, 0, undefined, EStack) ->
 wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
 	%% If the timer has expired before its cancellation, we must empty the
 	%% mail-box of the 'timeout'-message.
-    erlang:cancel_timer(TRef),
+    _ = erlang:cancel_timer(TRef),
     receive
         {timeout, TRef, kill} ->
             EStack

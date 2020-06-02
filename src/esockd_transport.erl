@@ -107,7 +107,7 @@ close(#proxy_socket{socket = Sock}) ->
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
-    fast_close_sslsock(SslSock),
+    _ = fast_close_sslsock(SslSock),
     catch port_close(Sock), ok;
 fast_close(SslSock = #sslsocket{}) ->
     fast_close_sslsock(SslSock);

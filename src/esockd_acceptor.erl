@@ -57,7 +57,7 @@ start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
 %%--------------------------------------------------------------------
 
 init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
-    rand:seed(exsplus, erlang:timestamp()),
+    _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
     {ok, accepting, #state{lsock        = LSock,

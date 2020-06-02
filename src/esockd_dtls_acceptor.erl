@@ -56,7 +56,7 @@ start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
 %%--------------------------------------------------------------------
 
 init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
-    rand:seed(exsplus, erlang:timestamp()),
+    _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = ssl:sockname(LSock),
     {ok, accepting, #state{lsock        = LSock,
                            sockname     = Sockname,

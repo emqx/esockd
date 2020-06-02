@@ -140,7 +140,7 @@ init([Proto, Port, Opts, MFA]) ->
     case gen_udp:open(Port, esockd:merge_opts(?DEFAULT_OPTS, UdpOpts)) of
         {ok, Sock} ->
             %% Trigger the udp_passive event
-            inet:setopts(Sock, [{active, 1}]),
+            ok = inet:setopts(Sock, [{active, 1}]),
 
             {ok, parse_opt(Opts,
                            #state{proto = Proto,
@@ -311,7 +311,7 @@ start_channel(Transport, Peer, #state{mfa = {M, F, Args}}) ->
     erlang:apply(M, F, [Transport, Peer | Args]).
 
 activate_sock(State = #state{sock = Sock}) ->
-    inet:setopts(Sock, [{active, ?ACTIVE_N}]), State.
+    ok = inet:setopts(Sock, [{active, ?ACTIVE_N}]), State.
 
 store_peer(Peer, Pid, State = #state{peers = Peers}) ->
     State#state{peers = maps:put(Pid, Peer, maps:put(Peer, Pid, Peers))}.
