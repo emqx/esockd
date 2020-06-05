@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_listener).
+-module(esockd_dtls_listener).
 
 -behaviour(gen_server).
 
@@ -39,18 +39,16 @@
           proto     :: atom(),
           listen_on :: esockd:listen_on(),
           options   :: [esockd:option()],
-          lsock     :: inet:socket(),
+          lsock     :: ssl:sslsocket(),
           laddr     :: inet:ip_address(),
           lport     :: inet:port_number()
          }).
 
--define(ACCEPTOR_POOL, 16).
--define(DEFAULT_TCP_OPTIONS,
-        [{nodelay, true},
-         {reuseaddr, true},
-         {send_timeout, 30000},
-         {send_timeout_close, true}
-        ]).
+-define(ACCEPTOR_POOL, 8).
+-define(DEFAULT_DTLS_OPTIONS,
+        [{protocol, dtls},
+         {mode, binary},
+         {reuseaddr, true}]).
 
 -spec(start_link(atom(), esockd:listen_on(), [esockd:option()], pid())
       -> {ok, pid()} | ignore | {error, term()}).
@@ -72,15 +70,19 @@ get_port(Listener) ->
 init({Proto, ListenOn, Opts, AcceptorSup}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
-    SockOpts = merge_addr(ListenOn, sockopts(Opts)),
+    SockOpts = merge_addr(ListenOn, dltsopts(Opts)),
     %% Don't active the socket...
-    case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
+    case ssl:listen(Port, SockOpts) of
+    %%case ssl:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             AcceptorNum = proplists:get_value(acceptors, Opts, ?ACCEPTOR_POOL),
             lists:foreach(fun (_) ->
-                {ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock)
+                case esockd_dtls_acceptor_sup:start_acceptor(AcceptorSup, LSock) of
+                    {ok, _APid} -> ok;
+                    {error, Reason} -> exit({start_accepptors_failed, Reason})
+                end
             end, lists:seq(1, AcceptorNum)),
-            {ok, {LAddr, LPort}} = inet:sockname(LSock),
+            {ok, {LAddr, LPort}} = ssl:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
             %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
             {ok, #state{proto = Proto, listen_on = ListenOn, options = Opts,
@@ -91,9 +93,9 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
             {stop, Reason}
     end.
 
-sockopts(Opts) ->
-    esockd:merge_opts(?DEFAULT_TCP_OPTIONS,
-                      proplists:get_value(tcp_options, Opts, [])).
+dltsopts(Opts) ->
+    esockd:merge_opts(?DEFAULT_DTLS_OPTIONS,
+                      proplists:get_value(dtls_options, Opts, [])).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.

@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -44,6 +44,7 @@ t_dtls_server(Config) ->
                {max_connections, 1000},
                {max_conn_rate, 10},
                {dtls_options, DtlsOpts}],
+
     {ok, _} = esockd:open_dtls('echo/dtls', 9876, Options, {?MODULE, dtls_echo_init, []}),
     {ok, Sock} = ssl:connect({127,0,0,1}, 9876, [binary, {protocol, dtls}, {active, false}], 5000),
     ok = ssl:send(Sock, <<"hello">>),
@@ -56,14 +57,18 @@ t_dtls_server(Config) ->
 %% DTLS echo server
 %%--------------------------------------------------------------------
 
-dtls_echo_init(Transport, Peer) ->
-    {ok, spawn_link(?MODULE, dtls_echo_loop, [Transport, Peer])}.
+dtls_echo_init(Transport, Socket) ->
+    {ok, spawn_link(?MODULE, dtls_echo_loop, [Transport, Socket])}.
 
-dtls_echo_loop(Transport, Peer) ->
+dtls_echo_loop(Transport, RawSocket) ->
+    {ok, Socket} = Transport:wait(RawSocket),
+    run_dtls_echo_loop(Transport, Socket).
+
+run_dtls_echo_loop(Transport, Socket) ->
     receive
-        {datagram, From, Packet} ->
+        {ssl, _RawSocket, Packet} ->
             %%io:format("~s - ~p~n", [esockd:format(Peer), Packet]),
-            From ! {datagram, Peer, Packet},
-            dtls_echo_loop(Transport, Peer)
+            Transport:async_send(Socket, Packet),
+            run_dtls_echo_loop(Transport, Socket)
     end.
 

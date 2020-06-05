@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -37,14 +37,14 @@ start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun) ->
     supervisor:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]).
 
 %% @doc Start a acceptor.
--spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | ignore | {error, term()}).
+-spec(start_acceptor(pid(), inet:socket()) -> {ok, pid()} | {error, term()}).
 start_acceptor(AcceptorSup, LSock) ->
     supervisor:start_child(AcceptorSup, [LSock]).
 
 %% @doc Count acceptors.
 -spec(count_acceptors(AcceptorSup :: pid()) -> pos_integer()).
 count_acceptors(AcceptorSup) ->
-    length(supervisor:which_children(AcceptorSup)).
+    proplists:get_value(active, supervisor:count_children(AcceptorSup), 0).
 
 %%--------------------------------------------------------------------
 %% Supervisor callbacks

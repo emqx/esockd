@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -57,7 +57,7 @@ start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
 %%--------------------------------------------------------------------
 
 init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
-    rand:seed(exsplus, erlang:timestamp()),
+    _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
     {ok, accepting, #state{lsock        = LSock,

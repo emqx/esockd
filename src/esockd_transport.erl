@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 -module(esockd_transport).
 
 -include("esockd.hrl").
+-include_lib("ssl/src/ssl_api.hrl").
 
 -export([type/1, is_ssl/1]).
 -export([listen/2]).
@@ -36,7 +37,7 @@
 
 -type(ssl_socket() :: #ssl_socket{}).
 -type(proxy_socket() :: #proxy_socket{}).
--type(socket() :: inet:socket() | ssl_socket() | proxy_socket()).
+-type(socket() :: inet:socket() | ssl_socket() | proxy_socket() | #sslsocket{}).
 
 -spec(type(socket()) -> tcp | ssl | proxy).
 type(Sock) when is_port(Sock) ->
@@ -86,7 +87,13 @@ controlling_process(Sock, NewOwner) when is_port(Sock) ->
 controlling_process(#ssl_socket{ssl = SslSock}, NewOwner) ->
     ssl:controlling_process(SslSock, NewOwner);
 controlling_process(#proxy_socket{socket = Sock}, NewOwner) ->
-    controlling_process(Sock, NewOwner).
+    controlling_process(Sock, NewOwner);
+%% Before upgrading, the DTLS socket is #sslsocket{}
+%% type, instead of a port().
+%%
+%% See: ssl:transport_accept/1
+controlling_process(SslSock = #sslsocket{}, NewOwner) ->
+    ssl:controlling_process(SslSock, NewOwner).
 
 -spec(close(socket()) -> ok | {error, term()}).
 close(Sock) when is_port(Sock) ->
@@ -100,6 +107,15 @@ close(#proxy_socket{socket = Sock}) ->
 fast_close(Sock) when is_port(Sock) ->
     catch port_close(Sock), ok;
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
+    _ = fast_close_sslsock(SslSock),
+    catch port_close(Sock), ok;
+fast_close(SslSock = #sslsocket{}) ->
+    fast_close_sslsock(SslSock);
+fast_close(#proxy_socket{socket = Sock}) ->
+    fast_close(Sock).
+
+%% @private
+fast_close_sslsock(SslSock) ->
     {Pid, MRef} = spawn_monitor(fun() -> ssl:close(SslSock) end),
     TRef = erlang:send_after(?SSL_CLOSE_TIMEOUT, self(), {Pid, ssl_close_timeout}),
     receive
@@ -108,10 +124,7 @@ fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
             exit(Pid, kill);
         {'DOWN', MRef, process, Pid, _Reason} ->
             erlang:cancel_timer(TRef)
-    end,
-    catch port_close(Sock), ok;
-fast_close(#proxy_socket{socket = Sock}) ->
-    fast_close(Sock).
+    end.
 
 -spec(send(socket(), iodata()) -> ok | {error, Reason} when
       Reason :: closed | timeout | inet:posix()).
@@ -187,6 +200,8 @@ getopts(Sock, OptionNames) when is_port(Sock) ->
     inet:getopts(Sock, OptionNames);
 getopts(#ssl_socket{ssl = SslSock}, OptionNames) ->
     ssl:getopts(SslSock, OptionNames);
+getopts(SslSock = #sslsocket{}, OptionNames) ->
+    ssl:getopts(SslSock, OptionNames);
 getopts(#proxy_socket{socket = Sock}, OptionNames) ->
     getopts(Sock, OptionNames).
 
@@ -195,6 +210,8 @@ getopts(#proxy_socket{socket = Sock}, OptionNames) ->
 setopts(Sock, Opts) when is_port(Sock) ->
     inet:setopts(Sock, Opts);
 setopts(#ssl_socket{ssl = SslSock}, Opts) ->
+    ssl:setopts(SslSock, Opts);
+setopts(SslSock = #sslsocket{}, Opts) ->
     ssl:setopts(SslSock, Opts);
 setopts(#proxy_socket{socket = Socket}, Opts) ->
     setopts(Socket, Opts).
@@ -206,6 +223,8 @@ getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
 getstat(#ssl_socket{tcp = Sock}, Stats) ->
     inet:getstat(Sock, Stats);
+getstat(SslSock = #sslsocket{}, Stats) ->
+    ssl:getstat(SslSock, Stats);
 getstat(#proxy_socket{socket = Sock}, Stats) ->
     getstat(Sock, Stats).
 
@@ -215,6 +234,8 @@ getstat(#proxy_socket{socket = Sock}, Stats) ->
 sockname(Sock) when is_port(Sock) ->
     inet:sockname(Sock);
 sockname(#ssl_socket{ssl = SslSock}) ->
+    ssl:sockname(SslSock);
+sockname(SslSock = #sslsocket{}) ->
     ssl:sockname(SslSock);
 sockname(#proxy_socket{dst_addr = DstAddr, dst_port = DstPort}) ->
     {ok, {DstAddr, DstPort}}.
@@ -227,7 +248,13 @@ peername(Sock) when is_port(Sock) ->
 peername(#ssl_socket{ssl = SslSock}) ->
     ssl:peername(SslSock);
 peername(#proxy_socket{src_addr = SrcAddr, src_port = SrcPort}) ->
-    {ok, {SrcAddr, SrcPort}}.
+    {ok, {SrcAddr, SrcPort}};
+%% Before upgrading, the DTLS socket is #sslsocket{}
+%% type, instead of a port().
+%%
+%% See: ssl:transport_accept/1
+peername(SslSock = #sslsocket{}) ->
+    ssl:peername(SslSock).
 
 %% @doc Socket peercert
 -spec(peercert(socket()) -> nossl | binary() | list(pp2_additional_ssl_field()) |
@@ -240,6 +267,12 @@ peercert(#ssl_socket{ssl = SslSock}) ->
         %% One-way SSL
         {error, no_peercert} ->
             undefined;
+        Error -> Error
+    end;
+peercert(SslSock = #sslsocket{}) ->
+    case ssl:peercert(SslSock) of
+        {ok, Cert} -> Cert;
+        {error, no_peercert} -> undefined;
         Error -> Error
     end;
 peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
@@ -283,12 +316,18 @@ shutdown(#ssl_socket{ssl = SslSock}, How) ->
 shutdown(#proxy_socket{socket = Sock}, How) ->
     shutdown(Sock, How).
 
-%% @doc TCP -> SslSocket
+%% @doc TCP/DTLS socket -> #ssl_socket{}
 -spec(ssl_upgrade_fun([ssl:ssl_option()]) -> esockd:sock_fun()).
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
-    fun(Sock) when is_port(Sock) ->
-        try ssl:handshake(Sock, SslOpts1, Timeout) of
+    fun(Sock) when is_port(Sock);             % for tcp
+                   is_record(Sock, sslsocket) % for dtls
+                   ->
+        Args = case is_port(Sock) of
+                   true -> [Sock, SslOpts1, Timeout];
+                   false -> [Sock, Timeout]
+               end,
+        try erlang:apply(ssl, handshake, Args) of
             {ok, SslSock} ->
                 {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
             {ok, SslSock, _Ext} -> %% OTP 21.0

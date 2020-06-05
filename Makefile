@@ -28,6 +28,10 @@ ct: compile
 cover:
 	$(REBAR) cover
 
+.PHONY: coveralls
+coveralls:
+	@rebar3 as test coveralls send
+
 .PHONY: dialyzer
 dialyzer:
 	$(REBAR) dialyzer

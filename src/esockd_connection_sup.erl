@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2019 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -54,7 +54,7 @@
           max_connections :: pos_integer(),
           access_rules :: list(),
           shutdown :: shutdown(),
-          mfargs :: mfa()
+          mfargs :: esockd:mfargs()
          }).
 
 -define(DEFAULT_MAX_CONNS, 1024).
@@ -332,7 +332,7 @@ wait_children(_Shutdown, _Pids, 0, undefined, EStack) ->
 wait_children(_Shutdown, _Pids, 0, TRef, EStack) ->
 	%% If the timer has expired before its cancellation, we must empty the
 	%% mail-box of the 'timeout'-message.
-    erlang:cancel_timer(TRef),
+    _ = erlang:cancel_timer(TRef),
     receive
         {timeout, TRef, kill} ->
             EStack
