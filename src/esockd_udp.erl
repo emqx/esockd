@@ -158,8 +158,8 @@ init([Proto, Port, Opts, MFA]) ->
 %% @private
 parse_opt([], State) ->
     State;
-parse_opt([{max_conn_rate, Rate}|Opts], State) ->
-    Rl = esockd_rate_limit:new(Rate, Rate), %% Burst = Rate
+parse_opt([{max_conn_rate, {Limit, Period}}|Opts], State) ->
+    Rl = esockd_rate_limit:new(Limit/Period, Limit),
     parse_opt(Opts, State#state{rate_limit = Rl});
 parse_opt([{max_connections, Max}|Opts], State) ->
     parse_opt(Opts, State#state{max_peers = Max});
