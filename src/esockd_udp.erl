@@ -196,6 +196,11 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
             {reply, {error, bad_access_rule}, State}
     end;
 
+%% mimic the supervisor's which_children reply
+handle_call(which_children, _From, State = #state{peers = Peers, mfa = {Mod, _Func, _Args}}) ->
+     {reply, [{undefined, Pid, worker, [Mod]}
+              || Pid <- maps:keys(Peers), is_pid(Pid), erlang:is_process_alive(Pid)], State};
+
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("Unexpected call: ~p", [Req]),
     {reply, ignore, State}.
