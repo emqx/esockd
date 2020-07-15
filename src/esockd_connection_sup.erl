@@ -203,6 +203,12 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
             {reply, {error, bad_access_rule}, State}
     end;
 
+%% mimic the supervisor's which_children reply
+handle_call(which_children, _From, State = #state{curr_connections = Conns, mfargs = MFA}) ->
+    Mod = get_module(MFA),
+    {reply, [{undefined, Pid, worker, [Mod]}
+              || Pid <- maps:keys(Conns), erlang:is_process_alive(Pid)], State};
+
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("Unexpected call: ~p", [Req]),
     {reply, ignore, State}.
@@ -375,3 +381,6 @@ report_error(Error, Reason, Pid, #state{mfargs = MFA}) ->
                             {mfargs, MFA}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
 
+get_module({M, _F, _A}) -> M;
+get_module({M, _F}) -> M;
+get_module(M) -> M.
