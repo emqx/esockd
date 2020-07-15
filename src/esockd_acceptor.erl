@@ -20,7 +20,9 @@
 
 -include("esockd.hrl").
 
--export([start_link/6]).
+-export([ start_link/6
+        , set_limit_fun/2
+        ]).
 
 %% state callbacks
 -export([ accepting/3
@@ -51,6 +53,9 @@
       -> {ok, pid()} | {error, term()}).
 start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
     gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
+
+set_limit_fun(Acceptor, LimitFun) ->
+    gen_statem:call(Acceptor, {set_limit_fun, LimitFun}, 5000).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -84,6 +89,9 @@ accepting(internal, accept, State = #state{lsock = LSock}) ->
         {error, Reason} ->
             {stop, Reason, State}
     end;
+
+accepting({call, From}, {set_limit_fun, LimitFun}, State) ->
+    {keep_state, State#state{limit_fun = LimitFun}, {reply, From, ok}};
 
 accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
           State = #state{lsock        = LSock,
@@ -149,6 +157,9 @@ accepting(info, {inet_async, LSock, Ref, {error, Reason}},
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
           State = #state{lsock = LSock, accept_ref = Ref}) ->
     {stop, Reason, State}.
+
+suspending({call, From}, {set_limit_fun, LimitFun}, State) ->
+    {keep_state, State#state{limit_fun = LimitFun}, {reply, From, ok}};
 
 suspending(timeout, _Timeout, State) ->
     {next_state, accepting, State, {next_event, internal, accept}}.

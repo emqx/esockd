@@ -82,11 +82,11 @@ stop() ->
 
 -spec(create(bucket_name(), pos_integer()) -> ok).
 create(Name, Capacity) when is_integer(Capacity), Capacity > 0 ->
-    create(Name, Capacity , 1).
+    create(Name, Capacity, 1).
 
 -spec(create(bucket_name(), pos_integer(), pos_integer()) -> ok).
-create(Name, Capacity , Interval) when is_integer(Capacity), Capacity > 0,
-                                       is_integer(Interval), Interval > 0 ->
+create(Name, Capacity, Interval) when is_integer(Capacity), Capacity > 0,
+                                      is_integer(Interval), Interval > 0 ->
     gen_server:call(?SERVER, {create, Name, Capacity, Interval}).
 
 -spec(lookup(bucket_name()) -> undefined | bucket_info()).

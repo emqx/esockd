@@ -50,6 +50,23 @@ t_crud_limiter(_) ->
     undefined = esockd_limiter:lookup(bucket2),
     ok = esockd_limiter:stop().
 
+t_twice_create(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    ok = esockd_limiter:create(bucket1, 10),
+    #{name     := bucket1,
+      capacity := 10,
+      interval := 1,
+      tokens   := 10
+     } = esockd_limiter:lookup(bucket1),
+    {5, 0} = esockd_limiter:consume(bucket1, 5),
+    ok = esockd_limiter:create(bucket1, 100),
+    #{name     := bucket1,
+      capacity := 100,
+      interval := 1,
+      tokens   := 100
+     } = esockd_limiter:lookup(bucket1),
+    ok = esockd_limiter:stop().
+
 t_consume(_) ->
     {ok, _} = esockd_limiter:start_link(),
     ok = esockd_limiter:create(bucket, 10, 2),
@@ -69,6 +86,7 @@ t_consume(_) ->
     ok = timer:sleep(1020),
     #{tokens := 10} = esockd_limiter:lookup(bucket),
     {5, 0} = esockd_limiter:consume(bucket, 5),
+    {-1, 1000} = esockd_limiter:consume(notexisted, 1),
     ok = esockd_limiter:stop().
 
 t_handle_call(_) ->

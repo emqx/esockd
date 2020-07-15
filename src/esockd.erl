@@ -50,6 +50,8 @@
 -export([ get_max_connections/1
         , set_max_connections/2
         , get_current_connections/1
+        , get_max_conn_rate/1
+        , set_max_conn_rate/2
         ]).
 
 -export([get_shutdown_count/1]).
@@ -85,9 +87,11 @@
 -type(socket() :: esockd_transport:socket()).
 -type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
 -type(sock_fun() :: fun((esockd_transport:socket()) -> {ok, esockd_transport:socket()} | {error, term()})).
+-type(conn_limit() :: pos_integer() | {pos_integer(), pos_integer()}).
+-type(options() :: [option()]).
 -type(option() :: {acceptors, pos_integer()}
                 | {max_connections, pos_integer()}
-                | {max_conn_rate, pos_integer() | {pos_integer(), pos_integer()}}
+                | {max_conn_rate, conn_limit()}
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}
                 | tune_buffer | {tune_buffer, boolean()}
@@ -102,13 +106,16 @@
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
 
 %%--------------------------------------------------------------------
-%% API
+%% APIs
 %%--------------------------------------------------------------------
 
 %% @doc Start esockd application.
 -spec(start() -> ok).
 start() ->
     {ok, _} = application:ensure_all_started(esockd), ok.
+
+%%--------------------------------------------------------------------
+%% Open & Close
 
 %% @doc Open a TCP or SSL listener
 -spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, term()}).
@@ -123,26 +130,23 @@ open(Proto, {Host, Port}, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
     end,
 	esockd_sup:start_listener(Proto, {IPAddr, Port}, Opts, MFA).
 
+%% @private
 tcp_options(Opts) ->
     proplists:get_value(tcp_options, Opts, []).
 
+%% @doc Open a UDP listener
+-spec(open_udp(atom(), listen_on(), [option()], mfargs())
+     -> {ok, pid()}
+      | {error, term()}).
 open_udp(Proto, Port, Opts, MFA) ->
     esockd_sup:start_child(udp_child_spec(Proto, Port, Opts, MFA)).
 
-udp_child_spec(Proto, Port, Opts, MFA) ->
-    esockd_sup:udp_child_spec(Proto, fixaddr(Port), Opts, MFA).
-
+%% @doc Open a DTLS listener
+-spec(open_dtls(atom(), listen_on(), options(), mfargs())
+     -> {ok, pid()}
+      | {error, term()}).
 open_dtls(Proto, ListenOn, Opts, MFA) ->
     esockd_sup:start_child(dtls_child_spec(Proto, ListenOn, Opts, MFA)).
-
-dtls_child_spec(Proto, ListenOn, Opts, MFA) ->
-    esockd_sup:dtls_child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
-
-%% @doc Child spec for a listener
--spec(child_spec(atom(), listen_on(), [option()], mfargs())
-      -> supervisor:child_spec()).
-child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
-    esockd_sup:child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
 
 %% @doc Close the listener
 -spec(close({atom(), listen_on()}) -> ok | {error, term()}).
@@ -162,12 +166,37 @@ reopen({Proto, ListenOn}) when is_atom(Proto) ->
 reopen(Proto, ListenOn) when is_atom(Proto) ->
     esockd_sup:restart_listener(Proto, fixaddr(ListenOn)).
 
+%%--------------------------------------------------------------------
+%% Spec funcs
+
+%% @doc Create a Child spec for a TCP/SSL Listener. It is a convenient method
+%% for creating a Child spec to hang on another Application supervisor.
+-spec(child_spec(atom(), listen_on(), [option()], mfargs())
+      -> supervisor:child_spec()).
+child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
+    esockd_sup:child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
+
+%% @doc Create a Child spec for a UDP Listener.
+-spec(udp_child_spec(atom(), listen_on(), options(), mfargs())
+     -> supervisor:child_spec()).
+udp_child_spec(Proto, Port, Opts, MFA) ->
+    esockd_sup:udp_child_spec(Proto, fixaddr(Port), Opts, MFA).
+
+%% @doc Create a Child spec for a DTLS Listener.
+-spec(dtls_child_spec(atom(), listen_on(), options(), mfargs())
+     -> supervisor:child_spec()).
+dtls_child_spec(Proto, ListenOn, Opts, MFA) ->
+    esockd_sup:dtls_child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
+
+%%--------------------------------------------------------------------
+%% Get/Set APIs
+
 %% @doc Get listeners.
 -spec(listeners() -> [{{atom(), listen_on()}, pid()}]).
 listeners() -> esockd_sup:listeners().
 
 %% @doc Get one listener.
--spec(listener({atom(), listen_on()}) -> pid() | undefined).
+-spec(listener({atom(), listen_on()}) -> pid()).
 listener({Proto, ListenOn}) when is_atom(Proto) ->
     esockd_sup:listener({Proto, fixaddr(ListenOn)}).
 
@@ -177,54 +206,66 @@ get_stats({Proto, ListenOn}) when is_atom(Proto) ->
     esockd_server:get_stats({Proto, fixaddr(ListenOn)}).
 
 %% @doc Get options
--spec(get_options({atom(), listen_on()}) -> undefined | pos_integer()).
+-spec(get_options({atom(), listen_on()}) -> options()).
 get_options({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get acceptors number
--spec(get_acceptors({atom(), listen_on()}) -> undefined | pos_integer()).
+-spec(get_acceptors({atom(), listen_on()}) -> pos_integer()).
 get_acceptors({Proto, ListenOn}) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get max connections
--spec(get_max_connections({atom(), listen_on()} | pid()) -> undefined | pos_integer()).
+-spec(get_max_connections({atom(), listen_on()} | pid()) -> pos_integer()).
 get_max_connections({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Set max connections
--spec(set_max_connections({atom(), listen_on()}, pos_integer())
-      -> undefined | pos_integer()).
+-spec(set_max_connections({atom(), listen_on()}, pos_integer()) -> ok).
 set_max_connections({Proto, ListenOn}, MaxConns) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [MaxConns]).
 
+%% @doc Set max connection rate
+-spec(get_max_conn_rate({atom(), listen_on()}) -> conn_limit()).
+get_max_conn_rate({Proto, ListenOn}) when is_atom(Proto) ->
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [Proto, ListenOn]).
+
+%% @doc Set max connection rate
+-spec(set_max_conn_rate({atom(), listen_on()}, conn_limit()) -> ok).
+set_max_conn_rate({Proto, ListenOn}, ConnRate)
+  when is_atom(Proto), is_integer(ConnRate);
+       is_atom(Proto), tuple_size(ConnRate) =:= 2 ->
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [Proto, ListenOn, ConnRate]).
+
 %% @doc Get current connections
--spec(get_current_connections({atom(), listen_on()}) -> undefined | non_neg_integer()).
+-spec(get_current_connections({atom(), listen_on()}) -> non_neg_integer()).
 get_current_connections({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get shutdown count
--spec(get_shutdown_count({atom(), listen_on()}) -> undefined | pos_integer()).
+-spec(get_shutdown_count({atom(), listen_on()}) -> pos_integer()).
 get_shutdown_count({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Get access rules
--spec(get_access_rules({atom(), listen_on()}) -> [esockd_access:rule()] | undefined).
+-spec(get_access_rules({atom(), listen_on()}) -> [esockd_access:rule()]).
 get_access_rules({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
 
 %% @doc Allow access address
--spec(allow({atom(), listen_on()}, all | esockd_cidr:cidr_string())
-      -> ok | {error, term()}).
+-spec(allow({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok).
 allow({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [CIDR]).
 
 %% @doc Deny access address
--spec(deny({atom(), listen_on()}, all | esockd_cidr:cidr_string())
-      -> ok | {error, term()}).
+-spec(deny({atom(), listen_on()}, all | esockd_cidr:cidr_string()) -> ok).
 deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [CIDR]).
 
-%% @doc Deny access address
+%%--------------------------------------------------------------------
+%% Utils
+
+%% @doc Merge two options
 -spec(merge_opts(proplists:proplist(), proplists:proplist())
       -> proplists:proplist()).
 merge_opts(Defaults, Options) ->
@@ -278,17 +319,6 @@ parse_opt([_|Opts], Acc) ->
 ulimit() ->
     proplists:get_value(max_fds, hd(erlang:system_info(check_io))).
 
-with_listener({Proto, ListenOn}, Fun) ->
-    with_listener({Proto, ListenOn}, Fun, []).
-
-with_listener({Proto, ListenOn}, Fun, Args) ->
-    case esockd_sup:listener_and_module({Proto, ListenOn}) of
-        undefined ->
-            undefined;
-        {LSup, Mod} ->
-            erlang:apply(Mod, Fun, [LSup | Args])
-    end.
-
 -spec(to_string(listen_on()) -> string()).
 to_string(Port) when is_integer(Port) ->
     integer_to_list(Port);
@@ -309,4 +339,19 @@ fixaddr({Addr, Port}) when is_tuple(Addr), is_integer(Port) ->
 -spec(format({inet:ip_address(), inet:port_number()}) -> string()).
 format({Addr, Port}) ->
     inet:ntoa(Addr) ++ ":" ++ integer_to_list(Port).
+
+%%--------------------------------------------------------------------
+%% Internal funcs
+%%--------------------------------------------------------------------
+
+with_listener({Proto, ListenOn}, Fun) ->
+    with_listener({Proto, ListenOn}, Fun, []).
+
+with_listener({Proto, ListenOn}, Fun, Args) ->
+    case esockd_sup:listener_and_module({Proto, ListenOn}) of
+        undefined ->
+            error(not_found);
+        {LSup, Mod} ->
+            erlang:apply(Mod, Fun, [LSup | Args])
+    end.
 
