@@ -30,16 +30,21 @@
 -export([ get_options/1
         , get_acceptors/1
         , get_max_connections/1
+        , get_max_conn_rate/3
         , get_current_connections/1
         , get_shutdown_count/1
         ]).
 
--export([ set_max_connections/2 ]).
+-export([ set_max_connections/2
+        , set_max_conn_rate/4
+        ]).
 
 -export([ get_access_rules/1
         , allow/2
         , deny/2
         ]).
+
+-export([ rate_limit_fun/2 ]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -69,7 +74,7 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
     TuneFun = buffer_tune_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
-    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, Opts),
+    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
 
     AcceptorSupMod = case Type of
                          dtls -> esockd_dtls_acceptor_sup;
@@ -135,6 +140,20 @@ get_max_connections(Sup) ->
 set_max_connections(Sup, MaxConns) ->
     esockd_connection_sup:set_max_connections(connection_sup(Sup), MaxConns).
 
+get_max_conn_rate(_Sup, Proto, ListenOn) ->
+    case esockd_limiter:lookup({listener, Proto, ListenOn}) of
+        undefined ->
+            {error, not_found};
+        #{capacity := Capacity, interval := Interval} ->
+            {Capacity, Interval}
+    end.
+
+set_max_conn_rate(Sup, Proto, ListenOn, ConnRate) ->
+    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, ConnRate),
+    [ok = Mod:set_limit_fun(Acceptor, LimitFun)
+     || {_, Acceptor, _, [Mod]} <- supervisor:which_children(acceptor_sup(Sup))],
+    ok.
+
 get_current_connections(Sup) ->
     esockd_connection_sup:count_connections(connection_sup(Sup)).
 
@@ -198,17 +217,14 @@ proxy_upgrade_fun(Opts) ->
         true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
     end.
 
-rate_limit_fun(Bucket, Opts) ->
-    case proplists:get_value(max_conn_rate, Opts) of
-        undefined ->
-            fun(_) -> {1, 0} end;
-        I when is_integer(I) ->
-            rate_limit_fun(Bucket, I, 1);
-        {Capacity, Interval} ->
-            rate_limit_fun(Bucket, Capacity, Interval)
-    end.
+conn_rate_opt(Opts) ->
+    proplists:get_value(max_conn_rate, Opts).
 
-rate_limit_fun(Bucket, Capacity, Interval) ->
+rate_limit_fun(_Bucket, _ConnRate = undefined) ->
+    fun(_) -> {1, 0} end;
+rate_limit_fun(Bucket, ConnRate) when is_integer(ConnRate) ->
+    rate_limit_fun(Bucket, {ConnRate, 1});
+rate_limit_fun(Bucket, {Capacity, Interval}) ->
     ok = esockd_limiter:create(Bucket, Capacity, Interval),
     fun(I) -> esockd_limiter:consume(Bucket, I) end.
 

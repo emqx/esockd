@@ -24,6 +24,7 @@
 
 -export([ accepting/3
         , suspending/3
+        , set_limit_fun/2
         ]).
 
 %% gen_statem callbacks
@@ -50,6 +51,10 @@
       -> {ok, pid()} | {error, term()}).
 start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
     gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
+
+set_limit_fun(Acceptor, LimitFun) ->
+    %% NOTE: the acceptor process will blocked at `accept` function call
+    gen_statem:cast(Acceptor, {set_limit_fun, LimitFun}).
 
 %%--------------------------------------------------------------------
 %% gen_statem callbacks
@@ -113,10 +118,16 @@ accepting(internal, accept,
             {stop, normal, State};
         {error, Reason} ->
             {stop, Reason, State}
-    end.
+    end;
+
+accepting(cast, {set_limit_fun, LimitFun}, State) ->
+    {keep_state, State#state{limit_fun = LimitFun}}.
 
 suspending(timeout, _Timeout, State) ->
-    {next_state, accepting, State, {next_event, internal, accept}}.
+    {next_state, accepting, State, {next_event, internal, accept}};
+
+suspending(cast, {set_limit_fun, LimitFun}, State) ->
+    {keep_state, State#state{limit_fun = LimitFun}}.
 
 terminate(_Reason, _StateName, _State) ->
     ok.
