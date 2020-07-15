@@ -106,14 +106,17 @@ terminate_and_delete(ChildId) ->
 listeners() ->
     [{Id, Pid} || {{listener_sup, Id}, Pid, _Type, _} <- supervisor:which_children(?MODULE)].
 
--spec(listener({atom(), esockd:listen_on()}) -> undefined | pid()).
+-spec(listener({atom(), esockd:listen_on()}) -> pid()).
 listener({Proto, ListenOn}) ->
     ChildId = child_id(Proto, ListenOn),
     case [Pid || {Id, Pid, _Type, _} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
-        [] -> undefined;
+        [] -> error(not_found);
         L  -> hd(L)
     end.
 
+-spec(listener_and_module({atom(), esockd:listen_on()})
+     -> undefined
+      | {ListenerSup :: pid(), Mod :: esockd_listener_sup | esockd_udp}).
 listener_and_module({Proto, ListenOn}) ->
     ChildId = child_id(Proto, ListenOn),
     case [{Pid, Mod} || {Id, Pid, _Type, [Mod|_]} <- supervisor:which_children(?MODULE), Id =:= ChildId] of
