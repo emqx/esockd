@@ -89,6 +89,34 @@ t_consume(_) ->
     {-1, 1000} = esockd_limiter:consume(notexisted, 1),
     ok = esockd_limiter:stop().
 
+t_concurrent_consume(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    ConnRate = 10000,
+    ok = esockd_limiter:create(bucket, ConnRate, 1),
+    Parent = self(),
+    Consumer = fun() ->
+                   {X, P} = esockd_limiter:consume(bucket, 1),
+                   Parent ! {consumer, X, P}
+               end,
+    Collect = fun _F(0, Acc) -> Acc;
+                  _F(N, Acc) ->
+                      _F(N-1, [receive M -> M after 1000 -> error(timeout) end | Acc])
+              end,
+    %% Case1: N*1
+    [spawn(Consumer) || _ <- lists:seq(1, ConnRate)],
+    ReceviedTokens = Collect(ConnRate, []),
+    ct:pal("~p~n", [ReceviedTokens]),
+    ?assertEqual(ConnRate, length(lists:usort(ReceviedTokens))),
+
+    %% Case2: N/10 * N
+    ok = esockd_limiter:create(bucket, ConnRate, 1),
+    [spawn(fun() ->
+         [Consumer() || _ <- lists:seq(1, ConnRate div 10)]
+     end) || _ <- lists:seq(1, 10)],
+    ReceviedTokens2 = Collect(ConnRate, []),
+    ct:pal("~p~n", [ReceviedTokens2]),
+    ?assertEqual(ConnRate, length(lists:usort(ReceviedTokens2))).
+
 t_handle_call(_) ->
     {reply, ignore, state} = esockd_limiter:handle_call(req, '_From', state).
 
