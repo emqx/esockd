@@ -52,10 +52,12 @@
 
 -export_type([bucket_info/0]).
 
-%%-record(bucket, {name, capacity, interval, lastime}).
-
 -define(TAB, ?MODULE).
 -define(SERVER, ?MODULE).
+
+%%--------------------------------------------------------------------
+%% APIs
+%%--------------------------------------------------------------------
 
 -spec(start_link() -> {ok, pid()}).
 start_link() ->
@@ -96,7 +98,8 @@ lookup(Name) ->
         [Bucket] -> bucket_info(Bucket)
     end.
 
--spec(consume(bucket_name()) -> {integer(), integer()}).
+-spec(consume(bucket_name())
+      -> {Remaing :: integer(), PasueMillSec :: integer()}).
 consume(Name) ->
     consume(Name, 1).
 
