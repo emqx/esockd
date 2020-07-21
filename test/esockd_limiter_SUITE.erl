@@ -86,7 +86,7 @@ t_consume(_) ->
     ok = timer:sleep(1020),
     #{tokens := 10} = esockd_limiter:lookup(bucket),
     {5, 0} = esockd_limiter:consume(bucket, 5),
-    {-1, 1000} = esockd_limiter:consume(notexisted, 1),
+    {1, 0} = esockd_limiter:consume(notexisted, 1),
     ok = esockd_limiter:stop().
 
 t_concurrent_consume(_) ->
