@@ -109,7 +109,7 @@ consume(Name, Tokens) when is_integer(Tokens), Tokens > 0 ->
         0 -> {0, pause_time(Name, erlang:system_time(millisecond))};
         I -> {I, 0}
     catch
-        error:badarg -> {-1, 1000} %% pause for 1 second
+        error:badarg -> {1, 0}
     end.
 
 %% @private
