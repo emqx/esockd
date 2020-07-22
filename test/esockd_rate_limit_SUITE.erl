@@ -37,10 +37,32 @@ t_check(_) ->
     #{tokens := 10} = esockd_rate_limit:info(Rl),
     {0, Rl1} = esockd_rate_limit:check(5, Rl),
     #{tokens := 5} = esockd_rate_limit:info(Rl1),
-    {0, Rl2} = esockd_rate_limit:check(5, Rl1),
+    %% P = 1/r = 1000ms
+    {1000, Rl2} = esockd_rate_limit:check(5, Rl1),
     #{tokens := 0} = esockd_rate_limit:info(Rl2),
+    %% P = (Tokens-Limit)/r = 5000ms
     {5000, Rl3} = esockd_rate_limit:check(5, Rl2),
     #{tokens := 0} = esockd_rate_limit:info(Rl3),
     ok = timer:sleep(1000),
-    {0, Rl4} = esockd_rate_limit:check(1, Rl3).
+    %% P = (Tokens-Limit)/r = 1000ms
+    {1000, _} = esockd_rate_limit:check(2, Rl3).
+
+t_check_bignum(_) ->
+    R1 = 30000000,
+    R2 = 15000000,
+    Rl = esockd_rate_limit:new({R1, R1}),
+    #{tokens := R1} = esockd_rate_limit:info(Rl),
+    {0, Rl1} = esockd_rate_limit:check(R2, Rl),
+    #{tokens := R2} = esockd_rate_limit:info(Rl1),
+    %% P = 1/r = 0.00003333 ~= 0ms
+    {0, Rl2} = esockd_rate_limit:check(R2, Rl1),
+    #{tokens := 0} = esockd_rate_limit:info(Rl2),
+
+    timer:sleep(1000),
+    %% P = (Tokens-Limit)/r = 1000ms
+    {1000, Rl3} = esockd_rate_limit:check(R1*2, Rl2),
+    #{tokens := 0} = esockd_rate_limit:info(Rl3),
+    %% P = (Tokens-Limit)/r = 0.5ms ~= 1ms
+    {1, Rl4} = esockd_rate_limit:check(R1*(1+0.0005), Rl2),
+    #{tokens := 0} = esockd_rate_limit:info(Rl4).
 
