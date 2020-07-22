@@ -60,6 +60,10 @@ info(#bucket{rate = Rate, burst = Burst, tokens = Tokens, time = Lastime}) ->
       time   => Lastime
      }.
 
+%% The pause time P:
+%% if Tokens < Limit => P = 0;
+%% if Tokens = Limit => P = 1/r;
+%% if Tokens > Limit => P = (Tokens-Limit)/r
 -spec(check(pos_integer(), bucket()) -> {non_neg_integer(), bucket()}).
 check(Tokens, Bucket) ->
     check(Tokens, erlang:system_time(milli_seconds), Bucket).
@@ -70,11 +74,11 @@ check(Tokens, Now, Bucket = #bucket{rate   = Rate,
                                     tokens = Remaining,
                                     time   = Lastime}) ->
     Limit = min(Burst, Remaining + round((Rate * (Now - Lastime)) / 1000)),
-    case Limit >= Tokens of
+    case Limit > Tokens of
         true  -> %% Tokens available
             {0, Bucket#bucket{tokens = Limit - Tokens, time = Now}};
         false -> %% Tokens not enough
-            Pause = round((Tokens - Remaining) * 1000 / Rate),
+            Pause = round(max(Tokens - Limit, 1) * 1000 / Rate),
             {Pause, Bucket#bucket{tokens = 0, time = Now}}
     end.
 
