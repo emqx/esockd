@@ -62,7 +62,7 @@ loop(Num, Sock) ->
             io:format("Client ~w unexpected: ~p", [Num, Other])
     after
         Timeout ->
-            send(Num, Sock), loop(Num, Sock)
+            _ = send(Num, Sock), loop(Num, Sock)
     end.
 
 send(N, Sock) ->

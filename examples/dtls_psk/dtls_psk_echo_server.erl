@@ -20,8 +20,10 @@
 
 -export([start_link/2, loop/2]).
 
+-dialyzer({nowarn_function, [start/1]}).
+
 start(Port) ->
-    [{ok, _} = application:ensure_all_started(App) || App <- [sasl, crypto, ssl, esockd]],
+    _ = [application:ensure_all_started(App) || App <- [sasl, crypto, ssl, esockd]],
     DtlsOpts = [{mode, binary}, {reuseaddr, true}] ++ psk_opts(),
     Opts = [{acceptors, 4}, {max_clients, 1000}, {dtls_options, DtlsOpts}],
     {ok, _} = esockd:open_dtls('echo/dtls', Port, Opts, {?MODULE, start_link, []}).

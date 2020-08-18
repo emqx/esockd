@@ -86,7 +86,7 @@ accepting(internal, accept,
             %% Inc accepted stats.
             StatsFun({inc, 1}),
 
-            case TuneFun(Sock) of
+            _ = case TuneFun(Sock) of
                 {ok, Sock} ->
                     case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
                         {ok, _Pid} -> ok;
