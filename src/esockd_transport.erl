@@ -321,7 +321,7 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
     fun(Sock) ->
-        try ssl_upgrade_fun_(Sock, SslOpts1, Timeout) of
+        try do_ssl_handshake(Sock, SslOpts1, Timeout) of
             {ok, NSock} ->
                 {ok, NSock};
             {error, Reason} when Reason =:= closed; Reason =:= timeout ->
@@ -335,7 +335,7 @@ ssl_upgrade_fun(SslOpts) ->
     end.
 
 %% @private
-ssl_upgrade_fun_(Sock, SslOpts, Timeout) when is_port(Sock) ->
+do_ssl_handshake(Sock, SslOpts, Timeout) when is_port(Sock) ->
     case ssl:handshake(Sock, SslOpts, Timeout) of
         {ok, SslSock} ->
             {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
@@ -343,7 +343,7 @@ ssl_upgrade_fun_(Sock, SslOpts, Timeout) when is_port(Sock) ->
             {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
         {error, _} = E -> E
     end;
-ssl_upgrade_fun_(Sock, _SslOpts, Timeout) when is_record(Sock, sslsocket) ->
+do_ssl_handshake(Sock, _SslOpts, Timeout) when is_record(Sock, sslsocket) ->
     case ssl:handshake(Sock, Timeout) of
         {ok, SslSock} ->
             {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
@@ -351,7 +351,7 @@ ssl_upgrade_fun_(Sock, _SslOpts, Timeout) when is_record(Sock, sslsocket) ->
             {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
         {error, _} = E -> E
     end;
-ssl_upgrade_fun_(ProxySock = #proxy_socket{socket = Sock}, SslOpts, Timeout) when is_port(Sock) ->
+do_ssl_handshake(ProxySock = #proxy_socket{socket = Sock}, SslOpts, Timeout) when is_port(Sock) ->
     case ssl:handshake(Sock, SslOpts, Timeout) of
         {ok, SslSock} ->
             {ok, ProxySock#proxy_socket{socket = #ssl_socket{tcp = Sock, ssl = SslSock}}};
