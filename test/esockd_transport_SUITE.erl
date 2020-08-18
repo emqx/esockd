@@ -65,7 +65,7 @@ t_controlling_process(_) ->
     %%ok = esockd_transport:controlling_process(#ssl_socket{ssl = SslSock}, self()),
     ok = esockd_transport:close(LSock).
 
-t_close_tcp(Config) ->
+t_close_tcp(_) ->
     {ok, LSock} = gen_tcp:listen(3000, [{reuseaddr, true}]),
     ok = esockd_transport:close(LSock).
 
