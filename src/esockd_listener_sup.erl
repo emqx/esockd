@@ -199,7 +199,7 @@ buffer_tune_fun(_, _) ->
     fun(Sock) -> {ok, Sock} end.
 
 upgrade_funs(Type, Opts) ->
-    lists:append([ssl_upgrade_fun(Type, Opts), proxy_upgrade_fun(Opts)]).
+    lists:append([proxy_upgrade_fun(Opts), ssl_upgrade_fun(Type, Opts)]).
 
 ssl_upgrade_fun(Type, Opts) ->
     Key = case Type of

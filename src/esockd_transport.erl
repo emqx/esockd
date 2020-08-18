@@ -320,26 +320,44 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
 -spec(ssl_upgrade_fun([ssl:ssl_option()]) -> esockd:sock_fun()).
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
-    fun(Sock) when is_port(Sock);             % for tcp
-                   is_record(Sock, sslsocket) % for dtls
-                   ->
-        Args = case is_port(Sock) of
-                   true -> [Sock, SslOpts1, Timeout];
-                   false -> [Sock, Timeout]
-               end,
-        try erlang:apply(ssl, handshake, Args) of
-            {ok, SslSock} ->
-                {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
-            {ok, SslSock, _Ext} -> %% OTP 21.0
-                {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+    fun(Sock) ->
+        try do_ssl_handshake(Sock, SslOpts1, Timeout) of
+            {ok, NSock} ->
+                {ok, NSock};
             {error, Reason} when Reason =:= closed; Reason =:= timeout ->
                 {error, Reason};
             {error, Reason} ->
                 {error, {ssl_error, Reason}}
         catch
-            _Error:Reason ->
+            _E:Reason ->
                 {error, {ssl_failure, Reason}}
         end
+    end.
+
+%% @private
+do_ssl_handshake(Sock, SslOpts, Timeout) when is_port(Sock) ->
+    case ssl:handshake(Sock, SslOpts, Timeout) of
+        {ok, SslSock} ->
+            {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+        {ok, SslSock, _Ext} -> %% OTP 21.0
+            {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+        {error, _} = E -> E
+    end;
+do_ssl_handshake(Sock, _SslOpts, Timeout) when is_record(Sock, sslsocket) ->
+    case ssl:handshake(Sock, Timeout) of
+        {ok, SslSock} ->
+            {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+        {ok, SslSock, _Ext} -> %% OTP 21.0
+            {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+        {error, _} = E -> E
+    end;
+do_ssl_handshake(ProxySock = #proxy_socket{socket = Sock}, SslOpts, Timeout) when is_port(Sock) ->
+    case ssl:handshake(Sock, SslOpts, Timeout) of
+        {ok, SslSock} ->
+            {ok, ProxySock#proxy_socket{socket = #ssl_socket{tcp = Sock, ssl = SslSock}}};
+        {ok, SslSock, _Ext} -> %% OTP 21.0
+            {ok, ProxySock#proxy_socket{socket = #ssl_socket{tcp = Sock, ssl = SslSock}}};
+        {error, _} = E -> E
     end.
 
 take_handshake_timeout(SslOpts) ->
