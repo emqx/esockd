@@ -53,7 +53,7 @@ listen(How, Port) ->
 
 accept(How, L) ->
     {ok, Sock} = gen_tcp:accept(L),
-    case How of
+    _ = case How of
         active_n ->
             inet:setopts(Sock, [{active, 100}]);
         async_recv -> ok

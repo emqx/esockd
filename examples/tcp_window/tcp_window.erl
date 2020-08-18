@@ -39,7 +39,7 @@ start(Port, How) when is_integer(Port) ->
                {shutdown, infinity},
                {max_connections, 100},
                {tcp_options, ?TCP_OPTIONS}],
-    esockd:open(tcp_block, Port, Options, {?MODULE, start_server, [How]}),
+    _ = esockd:open(tcp_block, Port, Options, {?MODULE, start_server, [How]}),
     start_client(Port).
 
 start_server(Transport, Sock, How) ->
@@ -91,14 +91,14 @@ send_loop(Transport, Sock, SendFun, Data, Count) ->
 start_client(Port) ->
     case gen_tcp:connect("127.0.0.1", Port, ?TCP_OPTIONS, 60000) of
         {ok, Sock} ->
-            inet:setopts(Sock, [{active, false}]),
+            _ = inet:setopts(Sock, [{active, false}]),
             client_loop(Sock, 0);
         {error, Reason} ->
             io:format("client failed to connect: ~p~n", [Reason])
     end.
 
 client_loop(Sock, I) ->
-    gen_tcp:send(Sock, crypto:strong_rand_bytes(1024*1024)),
+    _ = gen_tcp:send(Sock, crypto:strong_rand_bytes(1024*1024)),
     timer:sleep(1000),
     case gen_tcp:recv(Sock, 0) of
         {ok, Data} ->

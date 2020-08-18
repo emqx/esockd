@@ -49,7 +49,7 @@ recvloop(Sock) ->
         {ok, Data} ->
             {ok, Peername} = inet:peername(Sock),
             io:format("Data from ~s: ~s~n", [esockd:format(Peername), Data]),
-            gen_tcp:send(Sock, Data),
+            _ = gen_tcp:send(Sock, Data),
             recvloop(Sock);
         {error, Reason} ->
             io:format("TCP closed for ~s~n", [Reason]),
