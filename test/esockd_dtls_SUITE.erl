@@ -67,7 +67,8 @@ dtls_echo_loop(Transport, RawSocket) ->
 run_dtls_echo_loop(Transport, Socket) ->
     receive
         {ssl, _RawSocket, Packet} ->
-            %%io:format("~s - ~p~n", [esockd:format(Peer), Packet]),
+            io:format("~p - ~p~n", [esockd_transport:peername(Socket),
+                                    esockd_transport:getstat(Socket, [send_oct,recv_oct])]),
             Transport:async_send(Socket, Packet),
             run_dtls_echo_loop(Transport, Socket)
     end.

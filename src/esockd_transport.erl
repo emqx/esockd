@@ -221,12 +221,24 @@ setopts(#proxy_socket{socket = Socket}, Opts) ->
       -> {ok, [{inet:stat_option(), integer()}]} | {error, inet:posix()}).
 getstat(Sock, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
-getstat(#ssl_socket{tcp = Sock}, Stats) ->
+getstat(#ssl_socket{tcp = Sock}, Stats) when is_port(Sock) ->
     inet:getstat(Sock, Stats);
+getstat(#ssl_socket{ssl = SslSock}, Stats) ->
+    ssl_getstat(SslSock, Stats);
 getstat(SslSock = #sslsocket{}, Stats) ->
-    ssl:getstat(SslSock, Stats);
+    ssl_getstat(SslSock, Stats);
 getstat(#proxy_socket{socket = Sock}, Stats) ->
     getstat(Sock, Stats).
+
+-if(?OTP_RELEASE >= 23).
+ssl_getstat(SslSock, Stats) ->
+    ssl:getstat(SslSock, Stats).
+-else.
+ssl_getstat(#sslsocket{fd = {gen_udp, {_,{{_sockhost,_sockport}, SockPort}},_}}, Stats) ->
+    inet:getstat(SockPort, Stats);
+ssl_getstat(SslSock, Stats) ->
+    ssl:getstat(SslSock, Stats).
+-endif.
 
 %% @doc Sockname
 -spec(sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()}} |
@@ -343,12 +355,13 @@ do_ssl_handshake(Sock, SslOpts, Timeout) when is_port(Sock) ->
             {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
         {error, _} = E -> E
     end;
+%% dtls only
 do_ssl_handshake(Sock, _SslOpts, Timeout) when is_record(Sock, sslsocket) ->
     case ssl:handshake(Sock, Timeout) of
         {ok, SslSock} ->
-            {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+            {ok, #ssl_socket{tcp = undefined, ssl = SslSock}};
         {ok, SslSock, _Ext} -> %% OTP 21.0
-            {ok, #ssl_socket{tcp = Sock, ssl = SslSock}};
+            {ok, #ssl_socket{tcp = undefined, ssl = SslSock}};
         {error, _} = E -> E
     end;
 do_ssl_handshake(ProxySock = #proxy_socket{socket = Sock}, SslOpts, Timeout) when is_port(Sock) ->

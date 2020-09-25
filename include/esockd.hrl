@@ -29,7 +29,7 @@
 %% SSL socket wrapper
 %%--------------------------------------------------------------------
 
--record(ssl_socket, {tcp :: inet:socket() | ssl:sslsocket(), %% dtls
+-record(ssl_socket, {tcp :: inet:socket() | undefined, %% dtls
                      ssl :: ssl:sslsocket()}).
 
 -define(IS_SSL(Sock), is_record(Sock, ssl_socket)).
