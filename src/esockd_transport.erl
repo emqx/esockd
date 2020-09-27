@@ -230,6 +230,8 @@ getstat(SslSock = #sslsocket{}, Stats) ->
 getstat(#proxy_socket{socket = Sock}, Stats) ->
     getstat(Sock, Stats).
 
+%% Below OTP 23, the ssl:getstats/2 will get a funcation_clause
+%% exception for dtls socket
 -if(?OTP_RELEASE >= 23).
 ssl_getstat(SslSock, Stats) ->
     ssl:getstat(SslSock, Stats).
