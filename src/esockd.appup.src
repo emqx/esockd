@@ -1,3 +1,5 @@
+%%-*-: erlang -*-
+
 {"5.7.3",
  [{"5.7.2", [{load_module, esockd_transport, brutal_purge, soft_purge, []}]}],
  [{"5.7.2", [{load_module, esockd_transport, brutal_purge, soft_purge, []}]}]
