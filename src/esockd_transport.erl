@@ -22,7 +22,7 @@
 -export([type/1, is_ssl/1]).
 -export([listen/2]).
 -export([ready/3, wait/1]).
--export([send/2, async_send/2, recv/2, recv/3, async_recv/2, async_recv/3]).
+-export([send/2, async_send/2, async_send/3, recv/2, recv/3, async_recv/2, async_recv/3]).
 -export([controlling_process/2]).
 -export([close/1, fast_close/1]).
 -export([getopts/2, setopts/2, getstat/2]).
@@ -138,8 +138,13 @@ send(#proxy_socket{socket = Sock}, Data) ->
 %% @doc Port command to write data.
 -spec(async_send(socket(), iodata()) -> ok | {error, Reason} when
       Reason :: close | timeout | inet:posix()).
-async_send(Sock, Data) when is_port(Sock) ->
-    try erlang:port_command(Sock, Data, []) of
+async_send(Sock, Data) ->
+    async_send(Sock, Data, []).
+
+-spec(async_send(socket(), iodata(), [force|nosuspend]) -> ok | {error, Reason} when
+      Reason :: close | timeout | inet:posix()).
+async_send(Sock, Data, Options) when is_port(Sock) ->
+    try erlang:port_command(Sock, Data, Options) of
         true -> ok;
         false -> %% nosuspend option and port busy
             {error, busy}
@@ -147,12 +152,12 @@ async_send(Sock, Data) when is_port(Sock) ->
         error:_Error ->
             {error, einval}
     end;
-async_send(Sock = #ssl_socket{ssl = SslSock}, Data) ->
+async_send(Sock = #ssl_socket{ssl = SslSock}, Data, _Options) ->
     case ssl:send(SslSock, Data) of
         ok -> self() ! {inet_reply, Sock, ok}, ok;
         Error -> Error
     end;
-async_send(#proxy_socket{socket = Sock}, Data) ->
+async_send(#proxy_socket{socket = Sock}, Data, _Options) ->
     async_send(Sock, Data).
 
 -spec(recv(socket(), non_neg_integer())
