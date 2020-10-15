@@ -279,6 +279,13 @@ handle_info({'DOWN', _MRef, process, DownPid, _Reason}, State = #state{peers = P
         error -> {noreply, State}
     end;
 
+handle_info({'EXIT', DownPid, _Reason}, State = #state{peers = Peers}) ->
+    case maps:find(DownPid, Peers) of
+        {ok, Peer} ->
+            {noreply, erase_peer(Peer, DownPid, State)};
+        error -> {noreply, State}
+    end;
+
 handle_info({datagram, Peer = {IP, Port}, Packet}, State = #state{sock = Sock}) ->
     case gen_udp:send(Sock, IP, Port, Packet) of
         ok -> ok;
