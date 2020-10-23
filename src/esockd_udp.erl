@@ -273,18 +273,10 @@ handle_info({timeout, TRef, activate_sock}, State = #state{limit_timer = TRef}) 
     {noreply, activate_sock(NState)};
 
 handle_info({'DOWN', _MRef, process, DownPid, _Reason}, State = #state{peers = Peers}) ->
-    case maps:find(DownPid, Peers) of
-        {ok, Peer} ->
-            {noreply, erase_peer(Peer, DownPid, State)};
-        error -> {noreply, State}
-    end;
+    handle_peer_down(DownPid, Peers, State);
 
 handle_info({'EXIT', DownPid, _Reason}, State = #state{peers = Peers}) ->
-    case maps:find(DownPid, Peers) of
-        {ok, Peer} ->
-            {noreply, erase_peer(Peer, DownPid, State)};
-        error -> {noreply, State}
-    end;
+    handle_peer_down(DownPid, Peers, State);
 
 handle_info({datagram, Peer = {IP, Port}, Packet}, State = #state{sock = Sock}) ->
     case gen_udp:send(Sock, IP, Port, Packet) of
@@ -293,7 +285,6 @@ handle_info({datagram, Peer = {IP, Port}, Packet}, State = #state{sock = Sock}) 
             ?ERROR_MSG("Dropped packet to: ~s, reason: ~s", [esockd:format(Peer), Reason])
     end,
     {noreply, State};
-
 handle_info(Info, State) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     {noreply, State}.
@@ -307,6 +298,14 @@ code_change(_OldVsn, State, _Extra) ->
 %%--------------------------------------------------------------------
 %% Internel functions
 %%--------------------------------------------------------------------
+
+handle_peer_down(DownPid, Peers, State) ->
+    case maps:find(DownPid, Peers) of
+        {ok, Peer} ->
+            {noreply, erase_peer(Peer, DownPid, State)};
+        error ->
+            {noreply, State}
+    end.
 
 -compile({inline,
           [ allowed/2
