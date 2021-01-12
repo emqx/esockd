@@ -44,10 +44,14 @@
         , deny/2
         ]).
 
--export([ rate_limit_fun/2 ]).
+-export([ conn_rate_limiter/2 ]).
 
 %% supervisor callbacks
 -export([init/1]).
+
+%% callbacks
+-export([ tune_socket/2
+        ]).
 
 -type listen_type() :: tcp | dtls.
 
@@ -71,10 +75,10 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
     {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
 
     %% Start acceptor sup
-    TuneFun = buffer_tune_fun(Opts),
+    ok = esockd_server:init_stats({Proto, ListenOn}, accepted),
+    TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
-    StatsFun = esockd_server:stats_fun({Proto, ListenOn}, accepted),
-    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
+    Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
 
     AcceptorSupMod = case Type of
                          dtls -> esockd_dtls_acceptor_sup;
@@ -82,7 +86,7 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
                      end,
     AcceptorSupSpec = #{id => acceptor_sup,
                         start => {AcceptorSupMod, start_link,
-                                  [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun]},
+                                  [Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter]},
                         restart => transient,
                         shutdown => infinity,
                         type => supervisor,
@@ -149,8 +153,8 @@ get_max_conn_rate(_Sup, Proto, ListenOn) ->
     end.
 
 set_max_conn_rate(Sup, Proto, ListenOn, ConnRate) ->
-    LimitFun = rate_limit_fun({listener, Proto, ListenOn}, ConnRate),
-    [ok = Mod:set_limit_fun(Acceptor, LimitFun)
+    Limiter = conn_rate_limiter({listener, Proto, ListenOn}, ConnRate),
+    [ok = Mod:set_conn_limiter(Acceptor, Limiter)
      || {_, Acceptor, _, [Mod]} <- supervisor:which_children(acceptor_sup(Sup))],
     ok.
 
@@ -180,26 +184,31 @@ init([]) ->
 %% Sock tune/upgrade functions
 %%--------------------------------------------------------------------
 
-buffer_tune_fun(Opts) ->
-    buffer_tune_fun(proplists:get_value(buffer, Opts),
-                    proplists:get_bool(tune_buffer, Opts)).
+tune_socket_fun(Opts) ->
+    TuneOpts = [{tune_buffer, proplists:get_bool(tune_buffer, Opts)}],
+    {fun ?MODULE:tune_socket/2, [TuneOpts]}.
 
-%% when 'buffer' is undefined, and 'tune_buffer' is enabled...
-buffer_tune_fun(undefined, true) ->
-    fun(Sock) ->
-        case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
-            {ok, BufSizes} ->
-                BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-                _ = esockd_transport:setopts(Sock, [{buffer, BufSz}]),
-                {ok, Sock};
-            Error -> Error
-        end
-    end;
-buffer_tune_fun(_, _) ->
-    fun(Sock) -> {ok, Sock} end.
+tune_socket(Sock, []) ->
+    {ok, Sock};
+tune_socket(Sock, [{tune_buffer, true}|More]) ->
+    case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
+        {ok, BufSizes} ->
+            BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
+            _ = esockd_transport:setopts(Sock, [{buffer, BufSz}]),
+            tune_socket(Sock, More);
+        Error -> Error
+   end;
+tune_socket(Sock, [_|More]) ->
+    tune_socket(Sock, More).
 
 upgrade_funs(Type, Opts) ->
     lists:append([proxy_upgrade_fun(Opts), ssl_upgrade_fun(Type, Opts)]).
+
+proxy_upgrade_fun(Opts) ->
+    case proplists:get_bool(proxy_protocol, Opts) of
+        false -> [];
+        true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
+    end.
 
 ssl_upgrade_fun(Type, Opts) ->
     Key = case Type of
@@ -211,20 +220,13 @@ ssl_upgrade_fun(Type, Opts) ->
         SslOpts -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
-proxy_upgrade_fun(Opts) ->
-    case proplists:get_bool(proxy_protocol, Opts) of
-        false -> [];
-        true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
-    end.
-
 conn_rate_opt(Opts) ->
     proplists:get_value(max_conn_rate, Opts).
 
-rate_limit_fun(_Bucket, _ConnRate = undefined) ->
-    fun(_) -> {1, 0} end;
-rate_limit_fun(Bucket, ConnRate) when is_integer(ConnRate) ->
-    rate_limit_fun(Bucket, {ConnRate, 1});
-rate_limit_fun(Bucket, {Capacity, Interval}) ->
-    ok = esockd_limiter:create(Bucket, Capacity, Interval),
-    fun(I) -> esockd_limiter:consume(Bucket, I) end.
-
+conn_rate_limiter(_Bucket, undefined) ->
+    undefined;
+conn_rate_limiter(Bucket, ConnRate) when is_integer(ConnRate) ->
+    conn_rate_limiter(Bucket, {ConnRate, 1});
+conn_rate_limiter(Bucket, {Capacity, Interval}) ->
+    esockd_limiter:create(Bucket, Capacity, Interval),
+    Bucket.

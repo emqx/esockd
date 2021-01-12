@@ -20,8 +20,8 @@
 
 -include("esockd.hrl").
 
--export([ start_link/6
-        , set_limit_fun/2
+-export([ start_link/7
+        , set_conn_limiter/2
         ]).
 
 %% state callbacks
@@ -37,42 +37,49 @@
         ]).
 
 -record(state, {
+          proto        :: atom(),
+          listen_on    :: esockd:listen_on(),
           lsock        :: inet:socket(),
           sockmod      :: module(),
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
           upgrade_funs :: [esockd:sock_fun()],
-          stats_fun    :: fun(),
-          limit_fun    :: fun(),
+          conn_limiter :: undefined | esockd_limiter:bucket_name(),
           conn_sup     :: pid(),
           accept_ref   :: term()
         }).
 
 %% @doc Start an acceptor
--spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun(), inet:socket())
+-spec(start_link(atom(), esockd:listen_on(), pid(),
+                 esockd:sock_fun(), [esockd:sock_fun()],
+                 esockd_limiter:bucket_name(), inet:socket())
       -> {ok, pid()} | {error, term()}).
-start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
-    gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
+start_link(Proto, ListenOn, ConnSup,
+           TuneFun, UpgradeFuns, Limiter, LSock) ->
+    gen_statem:start_link(?MODULE, [Proto, ListenOn, ConnSup,
+                                    TuneFun, UpgradeFuns, Limiter, LSock], []).
 
-set_limit_fun(Acceptor, LimitFun) ->
-    gen_statem:call(Acceptor, {set_limit_fun, LimitFun}, 5000).
+-spec(set_conn_limiter(pid(), esockd_limiter:bucket_name()) -> ok).
+set_conn_limiter(Acceptor, Limiter) ->
+    gen_statem:call(Acceptor, {set_conn_limiter, Limiter}, 5000).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
+init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter, LSock]) ->
     _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
-    {ok, accepting, #state{lsock        = LSock,
-                           sockmod      = SockMod,
-                           sockname     = Sockname,
-                           tune_fun     = TuneFun,
-                           upgrade_funs = UpgradeFuns,
-                           stats_fun    = StatsFun,
-                           limit_fun    = LimitFun,
-                           conn_sup     = ConnSup},
+    {ok, accepting, #state{proto         = Proto,
+                           listen_on     = ListenOn,
+                           lsock         = LSock,
+                           sockmod       = SockMod,
+                           sockname      = Sockname,
+                           tune_fun      = TuneFun,
+                           upgrade_funs  = UpgradeFuns,
+                           conn_limiter  = Limiter,
+                           conn_sup      = ConnSup},
      {next_event, internal, accept}}.
 
 callback_mode() -> state_functions.
@@ -90,25 +97,26 @@ accepting(internal, accept, State = #state{lsock = LSock}) ->
             {stop, Reason, State}
     end;
 
-accepting({call, From}, {set_limit_fun, LimitFun}, State) ->
-    {keep_state, State#state{limit_fun = LimitFun}, {reply, From, ok}};
+accepting({call, From}, {set_conn_limiter, Limiter}, State) ->
+    {keep_state, State#state{conn_limiter = Limiter}, {reply, From, ok}};
 
 accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
-          State = #state{lsock        = LSock,
+          State = #state{proto        = Proto,
+                         listen_on    = ListenOn,
+                         lsock        = LSock,
                          sockmod      = SockMod,
                          sockname     = Sockname,
                          tune_fun     = TuneFun,
                          upgrade_funs = UpgradeFuns,
-                         stats_fun    = StatsFun,
                          conn_sup     = ConnSup,
                          accept_ref   = Ref}) ->
     %% make it look like gen_tcp:accept
     inet_db:register_socket(Sock, SockMod),
 
     %% Inc accepted stats.
-    StatsFun({inc, 1}),
+    esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
 
-    case TuneFun(Sock) of
+    case eval_tune_socket_fun(TuneFun, Sock) of
         {ok, Sock} ->
             case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
                 {ok, _Pid} -> ok;
@@ -158,8 +166,8 @@ accepting(info, {inet_async, LSock, Ref, {error, Reason}},
           State = #state{lsock = LSock, accept_ref = Ref}) ->
     {stop, Reason, State}.
 
-suspending({call, From}, {set_limit_fun, LimitFun}, State) ->
-    {keep_state, State#state{limit_fun = LimitFun}, {reply, From, ok}};
+suspending({call, From}, {set_conn_limiter, Limiter}, State) ->
+    {keep_state, State#state{conn_limiter = Limiter}, {reply, From, ok}};
 
 suspending(timeout, _Timeout, State) ->
     {next_state, accepting, State, {next_event, internal, accept}}.
@@ -170,13 +178,20 @@ terminate(_Reason, _StateName, _State) ->
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
 
+%%--------------------------------------------------------------------
+%% Internal funcs
+%%--------------------------------------------------------------------
+
 close(Sock) -> catch port_close(Sock).
 
-rate_limit(State = #state{limit_fun = RateLimit}) ->
-    case RateLimit(1) of
+rate_limit(State = #state{conn_limiter = Limiter}) ->
+    case esockd_limiter:consume(Limiter, 1) of
         {I, Pause} when I =< 0 ->
             {next_state, suspending, State, Pause};
         _ ->
             {keep_state, State, {next_event, internal, accept}}
     end.
+
+eval_tune_socket_fun({Fun, Args1}, Sock) ->
+    apply(Fun, [Sock|Args1]).
 

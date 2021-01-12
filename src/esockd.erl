@@ -86,7 +86,7 @@
 -type(udp_transport() :: {udp | dtls, pid(), inet:socket()}).
 -type(socket() :: esockd_transport:socket()).
 -type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
--type(sock_fun() :: fun((esockd_transport:socket()) -> {ok, esockd_transport:socket()} | {error, term()})).
+-type(sock_fun() :: {function(), list()}).
 -type(conn_limit() :: pos_integer() | {pos_integer(), pos_integer()}).
 -type(options() :: [option()]).
 -type(option() :: {acceptors, pos_integer()}

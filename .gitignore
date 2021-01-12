@@ -31,3 +31,4 @@ _build/
 rebar3.crashdump
 *.swp
 .rebar3/
+rebar.lock

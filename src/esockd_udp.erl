@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--import(esockd_listener_sup, [rate_limit_fun/2]).
+-import(esockd_listener_sup, [conn_rate_limiter/2]).
 
 -export([ server/4
         , count_peers/1
@@ -59,7 +59,7 @@
           sock         :: inet:socket(),
           port         :: inet:port_number(),
           rate_limit   :: maybe(esockd_rate_limit:bucket()),
-          limit_fun    :: fun(),
+          conn_limiter :: esockd_limiter:bucket_name(),
           limit_timer  :: maybe(reference()),
           max_peers    :: infinity | pos_integer(),
           peers        :: map(),
@@ -158,7 +158,7 @@ init([Proto, Port, Opts, MFA]) ->
         {ok, Sock} ->
             %% Trigger the udp_passive event
             ok = inet:setopts(Sock, [{active, 1}]),
-            LimitFun = rate_limit_fun({listener, Proto, Port}, proplists:get_value(max_conn_rate, Opts)),
+            Limiter = conn_rate_limiter({listener, Proto, Port}, proplists:get_value(max_conn_rate, Opts)),
             MaxPeers = proplists:get_value(max_connections, Opts, infinity),
             {ok, #state{proto = Proto,
                         sock = Sock,
@@ -166,7 +166,7 @@ init([Proto, Port, Opts, MFA]) ->
                         max_peers = MaxPeers,
                         peers = #{},
                         access_rules = AccessRules,
-                        limit_fun = LimitFun,
+                        conn_limiter = Limiter,
                         options = Opts,
                         mfa = MFA}};
         {error, Reason} ->
@@ -183,7 +183,7 @@ handle_call({max_peers, MaxLimit}, _From, State) ->
     {reply, ok, State#state{max_peers = MaxLimit}};
 
 handle_call({max_conn_rate, Proto, ListenOn, ConnRate}, _From, State) ->
-    {reply, ok, State#state{limit_fun = rate_limit_fun({listener, Proto, ListenOn}, ConnRate)}};
+    {reply, ok, State#state{conn_limiter = conn_rate_limiter({listener, Proto, ListenOn}, ConnRate)}};
 
 handle_call(options, _From, State = #state{options = Opts}) ->
     {reply, Opts, State};

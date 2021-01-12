@@ -51,7 +51,7 @@ t_is_ssl(_) ->
 
 t_wait_and_ready(_) ->
     {ok, LSock} = esockd_transport:listen(0, []),
-    esockd_transport:ready(self(), LSock, [fun(Sock) -> {ok, Sock} end]),
+    esockd_transport:ready(self(), LSock, [{fun(Sock, []) -> {ok, Sock} end, [[]]}]),
     {ok, LSock} = esockd_transport:wait(LSock),
     ok = esockd_transport:close(LSock).
 
@@ -184,11 +184,11 @@ t_gc(_) ->
     ok = esockd_transport:close(LSock).
 
 t_proxy_upgrade_fun(_) ->
-    Fun = esockd_transport:proxy_upgrade_fun([{proxy_protocol_timeout, 1000}]),
+    {Fun, [1000]} = esockd_transport:proxy_upgrade_fun([{proxy_protocol_timeout, 1000}]),
     ?assert(is_function(Fun)).
 
 t_ssl_upgrade_fun(_) ->
-    Fun = esockd_transport:ssl_upgrade_fun([{handshake_timeout, 10000}]),
+    {Fun, [[], 1000]} = esockd_transport:ssl_upgrade_fun([{handshake_timeout, 1000}]),
     ?assert(is_function(Fun)).
 
 t_fast_close(_) ->
