@@ -82,8 +82,22 @@ t_recv_pp_invalid(_) ->
     send_proxy_info(ProxyInfo = <<"Invalid PROXY\r\n">>),
     {error, {invalid_proxy_info, ProxyInfo}} = recv_proxy_info().
 
+t_recv_socket_error(_) ->
+    Reason = closed,
+    ok = send_socket_error(Reason),
+    {error, {recv_proxy_info_error, Reason}} = recv_proxy_info(),
+
+    ok = send_socket_closed(),
+    {error, {recv_proxy_info_error, tcp_closed}} = recv_proxy_info().
+
 send_proxy_info(ProxyInfo) ->
-    self() ! {esockd_transport, sock, ProxyInfo}, ok.
+    self() ! {tcp, sock, ProxyInfo}, ok.
+
+send_socket_error(Reason) ->
+    self() ! {tcp_error, sock, Reason}, ok.
+
+send_socket_closed() ->
+    self() ! {tcp_closed, sock}, ok.
 
 recv_proxy_info() ->
     esockd_proxy_protocol:recv(esockd_transport, sock, 1000).
