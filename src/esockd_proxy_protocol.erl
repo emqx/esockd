@@ -78,9 +78,17 @@ recv(Transport, Sock, Timeout) ->
             Transport:setopts(Sock, [{active, false}, {packet, raw}]),
             {ok, Header} = Transport:recv(Sock, 14, 1000),
             <<?SIG, 2:4, Cmd:4, AF:4, Trans:4, Len:16>> = Header,
-            {ok, ProxyInfo} = Transport:recv(Sock, Len, 1000),
-            Transport:setopts(Sock, OriginOpts),
-            parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
+            case Transport:recv(Sock, Len, 1000) of
+                {ok, ProxyInfo} ->
+                    Transport:setopts(Sock, OriginOpts),
+                    parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
+                {error, Reason} ->
+                    {error, {recv_proxy_info_error, Reason}}
+            end;
+        {tcp_error, _Sock, Reason} ->
+            {error, {recv_proxy_info_error, Reason}};
+        {tcp_closed, _Sock} ->
+            {error, {recv_proxy_info_error, tcp_closed}};
         {_, _Sock, ProxyInfo} ->
             {error, {invalid_proxy_info, ProxyInfo}}
     after
