@@ -78,7 +78,7 @@ udp_echo_init(Transport, Peer) ->
 
 udp_echo_loop(Transport, Peer) ->
     receive
-        {datagram, From, <<"stop">>} ->
+        {datagram, _From, <<"stop">>} ->
             exit(normal);
         {datagram, From, Packet} ->
             From ! {datagram, Peer, Packet},

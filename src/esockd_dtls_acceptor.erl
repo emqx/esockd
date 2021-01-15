@@ -20,11 +20,11 @@
 
 -include("esockd.hrl").
 
--export([start_link/6]).
+-export([start_link/7]).
 
 -export([ accepting/3
         , suspending/3
-        , set_limit_fun/2
+        , set_conn_limiter/2
         ]).
 
 %% gen_statem callbacks
@@ -35,58 +35,65 @@
         ]).
 
 -record(state, {
+          proto        :: atom(),
+          listen_on    :: esockd:listen_on(),
           lsock        :: ssl:sslsocket(),
           sockmod      :: module(), %% FIXME: NOT-USE
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
           upgrade_funs :: [esockd:sock_fun()],
-          stats_fun    :: fun(),
-          limit_fun    :: fun(),
+          conn_limiter :: undefined | esockd_limiter:bucket_name(),
           conn_sup     :: pid(),
           accept_ref   :: term()  %% FIXME: NOT-USE
          }).
 
 %% @doc Start an acceptor
--spec(start_link(pid(), esockd:sock_fun(), [esockd:sock_fun()], fun(), fun(), inet:socket())
+-spec(start_link(atom(), esockd:listen_on(), pid(),
+                 esockd:sock_fun(), [esockd:sock_fun()],
+                 esockd_limiter:bucket_name(), inet:socket())
       -> {ok, pid()} | {error, term()}).
-start_link(ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock) ->
-    gen_statem:start_link(?MODULE, [ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock], []).
+start_link(Proto, ListenOn, ConnSup,
+           TuneFun, UpgradeFuns, Limiter, LSock) ->
+    gen_statem:start_link(?MODULE, [Proto, ListenOn, ConnSup,
+                                    TuneFun, UpgradeFuns, Limiter, LSock], []).
 
-set_limit_fun(Acceptor, LimitFun) ->
+set_conn_limiter(Acceptor, Limiter) ->
     %% NOTE: the acceptor process will blocked at `accept` function call
-    gen_statem:cast(Acceptor, {set_limit_fun, LimitFun}).
+    gen_statem:cast(Acceptor, {set_conn_limiter, Limiter}).
 
 %%--------------------------------------------------------------------
 %% gen_statem callbacks
 %%--------------------------------------------------------------------
 
-init([ConnSup, TuneFun, UpgradeFuns, StatsFun, LimitFun, LSock]) ->
+init([Proto, ListenOn, ConnSup,
+      TuneFun, UpgradeFuns, Limiter, LSock]) ->
     _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = ssl:sockname(LSock),
-    {ok, accepting, #state{lsock        = LSock,
+    {ok, accepting, #state{proto        = Proto,
+                           listen_on    = ListenOn,
+                           lsock        = LSock,
                            sockname     = Sockname,
                            tune_fun     = TuneFun,
                            upgrade_funs = UpgradeFuns,
-                           stats_fun    = StatsFun,
-                           limit_fun    = LimitFun,
+                           conn_limiter = Limiter,
                            conn_sup     = ConnSup},
      {next_event, internal, accept}}.
 
 callback_mode() -> state_functions.
 
 accepting(internal, accept,
-          State = #state{lsock        = LSock,
+          State = #state{proto        = Proto,
+                         listen_on    = ListenOn,
+                         lsock        = LSock,
                          sockname     = Sockname,
                          tune_fun     = TuneFun,
                          upgrade_funs = UpgradeFuns,
-                         stats_fun    = StatsFun,
                          conn_sup     = ConnSup}) ->
     case ssl:transport_accept(LSock) of
         {ok, Sock} ->
             %% Inc accepted stats.
-            StatsFun({inc, 1}),
-
-            _ = case TuneFun(Sock) of
+            esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
+            _ = case eval_tune_socket_fun(TuneFun, Sock) of
                 {ok, Sock} ->
                     case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
                         {ok, _Pid} -> ok;
@@ -120,14 +127,14 @@ accepting(internal, accept,
             {stop, Reason, State}
     end;
 
-accepting(cast, {set_limit_fun, LimitFun}, State) ->
-    {keep_state, State#state{limit_fun = LimitFun}}.
+accepting(cast, {set_conn_limiter, Limiter}, State) ->
+    {keep_state, State#state{conn_limiter = Limiter}}.
 
 suspending(timeout, _Timeout, State) ->
     {next_state, accepting, State, {next_event, internal, accept}};
 
-suspending(cast, {set_limit_fun, LimitFun}, State) ->
-    {keep_state, State#state{limit_fun = LimitFun}}.
+suspending(cast, {set_conn_limiter, Limiter}, State) ->
+    {keep_state, State#state{conn_limiter = Limiter}}.
 
 terminate(_Reason, _StateName, _State) ->
     ok.
@@ -141,11 +148,14 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) -> ssl:close(Sock).
 
-rate_limit(State = #state{limit_fun = RateLimit}) ->
-    case RateLimit(1) of
+rate_limit(State = #state{conn_limiter = Limiter}) ->
+    case esockd_limiter:consume(Limiter, 1) of
         {I, Pause} when I =< 0 ->
             {next_state, suspending, State, Pause};
         _ ->
             {keep_state, State, {next_event, internal, accept}}
     end.
+
+eval_tune_socket_fun({Fun, Args1}, Sock) ->
+    apply(Fun, [Sock|Args1]).
 

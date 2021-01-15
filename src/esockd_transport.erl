@@ -28,10 +28,15 @@
 -export([getopts/2, setopts/2, getstat/2]).
 -export([sockname/1, peername/1, shutdown/2]).
 -export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1]).
--export([ssl_upgrade_fun/1]).
--export([proxy_upgrade_fun/1]).
 -export([ensure_ok_or_exit/2]).
 -export([gc/1]).
+
+%% Internal callbacks
+-export([ ssl_upgrade_fun/1
+        , ssl_upgrade/3
+        , proxy_upgrade_fun/1
+        , proxy_upgrade/2
+        ]).
 
 -export_type([socket/0]).
 
@@ -69,8 +74,8 @@ wait(Sock) ->
 -spec(upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}).
 upgrade(Sock, []) ->
     {ok, Sock};
-upgrade(Sock, [Upgrade | More]) ->
-    case Upgrade(Sock) of
+upgrade(Sock, [{Fun, Args}|More]) ->
+    case apply(Fun, [Sock|Args]) of
         {ok, NewSock} -> upgrade(NewSock, More);
         Error         -> fast_close(Sock), Error
     end.
@@ -339,18 +344,19 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
 -spec(ssl_upgrade_fun([ssl:ssl_option()]) -> esockd:sock_fun()).
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
-    fun(Sock) ->
-        try do_ssl_handshake(Sock, SslOpts1, Timeout) of
-            {ok, NSock} ->
-                {ok, NSock};
-            {error, Reason} when Reason =:= closed; Reason =:= timeout ->
-                {error, Reason};
-            {error, Reason} ->
-                {error, {ssl_error, Reason}}
-        catch
-            _E:Reason ->
-                {error, {ssl_failure, Reason}}
-        end
+    {fun ?MODULE:ssl_upgrade/3, [SslOpts1, Timeout]}.
+
+ssl_upgrade(Sock, SslOpts1, Timeout) ->
+    try do_ssl_handshake(Sock, SslOpts1, Timeout) of
+        {ok, NSock} ->
+            {ok, NSock};
+        {error, Reason} when Reason =:= closed; Reason =:= timeout ->
+            {error, Reason};
+        {error, Reason} ->
+            {error, {ssl_error, Reason}}
+    catch
+        _E:Reason ->
+            {error, {ssl_failure, Reason}}
     end.
 
 %% @private
@@ -391,11 +397,12 @@ take_handshake_timeout(SslOpts) ->
 %% @doc TCP | SSL -> ProxySocket
 proxy_upgrade_fun(Opts) ->
     Timeout = proxy_protocol_timeout(Opts),
-    fun(Sock) ->
-        case esockd_proxy_protocol:recv(?MODULE, Sock, Timeout) of
-            {ok, ProxySock} -> {ok, ProxySock};
-            {error, Reason} -> {error, Reason}
-        end
+    {fun ?MODULE:proxy_upgrade/2, [Timeout]}.
+
+proxy_upgrade(Sock, Timeout) ->
+    case esockd_proxy_protocol:recv(?MODULE, Sock, Timeout) of
+        {ok, ProxySock} -> {ok, ProxySock};
+        {error, Reason} -> {error, Reason}
     end.
 
 proxy_protocol_timeout(Opts) ->
