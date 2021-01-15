@@ -79,7 +79,9 @@ t_consume(_) ->
     #{tokens := 9} = esockd_limiter:lookup(bucket),
     {5, 0} = esockd_limiter:consume(bucket, 4),
     #{tokens := 5} = esockd_limiter:lookup(bucket),
-    {0, 2000} = esockd_limiter:consume(bucket, 5),
+    {0, PauseTime} = esockd_limiter:consume(bucket, 5),
+    ?assertEqual(PauseTime =< 2000 andalso PauseTime >= 1900, true),
+
     #{tokens := 0} = esockd_limiter:lookup(bucket),
     ok = timer:sleep(1000),
     #{tokens := 0} = esockd_limiter:lookup(bucket),
