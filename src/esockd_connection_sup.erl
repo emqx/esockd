@@ -162,8 +162,8 @@ handle_call({start_connection, Sock}, _From,
                         {error, Reason} ->
                             {reply, {error, Reason}, State}
                     catch
-                        _Error:Reason ->
-                            {reply, {error, Reason}, State}
+                        _Error:Reason:ST ->
+                            {reply, {error, {Reason, ST}}, State}
                     end;
                 false ->
                     {reply, {error, forbidden}, State}
