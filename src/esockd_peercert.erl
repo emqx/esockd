@@ -20,7 +20,7 @@
 
 -export_type([peercert/0]).
 
--opaque(peercert() :: binary() | proplists:proplist()).
+-type(peercert() :: binary() | proplists:proplist()).
 
 -spec(subject(nossl | undefined | peercert()) -> undefined | binary()).
 subject(nossl)     -> undefined;
