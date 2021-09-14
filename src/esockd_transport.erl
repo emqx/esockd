@@ -123,13 +123,14 @@ fast_close(#proxy_socket{socket = Sock}) ->
 fast_close_sslsock(SslSock) ->
     {Pid, MRef} = spawn_monitor(fun() -> ssl:close(SslSock) end),
     TRef = erlang:send_after(?SSL_CLOSE_TIMEOUT, self(), {Pid, ssl_close_timeout}),
-    receive
-        {Pid, ssl_close_timeout} ->
-            erlang:demonitor(MRef, [flush]),
-            exit(Pid, kill);
-        {'DOWN', MRef, process, Pid, _Reason} ->
-            erlang:cancel_timer(TRef)
-    end.
+    _ = receive
+            {Pid, ssl_close_timeout} ->
+                erlang:demonitor(MRef, [flush]),
+                exit(Pid, kill);
+            {'DOWN', MRef, process, Pid, _Reason} ->
+                erlang:cancel_timer(TRef)
+        end,
+    ok.
 
 -spec(send(socket(), iodata()) -> ok | {error, Reason} when
       Reason :: closed | timeout | inet:posix()).
