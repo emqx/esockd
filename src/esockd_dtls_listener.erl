@@ -94,8 +94,11 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
     end.
 
 dltsopts(Opts) ->
-    esockd:merge_opts(?DEFAULT_DTLS_OPTIONS,
-                      proplists:get_value(dtls_options, Opts, [])).
+    DtlsOpts = proplists:delete(
+                 handshake_timeout,
+                 proplists:get_value(dtls_options, Opts, [])
+                ),
+    esockd:merge_opts(?DEFAULT_DTLS_OPTIONS, DtlsOpts).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
