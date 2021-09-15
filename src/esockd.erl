@@ -97,13 +97,15 @@
                 | tune_buffer | {tune_buffer, boolean()}
                 | proxy_protocol | {proxy_protocol, boolean()}
                 | {proxy_protocol_timeout, timeout()}
-                | {ssl_options, [ssl:ssl_option()]}
+                | {ssl_options, ssl_options()}
                 | {tcp_options, [gen_tcp:listen_option()]}
                 | {udp_options, [gen_udp:option()]}
-                | {dtls_options, [gen_udp:option() | ssl:ssl_option()]}).
+                | {dtls_options, dtls_options()}).
 
 -type(host() :: inet:ip_address() | string()).
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
+-type ssl_options() :: [{handshake_timeout, pos_integer()} | ssl:ssl_option()].
+-type dtls_options() :: [{handshake_timeout, pos_integer()} | ssl:ssl_option()].
 
 %%--------------------------------------------------------------------
 %% APIs
