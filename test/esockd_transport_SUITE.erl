@@ -77,7 +77,7 @@ t_close_ssl(Config) ->
     ok = esockd_transport:close(#ssl_socket{ssl = SslLSock}).
 
 t_close_proxy(_) ->
-    {ok, LSock} = gen_tcp:listen(4000, [{reuseaddr, true}]),
+    {ok, LSock} = gen_tcp:listen(4001, [{reuseaddr, true}]),
     ok = esockd_transport:close(#proxy_socket{socket = LSock}).
 
 t_send_recv_tcp(_) ->

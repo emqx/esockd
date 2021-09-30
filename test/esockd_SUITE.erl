@@ -62,13 +62,14 @@ t_reopen_1(_) ->
     ok = esockd:close(echo, 7000).
 
 t_reopen_fail(_) ->
-    {ok, _LSup} = esockd:open(echo, 4000, [{acceptors, 4}], {echo_server, start_link, []}),
+    LPort = 4001,
+    {ok, _LSup} = esockd:open(echo, LPort, [{acceptors, 4}], {echo_server, start_link, []}),
     {error, not_found} = esockd:reopen({echo, 5000}),
-    ?assertEqual(4, esockd:get_acceptors({echo, 4000})),
-    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 4000, [binary, {active, false}]),
+    ?assertEqual(4, esockd:get_acceptors({echo, LPort})),
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, LPort, [binary, {active, false}]),
     ok = gen_tcp:send(Sock, <<"Hello">>),
     {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
-    ok = esockd:close(echo, 4000).
+    ok = esockd:close(echo, LPort).
 
 t_open_udp(_) ->
     {ok, _} = esockd:open_udp(echo, 5678, [], {udp_echo_server, start_link, []}),
