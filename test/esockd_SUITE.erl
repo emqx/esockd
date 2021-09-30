@@ -135,7 +135,9 @@ t_get_stats(_) ->
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, [{active, false}]),
     {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6000, [{active, false}]),
     timer:sleep(10),
-    [{accepted, 2}] = esockd:get_stats({echo, 6000}),
+    Cnts = esockd:get_stats({echo, 6000}),
+    ?assertEqual(2, proplists:get_value(accepted, Cnts)),
+    ?assertEqual(0, proplists:get_value(closed_overloaded, Cnts)),
     gen_tcp:close(Sock1),
     gen_tcp:close(Sock2),
     ok = esockd:close(echo, 6000).
@@ -371,3 +373,40 @@ t_format(_) ->
     ?assertEqual("127.0.0.1:9000", esockd:format({{127,0,0,1}, 9000})),
     ?assertEqual("::1:9000", esockd:format({{0,0,0,0,0,0,0,1}, 9000})).
 
+t_tune_fun_overload(_) ->
+    Ret = {error, overloaded},
+    LPort = 7003,
+    Name = tune_echo_overload,
+    {ok, _LSup} = esockd:open(Name, LPort, [{tune_fun, {?MODULE, sock_tune_fun, [Ret]}}],
+                              {echo_server, start_link, []}),
+    {ok, Socket} = gen_tcp:connect("127.0.0.1", LPort, [{active, true}]),
+    receive
+        {tcp_closed, S} ->
+            ?assertEqual(Socket, S),
+            Cnts = esockd_server:get_stats({Name, LPort}),
+            ?assertEqual(1, proplists:get_value(accepted, Cnts)),
+            ?assertEqual(1, proplists:get_value(closed_overloaded, Cnts)),
+            %% Still possible to conenct afterwards
+            {ok, _S} = gen_tcp:connect("127.0.0.1", LPort, [{active, true}]),
+            ok = esockd:close(Name, LPort)
+    after 100 ->
+            ok = esockd:close(Name, LPort),
+            ct:fail(close_timeout)
+    end.
+
+t_tune_fun_ok(_) ->
+    Ret = ok,
+    LPort = 7004,
+    Name = tune_echo_ok,
+    {ok, _LSup} = esockd:open(Name, LPort,
+                              [{tune_fun, {?MODULE, sock_tune_fun, [Ret]}}],
+                              {echo_server, start_link, []}),
+    {ok, _S} = gen_tcp:connect("127.0.0.1", LPort, [{active, true}]),
+    Cnts = esockd_server:get_stats({Name, LPort}),
+    ?assertEqual(0, proplists:get_value(closed_overloaded, Cnts)),
+    ?assertEqual(1, proplists:get_value(accepted, Cnts)),
+    ok = esockd:close(Name, LPort).
+
+%% helper
+sock_tune_fun(Ret) ->
+    Ret.

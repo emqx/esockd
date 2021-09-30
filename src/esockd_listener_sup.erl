@@ -76,6 +76,7 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
 
     %% Start acceptor sup
     ok = esockd_server:init_stats({Proto, ListenOn}, accepted),
+    ok = esockd_server:init_stats({Proto, ListenOn}, closed_overloaded),
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
@@ -185,7 +186,9 @@ init([]) ->
 %%--------------------------------------------------------------------
 
 tune_socket_fun(Opts) ->
-    TuneOpts = [{tune_buffer, proplists:get_bool(tune_buffer, Opts)}],
+    TuneOpts = [ {tune_buffer, proplists:get_bool(tune_buffer, Opts)}
+                 %% optional callback, returns ok | {error, Reason}
+               , {tune_fun, proplists:get_value(tune_fun, Opts, undefined)}],
     {fun ?MODULE:tune_socket/2, [TuneOpts]}.
 
 tune_socket(Sock, []) ->
@@ -198,6 +201,14 @@ tune_socket(Sock, [{tune_buffer, true}|More]) ->
             tune_socket(Sock, More);
         Error -> Error
    end;
+tune_socket(Sock, [{tune_fun, undefined} | More]) ->
+    tune_socket(Sock, More);
+tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
+    case apply(M, F, A) of
+        ok ->
+            tune_socket(Sock, More);
+        Error -> Error
+    end;
 tune_socket(Sock, [_|More]) ->
     tune_socket(Sock, More).
 
