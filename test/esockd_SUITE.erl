@@ -383,6 +383,7 @@ t_tune_fun_overload(_) ->
     receive
         {tcp_closed, S} ->
             ?assertEqual(Socket, S),
+            timer:sleep(10),
             Cnts = esockd_server:get_stats({Name, LPort}),
             ?assertEqual(1, proplists:get_value(accepted, Cnts)),
             ?assertEqual(1, proplists:get_value(closed_overloaded, Cnts)),
@@ -402,6 +403,7 @@ t_tune_fun_ok(_) ->
                               [{tune_fun, {?MODULE, sock_tune_fun, [Ret]}}],
                               {echo_server, start_link, []}),
     {ok, _S} = gen_tcp:connect("127.0.0.1", LPort, [{active, true}]),
+    timer:sleep(10),
     Cnts = esockd_server:get_stats({Name, LPort}),
     ?assertEqual(0, proplists:get_value(closed_overloaded, Cnts)),
     ?assertEqual(1, proplists:get_value(accepted, Cnts)),
