@@ -133,7 +133,8 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
             close(Sock);
         {error, einval} ->
             close(Sock);
-        {error, closed} ->
+        {error, overloaded} ->
+            esockd_server:inc_stats({Proto, ListenOn}, closed_overloaded, 1),
             close(Sock);
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
