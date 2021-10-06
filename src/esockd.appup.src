@@ -1,6 +1,6 @@
 %%-*-: erlang -*-
 
-{"5.9.0"
+{"5.9.0",
  [{"5.8.3",
    [ {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
    , {load_module,esockd_listener_sup,brutal_purge,soft_purge,[]}
