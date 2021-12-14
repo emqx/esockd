@@ -26,6 +26,8 @@
 
 -export([ create/2
         , create/3
+        , update/2
+        , update/3
         , lookup/1
         , consume/1
         , consume/2
@@ -54,6 +56,7 @@
 
 -define(TAB, ?MODULE).
 -define(SERVER, ?MODULE).
+-define(MAX_INTERVAL, 86400000).
 
 %%--------------------------------------------------------------------
 %% APIs
@@ -90,6 +93,15 @@ create(Name, Capacity) when is_integer(Capacity), Capacity > 0 ->
 create(Name, Capacity, Interval) when is_integer(Capacity), Capacity > 0,
                                       is_integer(Interval), Interval > 0 ->
     gen_server:call(?SERVER, {create, Name, Capacity, Interval}).
+
+-spec(update(bucket_name(), pos_integer()) -> ok).
+update(Name, Capacity) when is_integer(Capacity), Capacity > 0 ->
+    create(Name, Capacity, 1).
+
+-spec(update(bucket_name(), pos_integer(), pos_integer()) -> ok).
+update(Name, Capacity, Interval) when is_integer(Capacity), Capacity > 0,
+                                      is_integer(Interval), Interval > 0 ->
+    gen_server:call(?SERVER, {update, Name, Capacity, Interval}).
 
 -spec(lookup(bucket_name()) -> undefined | bucket_info()).
 lookup(Name) ->
@@ -138,6 +150,15 @@ handle_call({create, Name, Capacity, Interval}, _From, State = #{countdown := Co
     NCountdown = maps:put({bucket, Name}, Interval, Countdown),
     {reply, ok, ensure_countdown_timer(State#{countdown := NCountdown})};
 
+handle_call({update, Name, Capacity, Interval}, _From, State = #{countdown := Countdown}) ->
+    BucketName = {bucket, Name},
+    true = ets:insert(?TAB, {{tokens, Name}, Capacity}),
+    true = ets:insert(?TAB, {BucketName, Capacity, Interval, erlang:system_time(millisecond)}),
+    LastInterval = maps:get(BucketName, Countdown, ?MAX_INTERVAL),
+    NewInterval = erlang:min(Interval, LastInterval),
+    NewCountdown = maps:put(BucketName, NewInterval, Countdown),
+    {reply, ok, ensure_countdown_timer(State#{countdown := NewCountdown})};
+
 handle_call(Req, _From, State) ->
     error_logger:error_msg("Unexpected call: ~p", [Req]),
     {reply, ignore, State}.
@@ -183,4 +204,3 @@ ensure_countdown_timer(State = #{timer := undefined}) ->
     TRef = erlang:start_timer(timer:seconds(1), self(), countdown),
     State#{timer := TRef};
 ensure_countdown_timer(State = #{timer := _TRef}) -> State.
-

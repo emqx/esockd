@@ -1,7 +1,11 @@
 %%-*-: erlang -*-
 
-{"5.7.5",
- [{"5.7.4",
+{"5.7.6",
+ [{"5.7.5",
+   [
+    {load_module, esockd_limiter, brutal_purge, soft_purge, []}
+   ]},
+  {"5.7.4",
    [
     {load_module, esockd_proxy_protocol, brutal_purge, soft_purge, []}
    ]},

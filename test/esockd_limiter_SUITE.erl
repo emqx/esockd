@@ -67,6 +67,23 @@ t_twice_create(_) ->
      } = esockd_limiter:lookup(bucket1),
     ok = esockd_limiter:stop().
 
+t_update(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    ok = esockd_limiter:create(bucket1, 10, 100),
+    #{name     := bucket1,
+      capacity := 10,
+      interval := 100,
+      tokens   := 10
+     } = esockd_limiter:lookup(bucket1),
+    ok = esockd_limiter:update(bucket1, 200, 10),
+    #{name     := bucket1,
+      capacity := 200,
+      interval := 10,
+      tokens   := 200
+     } = esockd_limiter:lookup(bucket1),
+    ok = esockd_limiter:stop().
+
+
 t_consume(_) ->
     {ok, _} = esockd_limiter:start_link(),
     ok = esockd_limiter:create(bucket, 10, 2),
@@ -130,4 +147,3 @@ t_handle_info(_) ->
 
 t_code_change(_) ->
     {ok, state} = esockd_limiter:code_change('OldVsn', state, 'Extra').
-
