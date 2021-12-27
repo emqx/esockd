@@ -200,32 +200,6 @@ t_get_set_max_connections(_) ->
     ?assertEqual(16, esockd:get_max_connections({udp_echo, 7000})),
     ok = esockd:close(udp_echo, 7000).
 
-t_get_set_max_conn_rate(_) ->
-    {ok, _LSup} = esockd:open(echo, 7000, [{max_conn_rate, {100, 1}}],
-                              {echo_server, start_link, []}),
-    ?assertEqual({100, 1}, esockd:get_max_conn_rate({echo, 7000})),
-    esockd:set_max_conn_rate({echo, 7000}, {50, 2}),
-    ?assertEqual({50, 2}, esockd:get_max_conn_rate({echo, 7000})),
-    ok = esockd:close(echo, 7000),
-    ?assertException(error, not_found, esockd:get_max_conn_rate({echo, 7000})),
-
-
-    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{max_conn_rate, {100, 1}}],
-                               {dtls_echo_server, start_link, []}),
-    ?assertEqual({100, 1}, esockd:get_max_conn_rate({dtls_echo, 7000})),
-    esockd:set_max_conn_rate({dtls_echo, 7000}, {50, 2}),
-    ?assertEqual({50, 2}, esockd:get_max_conn_rate({dtls_echo, 7000})),
-    ok = esockd:close(dtls_echo, 7000),
-    ?assertException(error, not_found, esockd:get_max_conn_rate({dtls_echo, 7000})),
-
-    {ok, _LSup2} = esockd:open_udp(udp_echo, 7000, [{max_conn_rate, {100, 1}}],
-                               {udp_echo_server, start_link, []}),
-    ?assertEqual({100, 1}, esockd:get_max_conn_rate({udp_echo, 7000})),
-    esockd:set_max_conn_rate({udp_echo, 7000}, {50, 2}),
-    ?assertEqual({50, 2}, esockd:get_max_conn_rate({udp_echo, 7000})),
-    ok = esockd:close(udp_echo, 7000),
-    ?assertException(error, not_found, esockd:get_max_conn_rate({udp_echo, 7000})).
-
 t_get_current_connections(Config) ->
     {ok, _LSup} = esockd:open(echo, 7000, [], {echo_server, start_link, []}),
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7000, [{active, false}]),

@@ -18,6 +18,7 @@
 -module(esockd_limiter).
 
 -behaviour(gen_server).
+-behaviour(esockd_generic_limiter).
 
 -export([ start_link/0
         , get_all/0
@@ -40,6 +41,8 @@
         , terminate/2
         , code_change/3
         ]).
+
+-export([make_instance/1]).
 
 -type(bucket_name() :: term()).
 
@@ -124,6 +127,30 @@ pause_time(Name, Now) ->
 delete(Name) ->
     gen_server:cast(?SERVER, {delete, Name}).
 
+-spec make_instance(esockd_generic_limiter:make_instance_opts()) ->
+          esockd_generic_limiter:limiter().
+make_instance(#{name := LimiterName,
+                capacity := Capacity,
+                interval := Interval}) ->
+    create(LimiterName, Capacity, Interval),
+    #{module => ?MODULE,
+      name => LimiterName,
+      consume => fun(Token, #{name := Name} = Limiter) ->
+                         case consume(Name, Token) of
+                             {I, P} when I =< 0 ->
+                                 {pause, P, Limiter};
+                             _ ->
+                                 {ok, Limiter}
+                         end
+                 end,
+      delete => fun(#{name := Name}) ->
+                        delete(Name)
+                end
+     };
+
+make_instance(Opts) ->
+    throw({error_limiter_opts, Opts}).
+
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
@@ -183,4 +210,3 @@ ensure_countdown_timer(State = #{timer := undefined}) ->
     TRef = erlang:start_timer(timer:seconds(1), self(), countdown),
     State#{timer := TRef};
 ensure_countdown_timer(State = #{timer := _TRef}) -> State.
-

@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--import(esockd_listener_sup, [conn_rate_limiter/2]).
+-import(esockd_listener_sup, [conn_rate_limiter/1, conn_limiter_opts/2]).
 
 -export([ server/4
         , count_peers/1
@@ -29,13 +29,11 @@
 -export([ get_options/1
         , get_acceptors/1
         , get_max_connections/1
-        , get_max_conn_rate/3
         , get_current_connections/1
         , get_shutdown_count/1
         ]).
 
 -export([ set_max_connections/2
-        , set_max_conn_rate/4
         ]).
 
 -export([ get_access_rules/1
@@ -59,13 +57,13 @@
           sock         :: inet:socket(),
           port         :: inet:port_number(),
           rate_limit   :: maybe(esockd_rate_limit:bucket()),
-          conn_limiter :: esockd_limiter:bucket_name(),
-          limit_timer  :: maybe(reference()),
-          max_peers    :: infinity | pos_integer(),
-          peers        :: map(),
-          options      :: [esockd:option()],
-          access_rules :: list(),
-          mfa          :: esockd:mfargs()
+                conn_limiter :: esockd_generic_limiter:limiter(),
+                limit_timer  :: maybe(reference()),
+                max_peers    :: infinity | pos_integer(),
+                peers        :: map(),
+                options      :: [esockd:option()],
+                access_rules :: list(),
+                mfa          :: esockd:mfargs()
          }).
 
 -define(ACTIVE_N, 100).
@@ -113,14 +111,6 @@ get_acceptors(_Pid) ->
 get_max_connections(Pid) ->
     gen_server:call(Pid, max_peers).
 
-get_max_conn_rate(_Pid, Proto, ListenOn) ->
-    case esockd_limiter:lookup({listener, Proto, ListenOn}) of
-        undefined ->
-            {error, not_found};
-        #{capacity := Capacity, interval := Interval} ->
-            {Capacity, Interval}
-    end.
-
 get_current_connections(Pid) ->
     gen_server:call(Pid, count_peers).
 
@@ -129,9 +119,6 @@ get_shutdown_count(_Pid) ->
 
 set_max_connections(Pid, MaxLimit) when is_integer(MaxLimit) ->
     gen_server:call(Pid, {max_peers, MaxLimit}).
-
-set_max_conn_rate(Pid, Proto, ListenOn, ConnRate) ->
-    gen_server:call(Pid, {max_conn_rate, Proto, ListenOn, ConnRate}).
 
 get_access_rules(Pid) ->
     gen_server:call(Pid, access_rules).
@@ -158,7 +145,7 @@ init([Proto, Port, Opts, MFA]) ->
         {ok, Sock} ->
             %% Trigger the udp_passive event
             ok = inet:setopts(Sock, [{active, 1}]),
-            Limiter = conn_rate_limiter({listener, Proto, Port}, proplists:get_value(max_conn_rate, Opts)),
+            Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, Port})),
             MaxPeers = proplists:get_value(max_connections, Opts, infinity),
             {ok, #state{proto = Proto,
                         sock = Sock,
@@ -181,9 +168,6 @@ handle_call(max_peers, _From, State = #state{max_peers = MaxLimit}) ->
 
 handle_call({max_peers, MaxLimit}, _From, State) ->
     {reply, ok, State#state{max_peers = MaxLimit}};
-
-handle_call({max_conn_rate, Proto, ListenOn, ConnRate}, _From, State) ->
-    {reply, ok, State#state{conn_limiter = conn_rate_limiter({listener, Proto, ListenOn}, ConnRate)}};
 
 handle_call(options, _From, State = #state{options = Opts}) ->
     {reply, Opts, State};
@@ -346,4 +330,3 @@ raw({deny, CIDR = {_Start, _End, _Len}}) ->
      {deny, esockd_cidr:to_string(CIDR)};
 raw(Rule) ->
      Rule.
-
