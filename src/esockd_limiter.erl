@@ -25,7 +25,8 @@
         , stop/0
         ]).
 
--export([ create/2
+-export([create/1
+        , create/2
         , create/3
         , lookup/1
         , consume/1
@@ -41,8 +42,6 @@
         , terminate/2
         , code_change/3
         ]).
-
--export([make_instance/1]).
 
 -type(bucket_name() :: term()).
 
@@ -106,7 +105,18 @@ lookup(Name) ->
 consume(Name) ->
     consume(Name, 1).
 
--spec(consume(bucket_name(), pos_integer()) -> {integer(), integer()}).
+%% The dialyzer cannot support this type specification
+%% Because the dialyzer think consume/2 can never return {0, _}
+%%-spec consume(bucket_name(), pos_integer()) -> {non_neg_integer(), non_neg_integer()};
+%%             (pos_integer(), esockd_generic_limiter:limiter()) -> esockd_generic_limiter:co
+consume(Tokens, #{name := Name} = Limiter) ->
+    case consume(Name, Tokens) of
+        {0, PauseTime} ->
+            {pause, PauseTime, Limiter};
+        _ ->
+            {ok, Limiter}
+    end;
+
 consume(Name, Tokens) when is_integer(Tokens), Tokens > 0 ->
     try ets:update_counter(?TAB, {tokens, Name}, {2, -Tokens, 0, 0}) of
         0 -> {0, pause_time(Name, erlang:system_time(millisecond))};
@@ -116,6 +126,7 @@ consume(Name, Tokens) when is_integer(Tokens), Tokens > 0 ->
     end.
 
 %% @private
+-spec pause_time(_, pos_integer()) -> pos_integer().
 pause_time(Name, Now) ->
     case ets:lookup(?TAB, {bucket, Name}) of
         [] -> 1000; %% Pause 1 second if the bucket is deleted.
@@ -123,33 +134,21 @@ pause_time(Name, Now) ->
             max(1, LastTime + (Interval * 1000) - Now)
     end.
 
--spec(delete(bucket_name()) -> ok).
+%% The dialyzer cannot support this type specification
+-dialyzer({nowarn_function, delete/1}).
+-spec delete(esockd_generic_limiter:limter()) -> ok;
+            (bucket_name()) -> ok.
+delete(#{name := Name}) ->
+    delete(Name);
+
 delete(Name) ->
     gen_server:cast(?SERVER, {delete, Name}).
 
--spec make_instance(esockd_generic_limiter:make_instance_opts()) ->
+-spec create(esockd_generic_limiter:create_options()) ->
           esockd_generic_limiter:limiter().
-make_instance(#{name := LimiterName,
-                capacity := Capacity,
-                interval := Interval}) ->
+create(#{name := LimiterName, capacity := Capacity, interval := Interval}) ->
     create(LimiterName, Capacity, Interval),
-    #{module => ?MODULE,
-      name => LimiterName,
-      consume => fun(Token, #{name := Name} = Limiter) ->
-                         case consume(Name, Token) of
-                             {I, P} when I =< 0 ->
-                                 {pause, P, Limiter};
-                             _ ->
-                                 {ok, Limiter}
-                         end
-                 end,
-      delete => fun(#{name := Name}) ->
-                        delete(Name)
-                end
-     };
-
-make_instance(Opts) ->
-    throw({error_limiter_opts, Opts}).
+    #{name => LimiterName, module => ?MODULE}.
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks

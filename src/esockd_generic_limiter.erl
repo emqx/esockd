@@ -16,43 +16,40 @@
 
 -module(esockd_generic_limiter).
 
--export([make_instance/1, consume/2, delete/1]).
+-export([create/1, consume/2, delete/1]).
 
 -type pause_time() :: non_neg_integer().
--type consume_handler() :: fun((integer(), limiter()) ->
-                                      {ok, limiter()}
-                                          | {pause, pause_time(), limiter()}).
--type delete_handler() :: fun((limiter()) -> ok).
 
 -type limiter() :: #{ module := atom()
                     , name := atom()
-                    , consume := consume_handler()
-                    , delete := delete_handler()
 
                       %% other context
                     , atom() => term()
                     }.
 
--type make_instance_opts() :: #{ module := atom()
-                               , atom() => term()
-                               }.
+-type create_options() :: #{ module := atom()
+                           , atom() => term()
+                           }.
 
--export_type([limiter/0, make_instance_opts/0]).
+-type consume_result() :: {ok, limiter()} |
+                          {pause, pause_time(), limiter()}.
+
+-callback create(create_options()) -> limiter().
+
+-callback consume(integer(), limiter()) -> consume_result().
+
+-callback delete(limiter()) -> ok.
+
+-export_type([limiter/0, create_options/0, consume_result/0]).
 
 %%--------------------------------------------------------------------
 %% Callbacks
 %%--------------------------------------------------------------------
--callback make_instance(make_instance_opts()) -> limiter().
+create(#{module := Module} = Opts) ->
+    Module:create_limiter(Opts).
 
-make_instance(#{module := Module} = Opts) ->
-    Module:create_instace(Opts).
+consume(Token, #{module := Module} = Limiter) ->
+    Module:consume_limiter(Token, Limiter).
 
-consume(Token, #{consume := Func} = Limiter) ->
-    Func(Token, Limiter).
-
-delete(#{delete := Func} = Limiter) ->
-    Func(Limiter).
-
-%%--------------------------------------------------------------------
-%% Internal functions
-%%--------------------------------------------------------------------
+delete(#{module := Module} = Limiter) ->
+    Module:delete_limiter(Limiter).

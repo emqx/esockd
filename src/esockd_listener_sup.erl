@@ -228,4 +228,4 @@ conn_limiter_opts(Opts, DefName) ->
 conn_rate_limiter(undefined) ->
     undefined;
 conn_rate_limiter(Opts) ->
-    esockd_generic_limiter:make_instance(Opts).
+    esockd_generic_limiter:create(Opts).

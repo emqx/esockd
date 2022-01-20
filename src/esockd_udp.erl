@@ -57,13 +57,13 @@
           sock         :: inet:socket(),
           port         :: inet:port_number(),
           rate_limit   :: maybe(esockd_rate_limit:bucket()),
-                conn_limiter :: esockd_generic_limiter:limiter(),
-                limit_timer  :: maybe(reference()),
-                max_peers    :: infinity | pos_integer(),
-                peers        :: map(),
-                options      :: [esockd:option()],
-                access_rules :: list(),
-                mfa          :: esockd:mfargs()
+          conn_limiter :: esockd_generic_limiter:limiter(),
+          limit_timer  :: maybe(reference()),
+          max_peers    :: infinity | pos_integer(),
+          peers        :: map(),
+          options      :: [esockd:option()],
+          access_rules :: list(),
+          mfa          :: esockd:mfargs()
          }).
 
 -define(ACTIVE_N, 100).
