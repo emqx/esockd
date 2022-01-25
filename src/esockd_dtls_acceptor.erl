@@ -42,9 +42,9 @@
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
           upgrade_funs :: [esockd:sock_fun()],
-                conn_limiter :: undefined | esockd_generic_limiter:limiter(),
-                conn_sup     :: pid(),
-                accept_ref   :: term()  %% FIXME: NOT-USE
+          conn_limiter :: undefined | esockd_generic_limiter:limiter(),
+          conn_sup     :: pid(),
+          accept_ref   :: term()  %% FIXME: NOT-USE
          }).
 
 %% @doc Start an acceptor

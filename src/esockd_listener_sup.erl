@@ -30,11 +30,13 @@
 -export([ get_options/1
         , get_acceptors/1
         , get_max_connections/1
+        , get_max_conn_rate/3
         , get_current_connections/1
         , get_shutdown_count/1
         ]).
 
 -export([ set_max_connections/2
+        , set_max_conn_rate/4
         ]).
 
 -export([ get_access_rules/1
@@ -142,6 +144,20 @@ get_max_connections(Sup) ->
 
 set_max_connections(Sup, MaxConns) ->
     esockd_connection_sup:set_max_connections(connection_sup(Sup), MaxConns).
+
+get_max_conn_rate(_Sup, Proto, ListenOn) ->
+    case esockd_limiter:lookup({listener, Proto, ListenOn}) of
+        undefined ->
+            {error, not_found};
+        #{capacity := Capacity, interval := Interval} ->
+            {Capacity, Interval}
+    end.
+
+set_max_conn_rate(Sup, Proto, ListenOn, Opts) ->
+    Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),
+    [ok = Mod:set_conn_limiter(Acceptor, Limiter)
+     || {_, Acceptor, _, [Mod]} <- supervisor:which_children(acceptor_sup(Sup))],
+    ok.
 
 get_current_connections(Sup) ->
     esockd_connection_sup:count_connections(connection_sup(Sup)).

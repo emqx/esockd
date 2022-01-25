@@ -46,10 +46,10 @@
 %% Callbacks
 %%--------------------------------------------------------------------
 create(#{module := Module} = Opts) ->
-    Module:create_limiter(Opts).
+    Module:create(Opts).
 
 consume(Token, #{module := Module} = Limiter) ->
-    Module:consume_limiter(Token, Limiter).
+    Module:consume(Token, Limiter).
 
 delete(#{module := Module} = Limiter) ->
-    Module:delete_limiter(Limiter).
+    Module:delete(Limiter).

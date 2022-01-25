@@ -144,8 +144,7 @@ delete(#{name := Name}) ->
 delete(Name) ->
     gen_server:cast(?SERVER, {delete, Name}).
 
--spec create(esockd_generic_limiter:create_options()) ->
-          esockd_generic_limiter:limiter().
+-spec create(esockd_generic_limiter:create_options()) -> esockd_generic_limiter:limiter().
 create(#{name := LimiterName, capacity := Capacity, interval := Interval}) ->
     create(LimiterName, Capacity, Interval),
     #{name => LimiterName, module => ?MODULE}.

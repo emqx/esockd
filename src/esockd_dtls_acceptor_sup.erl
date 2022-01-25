@@ -32,7 +32,7 @@
 
 -spec(start_link(atom(), esockd:listen_on(), pid(),
                  esockd:sock_fun(), [esockd:sock_fun()], esockd_generic_limiter:limiter())
-      -> {ok, pid()}).
+     -> {ok, pid()}).
 start_link(Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter) ->
     supervisor:start_link(?MODULE, [Proto, ListenOn, ConnSup,
                                     TuneFun, UpgradeFuns, Limiter]).
