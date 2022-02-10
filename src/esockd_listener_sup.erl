@@ -44,7 +44,7 @@
         , deny/2
         ]).
 
--export([ conn_rate_limiter/2 ]).
+-export([ conn_rate_limiter/1, conn_limiter_opts/2, conn_limiter_opt/2]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -79,7 +79,7 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
     ok = esockd_server:init_stats({Proto, ListenOn}, closed_overloaded),
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
-    Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
+    Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),
 
     AcceptorSupMod = case Type of
                          dtls -> esockd_dtls_acceptor_sup;
@@ -153,8 +153,8 @@ get_max_conn_rate(_Sup, Proto, ListenOn) ->
             {Capacity, Interval}
     end.
 
-set_max_conn_rate(Sup, Proto, ListenOn, ConnRate) ->
-    Limiter = conn_rate_limiter({listener, Proto, ListenOn}, ConnRate),
+set_max_conn_rate(Sup, Proto, ListenOn, Opts) ->
+    Limiter = conn_rate_limiter(conn_limiter_opt(Opts, {listener, Proto, ListenOn})),
     [ok = Mod:set_conn_limiter(Acceptor, Limiter)
      || {_, Acceptor, _, [Mod]} <- supervisor:which_children(acceptor_sup(Sup))],
     ok.
@@ -231,13 +231,18 @@ ssl_upgrade_fun(Type, Opts) ->
         SslOpts -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
-conn_rate_opt(Opts) ->
-    proplists:get_value(max_conn_rate, Opts).
+conn_limiter_opts(Opts, DefName) ->
+    Opt =  proplists:get_value(limiter, Opts, undefined),
+    conn_limiter_opt(Opt, DefName).
 
-conn_rate_limiter(_Bucket, undefined) ->
+conn_limiter_opt(#{name := _} = Opt, _DefName) ->
+    Opt;
+conn_limiter_opt(Opt, DefName) when is_map(Opt) ->
+    Opt#{name => DefName};
+conn_limiter_opt(_Opt, _DefName) ->
+    undefined.
+
+conn_rate_limiter(undefined) ->
     undefined;
-conn_rate_limiter(Bucket, ConnRate) when is_integer(ConnRate) ->
-    conn_rate_limiter(Bucket, {ConnRate, 1});
-conn_rate_limiter(Bucket, {Capacity, Interval}) ->
-    esockd_limiter:create(Bucket, Capacity, Interval),
-    Bucket.
+conn_rate_limiter(Opts) ->
+    esockd_generic_limiter:create(Opts).

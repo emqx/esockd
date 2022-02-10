@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--import(esockd_listener_sup, [conn_rate_limiter/2]).
+-import(esockd_listener_sup, [conn_rate_limiter/1, conn_limiter_opts/2, conn_limiter_opt/2]).
 
 -export([ server/4
         , count_peers/1
@@ -59,7 +59,7 @@
           sock         :: inet:socket(),
           port         :: inet:port_number(),
           rate_limit   :: maybe(esockd_rate_limit:bucket()),
-          conn_limiter :: esockd_limiter:bucket_name(),
+          conn_limiter :: esockd_generic_limiter:limiter(),
           limit_timer  :: maybe(reference()),
           max_peers    :: infinity | pos_integer(),
           peers        :: map(),
@@ -130,8 +130,8 @@ get_shutdown_count(_Pid) ->
 set_max_connections(Pid, MaxLimit) when is_integer(MaxLimit) ->
     gen_server:call(Pid, {max_peers, MaxLimit}).
 
-set_max_conn_rate(Pid, Proto, ListenOn, ConnRate) ->
-    gen_server:call(Pid, {max_conn_rate, Proto, ListenOn, ConnRate}).
+set_max_conn_rate(Pid, Proto, ListenOn, Opts) ->
+    gen_server:call(Pid, {max_conn_rate, Proto, ListenOn, Opts}).
 
 get_access_rules(Pid) ->
     gen_server:call(Pid, access_rules).
@@ -158,7 +158,7 @@ init([Proto, Port, Opts, MFA]) ->
         {ok, Sock} ->
             %% Trigger the udp_passive event
             ok = inet:setopts(Sock, [{active, 1}]),
-            Limiter = conn_rate_limiter({listener, Proto, Port}, proplists:get_value(max_conn_rate, Opts)),
+            Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, Port})),
             MaxPeers = proplists:get_value(max_connections, Opts, infinity),
             {ok, #state{proto = Proto,
                         sock = Sock,
@@ -182,8 +182,9 @@ handle_call(max_peers, _From, State = #state{max_peers = MaxLimit}) ->
 handle_call({max_peers, MaxLimit}, _From, State) ->
     {reply, ok, State#state{max_peers = MaxLimit}};
 
-handle_call({max_conn_rate, Proto, ListenOn, ConnRate}, _From, State) ->
-    {reply, ok, State#state{conn_limiter = conn_rate_limiter({listener, Proto, ListenOn}, ConnRate)}};
+handle_call({max_conn_rate, Proto, ListenOn, Opts}, _From, State) ->
+    Limiter = conn_rate_limiter(conn_limiter_opt(Opts, {listener, Proto, ListenOn})),
+    {reply, ok, State#state{conn_limiter = Limiter}};
 
 handle_call(options, _From, State = #state{options = Opts}) ->
     {reply, Opts, State};
@@ -346,4 +347,3 @@ raw({deny, CIDR = {_Start, _End, _Len}}) ->
      {deny, esockd_cidr:to_string(CIDR)};
 raw(Rule) ->
      Rule.
-

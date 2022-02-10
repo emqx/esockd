@@ -42,7 +42,7 @@
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
           upgrade_funs :: [esockd:sock_fun()],
-          conn_limiter :: undefined | esockd_limiter:bucket_name(),
+          conn_limiter :: undefined | esockd_generic_limiter:limiter(),
           conn_sup     :: pid(),
           accept_ref   :: term()  %% FIXME: NOT-USE
          }).
@@ -50,7 +50,7 @@
 %% @doc Start an acceptor
 -spec(start_link(atom(), esockd:listen_on(), pid(),
                  esockd:sock_fun(), [esockd:sock_fun()],
-                 esockd_limiter:bucket_name(), inet:socket())
+                 esockd_generic_limiter:limiter(), inet:socket())
       -> {ok, pid()} | {error, term()}).
 start_link(Proto, ListenOn, ConnSup,
            TuneFun, UpgradeFuns, Limiter, LSock) ->
@@ -149,13 +149,14 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 close(Sock) -> ssl:close(Sock).
 
 rate_limit(State = #state{conn_limiter = Limiter}) ->
-    case esockd_limiter:consume(Limiter, 1) of
-        {I, Pause} when I =< 0 ->
-            {next_state, suspending, State, Pause};
-        _ ->
-            {keep_state, State, {next_event, internal, accept}}
+    case esockd_generic_limiter:consume(1, Limiter) of
+        {ok, Limiter2} ->
+            {keep_state,
+             State#state{conn_limiter = Limiter2},
+             {next_event, internal, accept}};
+        {pause, PauseTime, Limiter2} ->
+            {next_state, suspending, State#state{conn_limiter = Limiter2}, PauseTime}
     end.
 
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock|Args1]).
-
