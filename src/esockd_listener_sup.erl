@@ -44,7 +44,7 @@
         , deny/2
         ]).
 
--export([ conn_rate_limiter/1, conn_limiter_opts/2]).
+-export([ conn_rate_limiter/1, conn_limiter_opts/2, conn_limiter_opt/2]).
 
 %% supervisor callbacks
 -export([init/1]).
@@ -154,7 +154,7 @@ get_max_conn_rate(_Sup, Proto, ListenOn) ->
     end.
 
 set_max_conn_rate(Sup, Proto, ListenOn, Opts) ->
-    Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),
+    Limiter = conn_rate_limiter(conn_limiter_opt(Opts, {listener, Proto, ListenOn})),
     [ok = Mod:set_conn_limiter(Acceptor, Limiter)
      || {_, Acceptor, _, [Mod]} <- supervisor:which_children(acceptor_sup(Sup))],
     ok.
@@ -232,14 +232,15 @@ ssl_upgrade_fun(Type, Opts) ->
     end.
 
 conn_limiter_opts(Opts, DefName) ->
-    case proplists:get_value(limiter, Opts, undefined) of
-        #{name := _} = LOpts ->
-            LOpts;
-        LOpts when is_map(LOpts) ->
-            LOpts#{name => DefName};
-        _ ->
-            undefined
-    end.
+    Opt =  proplists:get_value(limiter, Opts, undefined),
+    conn_limiter_opt(Opt, DefName).
+
+conn_limiter_opt(#{name := _} = Opt, _DefName) ->
+    Opt;
+conn_limiter_opt(Opt, DefName) when is_map(Opt) ->
+    Opt#{name => DefName};
+conn_limiter_opt(_Opt, _DefName) ->
+    undefined.
 
 conn_rate_limiter(undefined) ->
     undefined;

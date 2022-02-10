@@ -87,7 +87,7 @@
 -type(socket() :: esockd_transport:socket()).
 -type(mfargs() :: atom() | {atom(), atom()} | {module(), atom(), [term()]}).
 -type(sock_fun() :: {function(), list()}).
--type(conn_limit() :: pos_integer() | {pos_integer(), pos_integer()}).
+-type(conn_limit() :: map() | {pos_integer(), pos_integer()}).
 -type(options() :: [option()]).
 -type(option() :: {acceptors, pos_integer()}
                 | {max_connections, pos_integer()}
@@ -234,10 +234,8 @@ get_max_conn_rate({Proto, ListenOn}) when is_atom(Proto) ->
 
 %% @doc Set max connection rate
 -spec(set_max_conn_rate({atom(), listen_on()}, conn_limit()) -> ok).
-set_max_conn_rate({Proto, ListenOn}, ConnRate)
-  when is_atom(Proto), is_integer(ConnRate);
-       is_atom(Proto), tuple_size(ConnRate) =:= 2 ->
-    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [Proto, ListenOn, ConnRate]).
+set_max_conn_rate({Proto, ListenOn}, Opt) when is_atom(Proto) ->
+    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [Proto, ListenOn, Opt]).
 
 %% @doc Get current connections
 -spec(get_current_connections({atom(), listen_on()}) -> non_neg_integer()).
@@ -356,4 +354,3 @@ with_listener({Proto, ListenOn}, Fun, Args) ->
         {LSup, Mod} ->
             erlang:apply(Mod, Fun, [LSup | Args])
     end.
-

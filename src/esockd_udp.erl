@@ -18,7 +18,7 @@
 
 -behaviour(gen_server).
 
--import(esockd_listener_sup, [conn_rate_limiter/1, conn_limiter_opts/2]).
+-import(esockd_listener_sup, [conn_rate_limiter/1, conn_limiter_opts/2, conn_limiter_opt/2]).
 
 -export([ server/4
         , count_peers/1
@@ -183,7 +183,7 @@ handle_call({max_peers, MaxLimit}, _From, State) ->
     {reply, ok, State#state{max_peers = MaxLimit}};
 
 handle_call({max_conn_rate, Proto, ListenOn, Opts}, _From, State) ->
-    Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),
+    Limiter = conn_rate_limiter(conn_limiter_opt(Opts, {listener, Proto, ListenOn})),
     {reply, ok, State#state{conn_limiter = Limiter}};
 
 handle_call(options, _From, State = #state{options = Opts}) ->
