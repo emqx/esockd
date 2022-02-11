@@ -12,7 +12,7 @@
    , {add_module,esockd_generic_limiter}
    ]
   },
-  {<<"*">>, []}
+  {<<".*">>, []}
  ],
  [{"5.9.0",
     [ {load_module,esockd_acceptor_sup,brutal_purge,soft_purge,[]}
@@ -25,6 +25,6 @@
     , {delete_module,esockd_generic_limiter}
     ]
   },
-  {<<"*">>, []}
+  {<<".*">>, []}
  ]
 }.
