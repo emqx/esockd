@@ -49,7 +49,14 @@ create(#{module := Module} = Opts) ->
     Module:create(Opts).
 
 consume(Token, #{module := Module} = Limiter) ->
-    Module:consume(Token, Limiter).
+    Module:consume(Token, Limiter);
+
+%% Limiter maybe undefined, it means no limit
+consume(_Token, undefined) ->
+    {ok, undefined}.
 
 delete(#{module := Module} = Limiter) ->
-    Module:delete(Limiter).
+    Module:delete(Limiter);
+
+delete(undefined) ->
+    ok.
