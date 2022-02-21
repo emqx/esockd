@@ -52,11 +52,11 @@ consume(Token, #{module := Module} = Limiter) ->
     Module:consume(Token, Limiter);
 
 %% Limiter maybe undefined, it means no limit
-consume(_Token, Limiter) ->
-    {ok, Limiter}.
+consume(_Token, undefined) ->
+    {ok, undefined}.
 
 delete(#{module := Module} = Limiter) ->
     Module:delete(Limiter);
 
-delete(_Limiter) ->
+delete(undefined) ->
     ok.
