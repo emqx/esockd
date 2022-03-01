@@ -1,7 +1,7 @@
 %%-*-: erlang -*-
 
 {"5.8.5",
-  [{"5.8.4",[]} %% no beam change
+  [{"5.8.4",[]}, %% no beam change
    {"5.8.3",
     [{load_module, esockd_limiter, brutal_purge, soft_purge, []}
     ]
@@ -15,7 +15,7 @@
     ]},
    {<<".*">>, []}
   ],
-  [{"5.8.4",[]} %% no beam change
+  [{"5.8.4",[]}, %% no beam change
    {"5.8.3",
     [{load_module, esockd_limiter, brutal_purge, soft_purge, []}
     ]
