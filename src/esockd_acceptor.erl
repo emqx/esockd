@@ -20,96 +20,156 @@
 
 -include("esockd.hrl").
 
--export([ start_link/7
-        , set_conn_limiter/2
-        ]).
+-export([
+    start_link/7,
+    set_conn_limiter/2
+]).
 
 %% state callbacks
--export([ accepting/3
-        , suspending/3
-        ]).
+-export([handle_event/4]).
+
+%% The state diagram:
+%%
+%%         +----------------------------------------------+
+%%         |                                              |
+%%   +-----v----+       +-----------------+        +------+------+
+%%   | waiting  +------>+  token request  +------->+  accepting  |
+%%   +-+----^---+       +----+------^-----+        +-------------+
+%%     |    |                |      |
+%%     |    +-------------+  |      |
+%%     |                  |  |      |
+%%     |                +-+--V------+-----+
+%%     +--------------->+    suspending   |
+%%                      +-----------------+
+%%
 
 %% gen_statem Callbacks
--export([ init/1
-        , callback_mode/0
-        , terminate/3
-        , code_change/4
-        ]).
+-export([
+    init/1,
+    callback_mode/0,
+    terminate/3,
+    code_change/4
+]).
 
 -record(state, {
-          proto        :: atom(),
-          listen_on    :: esockd:listen_on(),
-          lsock        :: inet:socket(),
-          sockmod      :: module(),
-          sockname     :: {inet:ip_address(), inet:port_number()},
-          tune_fun     :: esockd:sock_fun(),
-          upgrade_funs :: [esockd:sock_fun()],
-          conn_limiter :: undefined | esockd_generic_limiter:limiter(),
-          conn_sup     :: pid(),
-          accept_ref   :: term()
-        }).
+    proto :: atom(),
+    listen_on :: esockd:listen_on(),
+    lsock :: inet:socket(),
+    sockmod :: module(),
+    sockname :: {inet:ip_address(), inet:port_number()},
+    tune_fun :: esockd:sock_fun(),
+    upgrade_funs :: [esockd:sock_fun()],
+    conn_limiter :: undefined | esockd_generic_limiter:limiter(),
+    conn_sup :: pid(),
+    accept_ref :: term()
+}).
 
 %% @doc Start an acceptor
--spec(start_link(atom(), esockd:listen_on(), pid(),
-                 esockd:sock_fun(), [esockd:sock_fun()],
-                 esockd_generic_limiter:limiter(), inet:socket())
-      -> {ok, pid()} | {error, term()}).
-start_link(Proto, ListenOn, ConnSup,
-           TuneFun, UpgradeFuns, Limiter, LSock) ->
-    gen_statem:start_link(?MODULE, [Proto, ListenOn, ConnSup,
-                                    TuneFun, UpgradeFuns, Limiter, LSock], []).
+-spec start_link(
+    atom(),
+    esockd:listen_on(),
+    pid(),
+    esockd:sock_fun(),
+    [esockd:sock_fun()],
+    esockd_generic_limiter:limiter(),
+    inet:socket()
+) ->
+    {ok, pid()} | {error, term()}.
+start_link(
+    Proto,
+    ListenOn,
+    ConnSup,
+    TuneFun,
+    UpgradeFuns,
+    Limiter,
+    LSock
+) ->
+    gen_statem:start_link(
+        ?MODULE,
+        [
+            Proto,
+            ListenOn,
+            ConnSup,
+            TuneFun,
+            UpgradeFuns,
+            Limiter,
+            LSock
+        ],
+        []
+    ).
 
--spec(set_conn_limiter(pid(), esockd_generic_limiter:limiter()) -> ok).
+-spec set_conn_limiter(pid(), esockd_generic_limiter:limiter()) -> ok.
 set_conn_limiter(Acceptor, Limiter) ->
     gen_statem:call(Acceptor, {set_conn_limiter, Limiter}, 5000).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
+callback_mode() -> handle_event_function.
 
 init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter, LSock]) ->
     _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
-    {ok, accepting, #state{proto         = Proto,
-                           listen_on     = ListenOn,
-                           lsock         = LSock,
-                           sockmod       = SockMod,
-                           sockname      = Sockname,
-                           tune_fun      = TuneFun,
-                           upgrade_funs  = UpgradeFuns,
-                           conn_limiter  = Limiter,
-                           conn_sup      = ConnSup},
-     {next_event, internal, accept}}.
+    {ok, waiting,
+        #state{
+            proto = Proto,
+            listen_on = ListenOn,
+            lsock = LSock,
+            sockmod = SockMod,
+            sockname = Sockname,
+            tune_fun = TuneFun,
+            upgrade_funs = UpgradeFuns,
+            conn_limiter = Limiter,
+            conn_sup = ConnSup
+        },
+        {next_event, internal, begin_waiting}}.
 
-callback_mode() -> state_functions.
-
-accepting(internal, accept, State = #state{lsock = LSock}) ->
+handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock}) ->
     case prim_inet:async_accept(LSock, -1) of
         {ok, Ref} ->
             {keep_state, State#state{accept_ref = Ref}};
-        {error, Reason} when Reason =:= emfile;
-                             Reason =:= enfile ->
-            {next_state, suspending, State, 1000};
+        {error, Reason} when
+            Reason =:= emfile;
+            Reason =:= enfile
+        ->
+            {next_state, suspending, State, {state_timeout, 1000, begin_waiting}};
         {error, closed} ->
             {stop, normal, State};
         {error, Reason} ->
             {stop, Reason, State}
     end;
-
-accepting({call, From}, {set_conn_limiter, Limiter}, State) ->
-    {keep_state, State#state{conn_limiter = Limiter}, {reply, From, ok}};
-
-accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
-          State = #state{proto        = Proto,
-                         listen_on    = ListenOn,
-                         lsock        = LSock,
-                         sockmod      = SockMod,
-                         sockname     = Sockname,
-                         tune_fun     = TuneFun,
-                         upgrade_funs = UpgradeFuns,
-                         conn_sup     = ConnSup,
-                         accept_ref   = Ref}) ->
+handle_event(
+    info,
+    {inet_async, LSock, Ref, {ok, Sock}},
+    waiting,
+    State = #state{lsock = LSock, accept_ref = Ref}
+) ->
+    {next_state, token_request, State, {next_event, internal, {token_request, Sock}}};
+handle_event(
+    internal, {token_request, Sock} = Content, token_request, State = #state{conn_limiter = Limiter}
+) ->
+    case esockd_generic_limiter:consume(1, Limiter) of
+        {ok, Limiter2} ->
+            {next_state, accepting, State#state{conn_limiter = Limiter2},
+                {next_event, internal, {accept, Sock}}};
+        {pause, PauseTime, Limiter2} ->
+            {next_state, suspending, State#state{conn_limiter = Limiter2},
+                {state_timeout, PauseTime, Content}}
+    end;
+handle_event(
+    internal,
+    {accept, Sock},
+    accepting,
+    State = #state{
+        proto = Proto,
+        listen_on = ListenOn,
+        sockmod = SockMod,
+        tune_fun = TuneFun,
+        upgrade_funs = UpgradeFuns,
+        conn_sup = ConnSup
+    }
+) ->
     %% make it look like gen_tcp:accept
     inet_db:register_socket(Sock, SockMod),
 
@@ -119,62 +179,39 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
     case eval_tune_socket_fun(TuneFun, Sock) of
         {ok, Sock} ->
             case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
-                {ok, _Pid} -> ok;
-                {error, enotconn} ->
-                    close(Sock); %% quiet...issue #10
-                {error, einval} ->
-                    close(Sock); %% quiet... haproxy check
+                {ok, _Pid} ->
+                    ok;
                 {error, Reason} ->
-                    error_logger:error_msg("Failed to start connection on ~s: ~p",
-                                           [esockd:format(Sockname), Reason]),
+                    handle_accept_error(Reason, "Failed to start connection on ~s: ~p", State),
                     close(Sock)
-                end;
-        {error, enotconn} ->
-            close(Sock);
-        {error, einval} ->
-            close(Sock);
-        {error, overloaded} ->
-            esockd_server:inc_stats({Proto, ListenOn}, closed_overloaded, 1),
-            close(Sock);
+            end;
         {error, Reason} ->
-            error_logger:error_msg("Tune buffer failed on ~s: ~s",
-                                   [esockd:format(Sockname), Reason]),
+            handle_accept_error(Reason, "Tune buffer failed on ~s: ~s", State),
             close(Sock)
     end,
-    rate_limit(State);
-
-accepting(info, {inet_async, LSock, Ref, {error, closed}},
-          State = #state{lsock = LSock, accept_ref = Ref}) ->
-    {stop, normal, State};
-
-%% {error, econnaborted} -> accept
-%% {error, esslaccept}   -> accept
-accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          #state{lsock = LSock, accept_ref = Ref})
-    when Reason =:= econnaborted; Reason =:= esslaccept ->
-    {keep_state_and_data, {next_event, internal, accept}};
-
-%% emfile: The per-process limit of open file descriptors has been reached.
-%% enfile: The system limit on the total number of open files has been reached.
-accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
-    when Reason =:= emfile; Reason =:= enfile ->
-    error_logger:error_msg("Accept error on ~s: ~s",
-                           [esockd:format(Sockname), Reason]),
-    {next_state, suspending, State, 1000};
-
-accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          State = #state{lsock = LSock, accept_ref = Ref}) ->
-    {stop, Reason, State}.
-
-suspending({call, From}, {set_conn_limiter, Limiter}, State) ->
+    {next_state, waiting, State, {next_event, internal, begin_waiting}};
+handle_event(state_timeout, {token_request, _} = Content, suspending, State) ->
+    {next_state, token_request, State, {next_event, internal, Content}};
+handle_event(state_timeout, begin_waiting, suspending, State) ->
+    {next_state, waiting, State, {next_event, internal, begin_waiting}};
+handle_event({call, From}, {set_conn_limiter, Limiter}, _, State) ->
     {keep_state, State#state{conn_limiter = Limiter}, {reply, From, ok}};
+handle_event(
+    info,
+    {inet_async, LSock, Ref, {error, Reason}},
+    _,
+    State = #state{lsock = LSock, accept_ref = Ref}
+) ->
+    handle_socket_error(Reason, State);
+handle_event(Type, Content, StateName, _) ->
+    error_logger:warning_msg(
+        "Unhandled message, State:~p, Type:~p Content:~p",
+        [StateName, Type, Content]
+    ),
+    keep_state_and_data.
 
-suspending(timeout, _Timeout, State) ->
-    {next_state, accepting, State, {next_event, internal, accept}}.
-
-terminate(_Reason, _StateName, _State) ->
-    ok.
+terminate(_Reason, _StateName, #state{lsock = LSock}) ->
+    close(LSock).
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.
@@ -185,15 +222,34 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) -> catch port_close(Sock).
 
-rate_limit(State = #state{conn_limiter = Limiter}) ->
-    case esockd_generic_limiter:consume(1, Limiter) of
-        {ok, Limiter2} ->
-            {keep_state,
-             State#state{conn_limiter = Limiter2},
-             {next_event, internal, accept}};
-        {pause, PauseTime, Limiter2} ->
-            {next_state, suspending, State#state{conn_limiter = Limiter2}, PauseTime}
-    end.
-
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
-    apply(Fun, [Sock|Args1]).
+    apply(Fun, [Sock | Args1]).
+
+handle_accept_error(enotconn, _, _) ->
+    ok;
+handle_accept_error(einval, _, _) ->
+    ok;
+handle_accept_error(overloaded, _, #state{proto = Proto, listen_on = ListenOn}) ->
+    esockd_server:inc_stats({Proto, ListenOn}, closed_overloaded, 1),
+    ok;
+handle_accept_error(Reason, Msg, #state{sockname = Sockname}) ->
+    error_logger:error_msg(Msg, [esockd:format(Sockname), Reason]).
+
+handle_socket_error(closed, State) ->
+    {stop, normal, State};
+%% {error, econnaborted} -> accept
+%% {error, esslaccept}   -> accept
+%% {error, esslaccept}   -> accept
+handle_socket_error(Reason, State) when Reason =:= econnaborted; Reason =:= esslaccept ->
+    {next_state, waiting, State, {next_event, internal, begin_waiting}};
+%% emfile: The per-process limit of open file descriptors has been reached.
+%% enfile: The system limit on the total number of open files has been reached.
+%% enfile: The system limit on the total number of open files has been reached.
+handle_socket_error(Reason, State) when Reason =:= emfile; Reason =:= enfile ->
+    error_logger:error_msg(
+        "Accept error on ~s: ~s",
+        [esockd:format(State#state.sockname), Reason]
+    ),
+    {next_state, suspending, State, {state_timeout, 1000, begin_waiting}};
+handle_socket_error(Reason, State) ->
+    {stop, Reason, State}.
