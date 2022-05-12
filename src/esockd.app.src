@@ -1,7 +1,7 @@
 {application, esockd,
  [{description, "General Non-blocking TCP/SSL and UDP/DTLS Server"},
   {id, "esockd"},
-  {vsn, "5.9.1"},
+  {vsn, "5.9.2"},
   {modules, []},
   {registered, []},
   {applications, [kernel, stdlib, sasl, ssl]},
