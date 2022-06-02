@@ -80,18 +80,18 @@
 
 -spec(server(atom(), esockd:listen_on(), [gen_udp:option()], mfa())
       -> {ok, pid()} | {error, term()}).
-server(Proto, Port, Opts, MFA) when is_integer(Port) ->
-    gen_server:start_link(?MODULE, [Proto, Port, Opts, MFA], []);
-server(Proto, {Host, Port}, Opts, MFA) when is_integer(Port) ->
-    IfAddr = case proplists:get_value(ip, Opts) of
-                 undefined -> proplists:get_value(ifaddr, Opts);
+server(Proto, ListenOn, Opts, MFA) ->
+    gen_server:start_link(?MODULE, [Proto, ListenOn, Opts, MFA], []).
+
+merge_addr(Port, SockOpts) when is_integer(Port) ->
+    SockOpts;
+merge_addr({Addr, _Port}, SockOpts) ->
+    IfAddr = case proplists:get_value(ip, SockOpts) of
+                 undefined -> proplists:get_value(ifaddr, SockOpts);
                  Addr      -> Addr
              end,
-    (IfAddr == undefined) orelse (IfAddr = Host),
-    gen_server:start_link(?MODULE, [Proto, Port, merge_addr(Host, Opts), MFA], []).
-
-merge_addr(Addr, Opts) ->
-    lists:keystore(ip, 1, Opts, {ip, Addr}).
+    (IfAddr == undefined) orelse (IfAddr = Addr),
+    lists:keystore(ip, 1, SockOpts, {ip, Addr}).
 
 -spec(count_peers(pid()) -> integer()).
 count_peers(Pid) ->
@@ -146,19 +146,20 @@ deny(Pid, CIDR) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init([Proto, Port, Opts, MFA]) ->
+init([Proto, ListenOn, Opts, MFA]) ->
     process_flag(trap_exit, true),
     put(incoming_peers, 0),
 
     RawRules = proplists:get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
 
-    UdpOpts = proplists:get_value(udp_options, Opts, []),
+    Port = port(ListenOn),
+    UdpOpts = merge_addr(ListenOn, sockopts(Opts)),
     case gen_udp:open(Port, esockd:merge_opts(?DEFAULT_OPTS, UdpOpts)) of
         {ok, Sock} ->
             %% Trigger the udp_passive event
             ok = inet:setopts(Sock, [{active, 1}]),
-            Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, Port})),
+            Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),
             MaxPeers = proplists:get_value(max_connections, Opts, infinity),
             {ok, #state{proto = Proto,
                         sock = Sock,
@@ -172,6 +173,15 @@ init([Proto, Port, Opts, MFA]) ->
         {error, Reason} ->
             {stop, Reason}
     end.
+
+port(Port) when is_integer(Port) -> Port;
+port({_Addr, Port}) -> Port.
+
+sockopts(Opts) ->
+    esockd:merge_opts(
+      ?DEFAULT_OPTS,
+      proplists:get_value(udp_options, Opts, [])
+     ).
 
 handle_call(count_peers, _From, State = #state{peers = Peers}) ->
     {reply, maps:size(Peers) div 2, State};
