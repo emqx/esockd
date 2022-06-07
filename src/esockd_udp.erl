@@ -83,14 +83,17 @@
 server(Proto, ListenOn, Opts, MFA) ->
     gen_server:start_link(?MODULE, [Proto, ListenOn, Opts, MFA], []).
 
-merge_addr(Port, SockOpts) when is_integer(Port) ->
+resolve_addr(Port, SockOpts) when is_integer(Port) ->
     SockOpts;
-merge_addr({Addr, _Port}, SockOpts) ->
+resolve_addr({Addr, _Port}, SockOpts) ->
     IfAddr = case proplists:get_value(ip, SockOpts) of
                  undefined -> proplists:get_value(ifaddr, SockOpts);
                  Addr      -> Addr
              end,
-    (IfAddr == undefined) orelse (IfAddr = Addr),
+    case (IfAddr =:= undefined) orelse (IfAddr =:= Addr) of
+        true -> ok;
+        _ -> error({badarg, inconsistent_addr})
+    end,
     lists:keystore(ip, 1, SockOpts, {ip, Addr}).
 
 -spec(count_peers(pid()) -> integer()).
@@ -154,7 +157,7 @@ init([Proto, ListenOn, Opts, MFA]) ->
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
 
     Port = port(ListenOn),
-    UdpOpts = merge_addr(ListenOn, sockopts(Opts)),
+    UdpOpts = resolve_addr(ListenOn, sockopts(Opts)),
     case gen_udp:open(Port, esockd:merge_opts(?DEFAULT_OPTS, UdpOpts)) of
         {ok, Sock} ->
             %% Trigger the udp_passive event
