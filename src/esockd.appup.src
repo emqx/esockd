@@ -1,11 +1,9 @@
 %%-*-: erlang -*-
 
-{"5.8.5",
-  [{"5.8.4",[]}, %% no beam change
-   {"5.8.3",
-    [{load_module, esockd_limiter, brutal_purge, soft_purge, []}
-    ]
-   },
+{"5.8.6",
+  [{"5.8.5",[{load_module,esockd_udp,brutal_purge,soft_purge,[]}]},
+   {"5.8.4",[]}, %% no beam change
+   {"5.8.3", [{load_module, esockd_limiter, brutal_purge, soft_purge, []}]},
    {<<"5\\.8\\.[0-2]">>,
     [{load_module,esockd_connection_sup,brutal_purge,soft_purge,[]},
      {load_module,esockd_dtls_listener,brutal_purge,soft_purge,[]},
@@ -15,11 +13,9 @@
     ]},
    {<<".*">>, []}
   ],
-  [{"5.8.4",[]}, %% no beam change
-   {"5.8.3",
-    [{load_module, esockd_limiter, brutal_purge, soft_purge, []}
-    ]
-   },
+  [{"5.8.5",[{load_module,esockd_udp,brutal_purge,soft_purge,[]}]},
+   {"5.8.4",[]}, %% no beam change
+   {"5.8.3", [{load_module, esockd_limiter, brutal_purge, soft_purge, []}]},
    {<<"5\\.8\\.[0-2]">>,
     [{load_module,esockd_connection_sup,brutal_purge,soft_purge,[]},
      {load_module,esockd_dtls_listener,brutal_purge,soft_purge,[]},
