@@ -345,11 +345,15 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
 -spec(ssl_upgrade_fun([ssl:ssl_option()]) -> esockd:sock_fun()).
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
-    {fun ?MODULE:ssl_upgrade/3, [SslOpts1, Timeout]}.
+    {GCAfterHandshake, SslOpts2} = take_gc_after_handshake(SslOpts1),
+    {fun ?MODULE:ssl_upgrade/3, [SslOpts2, #{timeout => Timeout,
+                                             gc_after_handshake => GCAfterHandshake}]}.
 
-ssl_upgrade(Sock, SslOpts1, Timeout) ->
+ssl_upgrade(Sock, SslOpts1, #{timeout := Timeout,
+                              gc_after_handshake := GCAfterHandshake}) ->
     try do_ssl_handshake(Sock, SslOpts1, Timeout) of
         {ok, NSock} ->
+            GCAfterHandshake andalso gc(NSock),
             {ok, NSock};
         {error, Reason} when Reason =:= closed; Reason =:= timeout ->
             {error, Reason};
@@ -395,6 +399,10 @@ take_handshake_timeout(SslOpts) ->
             {?SSL_HANDSHAKE_TIMEOUT, SslOpts}
     end.
 
+take_gc_after_handshake(SslOpts) ->
+    {proplists:get_bool(gc_after_handshake, SslOpts),
+     proplists:delete(gc_after_handshake, SslOpts)}.
+
 %% @doc TCP | SSL -> ProxySocket
 proxy_upgrade_fun(Opts) ->
     Timeout = proxy_protocol_timeout(Opts),
@@ -422,12 +430,28 @@ ensure_ok_or_exit(Fun, Args = [Sock|_]) when is_atom(Fun), is_list(Args) ->
     end.
 
 gc(Sock) when is_port(Sock) ->
-    ok;
+case erlang:port_info(Sock, connected) of
+        {connected, Pid} ->
+            erlang:garbage_collect(Pid),
+            ok;
+        undefined ->
+            ok
+    end;
 %% Defined in ssl/src/ssl_api.hrl:
 %% -record(sslsocket, {fd = nil, pid = nil}).
 gc(#ssl_socket{ssl = {sslsocket, _, Pid}}) when is_pid(Pid) ->
-    erlang:garbage_collect(Pid);
+    erlang:garbage_collect(Pid),
+    ok;
+%% In OTP 24+, the last element is a list of PIDs The first is spawned
+%% by `ssl_gen_statem:init/1', the second by `tls_sender:init/1`.
+gc(#ssl_socket{ssl = {sslsocket, _, Pids}}) when is_list(Pids) ->
+    lists:foreach(
+      fun(Pid) when is_pid(Pid) ->
+              erlang:garbage_collect(Pid);
+         (_) ->
+              ok
+      end,
+      Pids);
 gc(#proxy_socket{socket = Sock}) ->
     gc(Sock);
 gc(_Sock) -> ok.
-
