@@ -27,6 +27,10 @@
         , restart_listener/2
         ]).
 
+-export([ close_port/2
+        , resume_port/2
+        ]).
+
 -export([ listeners/0
         , listener/1
         , listener_and_module/1
@@ -93,7 +97,23 @@ stop_listener(Proto, ListenOn) ->
     case match_listeners(Proto, ListenOn) of
         [] -> {error, not_found};
         Listeners ->
-            return_ok_or_error([terminate_and_delete(ChildId) || ChildId <- Listeners])
+            return_ok_or_error([terminate_and_delete(ChildId) || {ChildId, _} <- Listeners])
+    end.
+
+-spec(close_port(atom(), esockd:listen_on()) -> ok | {error, term()}).
+close_port(Proto, ListenOn) ->
+    case match_listeners(Proto, ListenOn) of
+        [] -> {error, not_found};
+        Listeners ->
+            return_ok_or_error([terminate_port(SupPid) || {_, SupPid} <- Listeners])
+    end.
+
+-spec(resume_port(atom(), esockd:listen_on()) -> ok | {error, term()}).
+resume_port(Proto, ListenOn) ->
+    case match_listeners(Proto, ListenOn) of
+        [] -> {error, not_found};
+        Listeners ->
+            return_ok_or_error([resume(SupPid) || {_, SupPid} <- Listeners])
     end.
 
 terminate_and_delete(ChildId) ->
@@ -101,6 +121,22 @@ terminate_and_delete(ChildId) ->
         ok    -> supervisor:delete_child(?MODULE, ChildId);
         Error -> Error
 	end.
+
+-spec(terminate_port(pid()) -> ok | {error, tcp_close}).
+terminate_port(ListenerSup) ->
+    try
+        Listener = esockd_listener_sup:listener(ListenerSup),
+        LSock = esockd_listener:get_sock(Listener),
+        gen_tcp:close(LSock)
+    catch _:_ ->
+        {error, tcp_close}
+    end.
+
+-spec resume(pid()) -> ok | {error, term()}.
+resume(ListenerSup) ->
+    Listener = esockd_listener_sup:listener(ListenerSup),
+    AcceptorSup = esockd_listener_sup:acceptor_sup(ListenerSup),
+    esockd_listener:resume_sock(Listener, AcceptorSup).
 
 -spec(listeners() -> [{term(), pid()}]).
 listeners() ->
@@ -129,7 +165,7 @@ restart_listener(Proto, ListenOn) ->
     case match_listeners(Proto, ListenOn) of
         [] -> {error, not_found};
         Listeners ->
-            return_ok_or_error([terminate_and_restart(ChildId) || ChildId <- Listeners])
+            return_ok_or_error([terminate_and_restart(ChildId) || {ChildId, _} <- Listeners])
     end.
 
 terminate_and_restart(ChildId) ->
@@ -139,7 +175,7 @@ terminate_and_restart(ChildId) ->
     end.
 
 match_listeners(Proto, ListenOn) ->
-    [ChildId || {ChildId, _Pid, _Type, _} <- supervisor:which_children(?MODULE),
+    [{ChildId, Pid} || {ChildId, Pid, _Type, _} <- supervisor:which_children(?MODULE),
                 match_listener(Proto, ListenOn, ChildId)].
 
 match_listener(Proto, ListenOn, {listener_sup, {Proto, ListenOn}}) ->

@@ -28,6 +28,13 @@
         , close/1
         ]).
 
+%% Support Hot Release
+-export([ close_port/1
+        , close_port/2
+        , resume_port/1
+        , resume_port/2
+        ]).
+
 -export([ reopen/1
         , reopen/2
         ]).
@@ -158,6 +165,24 @@ close({Proto, ListenOn}) when is_atom(Proto) ->
 -spec(close(atom(), listen_on()) -> ok | {error, term()}).
 close(Proto, ListenOn) when is_atom(Proto) ->
 	esockd_sup:stop_listener(Proto, fixaddr(ListenOn)).
+
+%% @doc just close port, don't kill esockd supervisor process made connection close
+-spec(close_port({atom(), listen_on()}) -> ok | {error, term()}).
+close_port({Proto, ListenOn}) when is_atom(Proto) ->
+    close_port(Proto, ListenOn).
+
+-spec close_port(atom(), listen_on()) -> ok | {error, term()}.
+close_port(Proto, ListenOn) when is_atom(Proto) ->
+	esockd_sup:close_port(Proto, fixaddr(ListenOn)).
+
+%% @doc resume port when use close port
+-spec(resume_port({atom(), listen_on()}) -> ok | {error, term()}).
+resume_port({Proto, ListenOn}) when is_atom(Proto) ->
+    resume_port(Proto, ListenOn).
+
+-spec resume_port(atom(), listen_on()) -> ok | {error, term()}.
+resume_port(Proto, ListenOn) when is_atom(Proto) ->
+	esockd_sup:resume_port(Proto, fixaddr(ListenOn)).
 
 %% @doc Reopen the listener
 -spec(reopen({atom(), listen_on()}) -> {ok, pid()} | {error, term()}).

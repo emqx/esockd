@@ -24,6 +24,10 @@
 
 -export([ options/1
         , get_port/1
+        , get_sock/1
+        ]).
+
+-export([ resume_sock/2
         ]).
 
 %% gen_server callbacks
@@ -65,6 +69,16 @@ options(Listener) ->
 get_port(Listener) ->
     gen_server:call(Listener, get_port).
 
+-spec(get_sock(pid()) -> inet:socket()).
+get_sock(Listener) ->
+    gen_server:call(Listener, get_sock).
+
+-spec(resume_sock(pid(), pid()) -> ok | {error, term()}).
+resume_sock(Listener, AcceptorSup) ->
+    case gen_server:call(Listener, {resume_sock, AcceptorSup}) of
+        ok -> ok;
+        {error, Reason} -> {error, Reason}
+    end.
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
@@ -108,6 +122,31 @@ handle_call(options, _From, State = #state{options = Opts}) ->
 
 handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
+
+handle_call(get_sock, _From, State = #state{lsock = LSock}) ->
+    {reply, LSock, State};
+
+handle_call({resume_sock, AcceptorSup}, _From,
+                State = #state{proto = Proto,
+                               listen_on = ListenOn,
+                               options = Opts}) ->
+    Port = port(ListenOn),
+    SockOpts = merge_addr(ListenOn, sockopts(Opts)),
+    case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
+        {ok, LSock} ->
+            AcceptorNum = proplists:get_value(acceptors, Opts, ?ACCEPTOR_POOL),
+            lists:foreach(fun (_) ->
+                {ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock)
+            end, lists:seq(1, AcceptorNum)),
+            {ok, {LAddr, LPort}} = inet:sockname(LSock),
+            %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
+            %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
+            {reply, ok, #state{lsock = LSock, laddr = LAddr, lport = LPort}};
+        {error, Reason} ->
+            error_logger:error_msg("~s failed to resume port ~p - ~p (~s)",
+                                    [Proto, Port, Reason, inet:format_error(Reason)]),
+            {reply, Reason, State}
+    end;
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
