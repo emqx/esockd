@@ -97,6 +97,17 @@ t_send_ssl(Config) ->
     ok = esockd_transport:close(#ssl_socket{ssl = SslSock}),
     ok = esockd:close(echo, 8883).
 
+t_send_ssl_gc_after_handshake(Config) ->
+    ssl:start(),
+    SslOpts = [{certfile, esockd_ct:certfile(Config)},
+               {keyfile, esockd_ct:keyfile(Config)},
+               {gc_after_handshake, true}],
+    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {echo_server, start_link, []}),
+    {ok, SslSock} = ssl:connect({127,0,0,1}, 8883, [], 3000),
+    ok = esockd_transport:send(#ssl_socket{ssl = SslSock}, <<"Hello">>),
+    ok = esockd_transport:close(#ssl_socket{ssl = SslSock}),
+    ok = esockd:close(echo, 8883).
+
 t_send_proxy(_) ->
     {ok, _} = esockd:open(echo, 5000, [{tcp_options, [binary]},
                                        proxy_protocol,
@@ -188,11 +199,16 @@ t_proxy_upgrade_fun(_) ->
     ?assert(is_function(Fun)).
 
 t_ssl_upgrade_fun(_) ->
-    {Fun, [[], 1000]} = esockd_transport:ssl_upgrade_fun([{handshake_timeout, 1000}]),
-    ?assert(is_function(Fun)).
+    {Fun0, [[], #{timeout := 1000, gc_after_handshake := false}]}
+        = esockd_transport:ssl_upgrade_fun([{handshake_timeout, 1000}]),
+    ?assert(is_function(Fun0, 3)),
+    {Fun1, [[], #{timeout := 1000, gc_after_handshake := true}]}
+        = esockd_transport:ssl_upgrade_fun([{handshake_timeout, 1000},
+                                            {gc_after_handshake, true}]),
+    ?assert(is_function(Fun1, 3)),
+    ok.
 
 t_fast_close(_) ->
     {ok, LSock} = esockd_transport:listen(3000, [{reuseaddr, true}]),
     ok = esockd_transport:fast_close(LSock),
     ok = esockd_transport:close(LSock).
-
