@@ -27,7 +27,7 @@
 -export([close/1, fast_close/1]).
 -export([getopts/2, setopts/2, getstat/2]).
 -export([sockname/1, peername/1, shutdown/2]).
--export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1, peer_sni/1]).
+-export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1, peersni/1]).
 -export([ensure_ok_or_exit/2]).
 -export([gc/1]).
 
@@ -330,15 +330,15 @@ peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
 peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl_cn,
                         proplists:get_value(pp2_ssl, AdditionalInfo, [])).
--spec(peer_sni(socket()) -> undefined | binary()).
-peer_sni(Sock) when is_port(Sock) ->
+-spec(peersni(socket()) -> undefined | binary()).
+peersni(Sock) when is_port(Sock) ->
     undefined;
-peer_sni(#ssl_socket{ssl = SslSock}) ->
+peersni(#ssl_socket{ssl = SslSock}) ->
     case ssl:connection_information(SslSock, [sni_hostname]) of
-        {ok, [SNI]} -> SNI;
+        {ok, [{sni_hostname, SNI}]} -> iolist_to_binary(SNI);
         _Error -> undefined
     end;
-peer_sni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_authority, AdditionalInfo, undefined).
 
 %% @doc Shutdown socket

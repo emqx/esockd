@@ -183,6 +183,33 @@ t_peer_cert_common_name(_) ->
     undefined = esockd_transport:peer_cert_common_name(LSock),
     ok = esockd_transport:close(LSock).
 
+t_peersni_normal(_) ->
+    {ok, LSock} = esockd_transport:listen(3000, [{reuseaddr, true}]),
+    undefined = esockd_transport:peersni(LSock),
+    ok = esockd_transport:close(LSock).
+
+t_peersni_ssl(Config) ->
+    ssl:start(),
+    SslOpts = [{certfile, esockd_ct:certfile(Config)},
+               {keyfile, esockd_ct:keyfile(Config)},
+               {gc_after_handshake, true}],
+    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {?MODULE, start_link_peersni, []}),
+    {ok, SslSock} = ssl:connect("localhost", 8883, [], 3000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    receive
+        {ssl, _, "Hello"} -> ok
+    after 1000 ->
+              ct:fail("assert sni failed") 
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, 8883).
+
+t_peersni_proxy(_) ->
+    <<"localhost">> = esockd_transport:peersni(
+                        #proxy_socket{
+                           pp2_additional_info = [{pp2_authority, <<"localhost">>}]
+                          }).
+
 t_shutdown(_) ->
     {ok, _} = esockd:open(echo, 3000, [{tcp_options, ?TCP_OPTS}], {echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 3000, [{active, false}]),
@@ -212,3 +239,28 @@ t_fast_close(_) ->
     {ok, LSock} = esockd_transport:listen(3000, [{reuseaddr, true}]),
     ok = esockd_transport:fast_close(LSock),
     ok = esockd_transport:close(LSock).
+
+%%--------------------------------------------------------------------
+%% peersni
+
+start_link_peersni(Transport, RawSock) ->
+    {ok, spawn_link(?MODULE, peersni_conn_init, [Transport, RawSock])}.
+
+peersni_conn_init(Transport, RawSock) ->
+    case Transport:wait(RawSock) of
+        {ok, Sock} ->
+            %% assert peersni is localhost
+            <<"localhost">> = Transport:peersni(Sock),
+            peersni_loop(Transport, Sock);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+peersni_loop(Transport, Sock) ->
+	case Transport:recv(Sock, 0) of
+        {ok, Data} ->
+            Transport:send(Sock, Data),
+            peersni_loop(Transport, Sock);
+        {error, Reason} ->
+            exit({shutdown, Reason})
+	end.
