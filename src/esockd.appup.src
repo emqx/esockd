@@ -1,7 +1,11 @@
 %%-*- mode: erlang; -*-
 
-{"5.9.4",
- [{"5.9.3",
+{"5.9.5",
+ [{"5.9.4",
+   [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   ]
+  },
+  {"5.9.3",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    ]
   },
@@ -28,7 +32,11 @@
   },
   {<<".*">>, []}
  ],
- [{"5.9.3",
+ [{"5.9.4",
+   [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   ]
+  },
+  {"5.9.3",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    ]
   },

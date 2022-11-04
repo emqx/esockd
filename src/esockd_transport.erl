@@ -330,13 +330,19 @@ peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
 peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl_cn,
                         proplists:get_value(pp2_ssl, AdditionalInfo, [])).
+
 -spec(peersni(socket()) -> undefined | binary()).
 peersni(Sock) when is_port(Sock) ->
     undefined;
 peersni(#ssl_socket{ssl = SslSock}) ->
     case ssl:connection_information(SslSock, [sni_hostname]) of
-        {ok, [{sni_hostname, SNI}]} -> iolist_to_binary(SNI);
-        _Error -> undefined
+        {ok, [{sni_hostname, SNI}]} when is_list(SNI) -> list_to_binary(SNI);
+        %% If the client does not support SNI extensions,
+        %% an empty list will be returned here
+        %%
+        %% see: https://github.com/erlang/otp/blob/e6ef9cb92499377c24d818376bfd60cbbcf68e60/lib/ssl/src/ssl.erl#L927-L935
+        {ok, []} -> undefined;
+        Error -> error(Error)
     end;
 peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_authority, AdditionalInfo, undefined).

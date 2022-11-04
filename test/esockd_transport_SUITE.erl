@@ -193,13 +193,30 @@ t_peersni_ssl(Config) ->
     SslOpts = [{certfile, esockd_ct:certfile(Config)},
                {keyfile, esockd_ct:keyfile(Config)},
                {gc_after_handshake, true}],
-    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {?MODULE, start_link_peersni, []}),
-    {ok, SslSock} = ssl:connect("localhost", 8883, [], 3000),
+    ServerName = "localhost",
+    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {?MODULE, start_link_peersni, [ServerName]}),
+    {ok, SslSock} = ssl:connect("localhost", 8883, [{server_name_indication, ServerName}], 3000),
     ok = ssl:send(SslSock, <<"Hello">>),
     receive
         {ssl, _, "Hello"} -> ok
     after 1000 ->
-              ct:fail("assert sni failed") 
+              ct:fail("assert sni failed")
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, 8883).
+
+t_peersni_ssl_disabled_sni(Config) ->
+    ssl:start(),
+    SslOpts = [{certfile, esockd_ct:certfile(Config)},
+               {keyfile, esockd_ct:keyfile(Config)},
+               {gc_after_handshake, true}],
+    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {?MODULE, start_link_peersni, [disable]}),
+    {ok, SslSock} = ssl:connect("localhost", 8883, [{server_name_indication, disable}], 3000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    receive
+        {ssl, _, "Hello"} -> ok
+    after 1000 ->
+              ct:fail("assert sni failed")
     end,
     ok = ssl:close(SslSock),
     ok = esockd:close(echo, 8883).
@@ -243,14 +260,20 @@ t_fast_close(_) ->
 %%--------------------------------------------------------------------
 %% peersni
 
-start_link_peersni(Transport, RawSock) ->
-    {ok, spawn_link(?MODULE, peersni_conn_init, [Transport, RawSock])}.
+start_link_peersni(Transport, RawSock, SNI) ->
+    {ok, spawn_link(?MODULE, peersni_conn_init, [Transport, RawSock, SNI])}.
 
-peersni_conn_init(Transport, RawSock) ->
+peersni_conn_init(Transport, RawSock, SNI) ->
     case Transport:wait(RawSock) of
         {ok, Sock} ->
-            %% assert peersni is localhost
-            <<"localhost">> = Transport:peersni(Sock),
+            %% assert peersni
+            case SNI of
+                disable ->
+                    undefined = Transport:peersni(Sock);
+                _ ->
+                    SNI1 = list_to_binary(SNI),
+                    SNI1 = Transport:peersni(Sock)
+            end,
             peersni_loop(Transport, Sock);
         {error, Reason} ->
             {error, Reason}
