@@ -16,13 +16,16 @@
 
 -module(esockd_ct).
 
--export([all/1, certfile/1, keyfile/1]).
+-export([all/1, cacertfile/1, certfile/1, keyfile/1]).
 
 %% @doc Get all the test cases in a CT suite.
 all(Suite) ->
     lists:usort([F || {F, 1} <- Suite:module_info(exports),
                       string:substr(atom_to_list(F), 1, 2) == "t_"
                 ]).
+
+cacertfile(Config) ->
+    filename:join([test_dir(Config), "certs", "ca.crt"]).
 
 certfile(Config) ->
     filename:join([test_dir(Config), "certs", "test.crt"]).

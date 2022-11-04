@@ -190,12 +190,23 @@ t_peersni_normal(_) ->
 
 t_peersni_ssl(Config) ->
     ssl:start(),
-    SslOpts = [{certfile, esockd_ct:certfile(Config)},
-               {keyfile, esockd_ct:keyfile(Config)},
-               {gc_after_handshake, true}],
-    ServerName = "localhost",
-    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {?MODULE, start_link_peersni, [ServerName]}),
-    {ok, SslSock} = ssl:connect("localhost", 8883, [{server_name_indication, ServerName}], 3000),
+    ServerName = "Server", %% The Common Name of 'tests/certs/test.crt'
+    ServerSslOpts =
+        [{certfile, esockd_ct:certfile(Config)},
+         {keyfile, esockd_ct:keyfile(Config)},
+         %% We must specify this parameter manually, otherwise the
+         %% sni will not be retrieved on otp23
+         {sni_fun, fun(_sni) -> [] end},
+         {gc_after_handshake, true}],
+    {ok, _} = esockd:open(
+                echo, 8883, [{ssl_options, ServerSslOpts}],
+                {?MODULE, start_link_peersni, [ServerName]}
+               ),
+    ClientSslOpts = [{cacertfile, esockd_ct:cacertfile(Config)},
+                     {verify, verify_peer},
+                     {server_name_indication, ServerName}
+                    ],
+    {ok, SslSock} = ssl:connect("localhost", 8883, ClientSslOpts, 3000),
     ok = ssl:send(SslSock, <<"Hello">>),
     receive
         {ssl, _, "Hello"} -> ok

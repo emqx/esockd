@@ -342,7 +342,7 @@ peersni(#ssl_socket{ssl = SslSock}) ->
         %%
         %% see: https://github.com/erlang/otp/blob/e6ef9cb92499377c24d818376bfd60cbbcf68e60/lib/ssl/src/ssl.erl#L927-L935
         {ok, []} -> undefined;
-        Error -> error(Error)
+        {error, _Reason} -> undefined
     end;
 peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_authority, AdditionalInfo, undefined).
