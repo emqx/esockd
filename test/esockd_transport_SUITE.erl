@@ -183,6 +183,61 @@ t_peer_cert_common_name(_) ->
     undefined = esockd_transport:peer_cert_common_name(LSock),
     ok = esockd_transport:close(LSock).
 
+t_peersni_normal(_) ->
+    {ok, LSock} = esockd_transport:listen(3000, [{reuseaddr, true}]),
+    undefined = esockd_transport:peersni(LSock),
+    ok = esockd_transport:close(LSock).
+
+t_peersni_ssl(Config) ->
+    ssl:start(),
+    ServerName = "Server", %% The Common Name of 'tests/certs/test.crt'
+    ServerSslOpts =
+        [{certfile, esockd_ct:certfile(Config)},
+         {keyfile, esockd_ct:keyfile(Config)},
+         %% We must specify this parameter manually, otherwise the
+         %% sni will not be retrieved on otp23
+         {sni_fun, fun(_sni) -> [] end},
+         {gc_after_handshake, true}],
+    {ok, _} = esockd:open(
+                echo, 8883, [{ssl_options, ServerSslOpts}],
+                {?MODULE, start_link_peersni, [ServerName]}
+               ),
+    ClientSslOpts = [{cacertfile, esockd_ct:cacertfile(Config)},
+                     {verify, verify_peer},
+                     {server_name_indication, ServerName}
+                    ],
+    {ok, SslSock} = ssl:connect("localhost", 8883, ClientSslOpts, 3000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    receive
+        {ssl, _, "Hello"} -> ok
+    after 1000 ->
+              ct:fail("assert sni failed")
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, 8883).
+
+t_peersni_ssl_disabled_sni(Config) ->
+    ssl:start(),
+    SslOpts = [{certfile, esockd_ct:certfile(Config)},
+               {keyfile, esockd_ct:keyfile(Config)},
+               {gc_after_handshake, true}],
+    {ok, _} = esockd:open(echo, 8883, [{ssl_options, SslOpts}], {?MODULE, start_link_peersni, [disable]}),
+    {ok, SslSock} = ssl:connect("localhost", 8883, [{server_name_indication, disable}], 3000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    receive
+        {ssl, _, "Hello"} -> ok
+    after 1000 ->
+              ct:fail("assert sni failed")
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, 8883).
+
+t_peersni_proxy(_) ->
+    <<"localhost">> = esockd_transport:peersni(
+                        #proxy_socket{
+                           pp2_additional_info = [{pp2_authority, <<"localhost">>}]
+                          }).
+
 t_shutdown(_) ->
     {ok, _} = esockd:open(echo, 3000, [{tcp_options, ?TCP_OPTS}], {echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 3000, [{active, false}]),
@@ -212,3 +267,34 @@ t_fast_close(_) ->
     {ok, LSock} = esockd_transport:listen(3000, [{reuseaddr, true}]),
     ok = esockd_transport:fast_close(LSock),
     ok = esockd_transport:close(LSock).
+
+%%--------------------------------------------------------------------
+%% peersni
+
+start_link_peersni(Transport, RawSock, SNI) ->
+    {ok, spawn_link(?MODULE, peersni_conn_init, [Transport, RawSock, SNI])}.
+
+peersni_conn_init(Transport, RawSock, SNI) ->
+    case Transport:wait(RawSock) of
+        {ok, Sock} ->
+            %% assert peersni
+            case SNI of
+                disable ->
+                    undefined = Transport:peersni(Sock);
+                _ ->
+                    SNI1 = list_to_binary(SNI),
+                    SNI1 = Transport:peersni(Sock)
+            end,
+            peersni_loop(Transport, Sock);
+        {error, Reason} ->
+            {error, Reason}
+    end.
+
+peersni_loop(Transport, Sock) ->
+	case Transport:recv(Sock, 0) of
+        {ok, Data} ->
+            Transport:send(Sock, Data),
+            peersni_loop(Transport, Sock);
+        {error, Reason} ->
+            exit({shutdown, Reason})
+	end.

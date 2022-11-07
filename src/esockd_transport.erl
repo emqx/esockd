@@ -27,7 +27,7 @@
 -export([close/1, fast_close/1]).
 -export([getopts/2, setopts/2, getstat/2]).
 -export([sockname/1, peername/1, shutdown/2]).
--export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1]).
+-export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1, peersni/1]).
 -export([ensure_ok_or_exit/2]).
 -export([gc/1]).
 
@@ -330,6 +330,22 @@ peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
 peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl_cn,
                         proplists:get_value(pp2_ssl, AdditionalInfo, [])).
+
+-spec(peersni(socket()) -> undefined | binary()).
+peersni(Sock) when is_port(Sock) ->
+    undefined;
+peersni(#ssl_socket{ssl = SslSock}) ->
+    case ssl:connection_information(SslSock, [sni_hostname]) of
+        {ok, [{sni_hostname, SNI}]} when is_list(SNI) -> list_to_binary(SNI);
+        %% If the client does not support SNI extensions,
+        %% an empty list will be returned here
+        %%
+        %% see: https://github.com/erlang/otp/blob/e6ef9cb92499377c24d818376bfd60cbbcf68e60/lib/ssl/src/ssl.erl#L927-L935
+        {ok, []} -> undefined;
+        {error, _Reason} -> undefined
+    end;
+peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+    proplists:get_value(pp2_authority, AdditionalInfo, undefined).
 
 %% @doc Shutdown socket
 -spec(shutdown(socket(), How) -> ok | {error, inet:posix()} when
