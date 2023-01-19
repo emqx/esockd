@@ -1,7 +1,7 @@
 %%-*- mode: erlang; -*-
 
-{"5.8.7",
-  [{"5.8.6",[{load_module,esockd_transport,brutal_purge,soft_purge,[]}]},
+{"5.8.8",
+  [{<<"5\\.8\\.[6-7]">>,[{load_module,esockd_transport,brutal_purge,soft_purge,[]}]},
    {<<"5\\.8\\.[4-5]">>,
     [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]}
@@ -21,7 +21,7 @@
     ]},
    {<<".*">>, []}
   ],
-  [{"5.8.6",[{load_module,esockd_transport,brutal_purge,soft_purge,[]}]},
+  [{<<"5\\.8\\.[6-7]">>,[{load_module,esockd_transport,brutal_purge,soft_purge,[]}]},
    {<<"5\\.8\\.[4-5]">>,
     [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]}
