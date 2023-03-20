@@ -85,10 +85,10 @@ t_recv_pp_invalid(_) ->
 t_recv_socket_error(_) ->
     Reason = closed,
     ok = send_socket_error(Reason),
-    {error, {recv_proxy_info_error, Reason}} = recv_proxy_info(),
+    ?assertEqual({error, {recv_proxy_info_error, Reason}}, recv_proxy_info()),
 
     ok = send_socket_closed(),
-    {error, {recv_proxy_info_error, tcp_closed}} = recv_proxy_info().
+    ?assertEqual({error, proxy_proto_close}, recv_proxy_info()).
 
 send_proxy_info(ProxyInfo) ->
     self() ! {tcp, sock, ProxyInfo}, ok.
