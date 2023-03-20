@@ -1,22 +1,31 @@
 %%-*- mode: erlang; -*-
 
-{"5.9.5",
- [{"5.9.4",
+{"5.9.6",
+ [{"5.9.5",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
+   ]
+  },
+  {"5.9.4",
+   [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.3",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.2",
    [ {load_module,esockd_udp,brutal_purge,soft_purge,[]}
    , {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.1",
    [ {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
    , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.0",
@@ -27,6 +36,7 @@
    , {load_module,esockd_limiter,brutal_purge,soft_purge,[]}
    , {load_module,esockd_listener_sup,brutal_purge,soft_purge,[]}
    , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {add_module,esockd_generic_limiter}
    ]
   },
@@ -34,20 +44,24 @@
  ],
  [{"5.9.4",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.3",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.2",
    [ {load_module,esockd_udp,brutal_purge,soft_purge,[]}
    , {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.1",
     [ {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
     , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
+    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
     ]
   },
   {"5.9.0",
@@ -58,6 +72,7 @@
     , {load_module,esockd_limiter,brutal_purge,soft_purge,[]}
     , {load_module,esockd_listener_sup,brutal_purge,soft_purge,[]}
     , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
+    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
     , {delete_module,esockd_generic_limiter}
     ]
   },

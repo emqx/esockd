@@ -88,7 +88,9 @@ recv(Transport, Sock, Timeout) ->
         {tcp_error, _Sock, Reason} ->
             {error, {recv_proxy_info_error, Reason}};
         {tcp_closed, _Sock} ->
-            {error, {recv_proxy_info_error, tcp_closed}};
+            %% socket closed before any data is received
+            %% return an atom here to avoid error level logging
+            {error, proxy_proto_close};
         {_, _Sock, ProxyInfo} ->
             {error, {invalid_proxy_info, ProxyInfo}}
     after
