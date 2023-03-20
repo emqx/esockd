@@ -88,7 +88,10 @@ recv(Transport, Sock, Timeout) ->
         {tcp_error, _Sock, Reason} ->
             {error, {recv_proxy_info_error, Reason}};
         {tcp_closed, _Sock} ->
-            {error, {recv_proxy_info_error, tcp_closed}};
+            %% Socket closed before any data is received.
+            %% Here we return an atom here to avoid error level logging.
+            %% See the from the connection_crashed function in esockd_connection_sup.erl.
+            {error, proxy_proto_close};
         {_, _Sock, ProxyInfo} ->
             {error, {invalid_proxy_info, ProxyInfo}}
     after
