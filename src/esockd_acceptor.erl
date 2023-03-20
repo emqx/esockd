@@ -159,7 +159,7 @@ accepting(info, {inet_async, LSock, Ref, {error, Reason}},
           State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
     when Reason =:= emfile; Reason =:= enfile ->
     error_logger:error_msg("Accept error on ~s: ~s",
-                           [esockd:format(Sockname), Reason]),
+                           [esockd:format(Sockname), explain_posix(Reason)]),
     {next_state, suspending, State, 1000};
 
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
@@ -195,3 +195,9 @@ rate_limit(State = #state{conn_limiter = Limiter}) ->
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock|Args1]).
 
+explain_posix(emfile) ->
+    "EMFILE (Too many open files)";
+explain_posix(enfile) ->
+    "ENFILE (File table overflow)";
+explain_posix(ErrCode) ->
+    ErrCode.
