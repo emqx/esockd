@@ -248,8 +248,13 @@ handle_socket_error(Reason, State) when Reason =:= econnaborted; Reason =:= essl
 handle_socket_error(Reason, State) when Reason =:= emfile; Reason =:= enfile ->
     error_logger:error_msg(
         "Accept error on ~s: ~s",
-        [esockd:format(State#state.sockname), Reason]
+        [esockd:format(State#state.sockname), explain_posix(Reason)]
     ),
     {next_state, suspending, State, {state_timeout, 1000, begin_waiting}};
 handle_socket_error(Reason, State) ->
     {stop, Reason, State}.
+
+explain_posix(emfile) ->
+    "EMFILE (Too many open files)";
+explain_posix(enfile) ->
+    "ENFILE (File table overflow)".
