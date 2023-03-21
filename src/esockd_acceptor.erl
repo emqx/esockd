@@ -198,6 +198,4 @@ eval_tune_socket_fun({Fun, Args1}, Sock) ->
 explain_posix(emfile) ->
     "EMFILE (Too many open files)";
 explain_posix(enfile) ->
-    "ENFILE (File table overflow)";
-explain_posix(ErrCode) ->
-    ErrCode.
+    "ENFILE (File table overflow)".
