@@ -1,5 +1,4 @@
-
-# esockd [![Build Status](https://travis-ci.org/emqx/esockd.svg?branch=emqx30)](https://travis-ci.org/emqx/esockd)
+# esockd [![Build status](https://github.com/emqx/esockd/actions/workflows/run_test_case.yaml/badge.svg)](https://github.com/emqx/esockd/actions/workflows/run_test_case.yaml)
 
 Erlang General Non-blocking TCP/SSL Socket Server.
 
