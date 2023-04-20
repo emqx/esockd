@@ -1,30 +1,30 @@
 %%-*- mode: erlang; -*-
 
-{"5.8.9",
-  [{"5.8.8",
-    [{load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
-    ]},
-   {<<"5\\.8\\.[6-7]">>,
-    [{load_module,esockd_transport,brutal_purge,soft_purge,[]},
+{"5.8.10",
+  [{<<"5\\.8\\.[6-9]">>,
+    [{add_module,esockd_utils},
+     {load_module,esockd_transport,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
     ]},
    {<<"5\\.8\\.[4-5]">>,
-    [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
+    [{add_module,esockd_utils},
+     {load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]}
     ]},
    {"5.8.3",
-    [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
+    [{add_module,esockd_utils},
+     {load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module, esockd_limiter, brutal_purge, soft_purge, []},
+     {load_module,esockd_limiter, brutal_purge, soft_purge, []},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]}
     ]},
    {<<"5\\.8\\.[0-2]">>,
-    [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
+    [{add_module,esockd_utils},
+     {load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
      {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]},
@@ -35,27 +35,26 @@
     ]},
    {<<".*">>, []}
   ],
-  [{"5.8.8",
-    [{load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
-    ]},
-   {<<"5\\.8\\.[6-7]">>,
+  [{<<"5\\.8\\.[6-9]">>,
     [{load_module,esockd_transport,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
-     {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
+     {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
+     {delete_module,esockd_utils}
     ]},
    {<<"5\\.8\\.[4-5]">>,
     [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+     {load_module,esockd_transport,brutal_purge,soft_purge,[]},
+     {delete_module,esockd_utils}
     ]},
    {"5.8.3",
     [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module, esockd_limiter, brutal_purge, soft_purge, []},
-     {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+     {load_module,esockd_limiter, brutal_purge, soft_purge, []},
+     {load_module,esockd_transport,brutal_purge,soft_purge,[]},
+     {delete_module,esockd_utils}
     ]},
    {<<"5\\.8\\.[0-2]">>,
     [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
@@ -65,7 +64,8 @@
      {load_module,esockd_dtls_listener,brutal_purge,soft_purge,[]},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]},
      {load_module,esockd_peercert,brutal_purge,soft_purge,[]},
-     {load_module,esockd,brutal_purge,soft_purge,[]}
+     {load_module,esockd,brutal_purge,soft_purge,[]},
+     {delete_module,esockd_utils}
     ]},
    {<<".*">>, []}
   ]

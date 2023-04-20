@@ -57,50 +57,61 @@ is_t_recv(TestCase) ->
 %%--------------------------------------------------------------------
 
 t_recv_ppv1(_) ->
-    ok = send_proxy_info(<<"PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n">>),
+    Sock = sock(),
+    ok = send_proxy_info(Sock, <<"PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n">>),
     {ok, #proxy_socket{src_addr = {192,168,1,1}, src_port = 80,
                        dst_addr = {192,168,1,2}, dst_port = 81,
-                       inet = inet4}} = recv_proxy_info().
+                       inet = inet4}} = recv_proxy_info(Sock).
 
 t_recv_ppv1_unknown(_) ->
-    ok = send_proxy_info(<<"PROXY UNKNOWN\r\n">>),
-    {ok, sock} = recv_proxy_info().
+    Sock = sock(),
+    ok = send_proxy_info(Sock, <<"PROXY UNKNOWN\r\n">>),
+    {ok, Sock} = recv_proxy_info(Sock).
 
 t_recv_ppv2(_) ->
-    ok = send_proxy_info(<<13,10>>),
+    Sock = sock(),
+    ok = send_proxy_info(Sock, <<13,10>>),
     ok = meck:expect(esockd_transport, recv,
-                     fun(sock, 14, _) -> {ok, <<13,10,0,13,10,81,85,73,84,10,33,17,0,12>>};
-                        (sock, 12, _) -> {ok, <<127,50,210,1,210,21,16,142,250,32,1,181>>}
+                     fun(S, 14, _) when S =:= Sock ->
+                            {ok, <<13,10,0,13,10,81,85,73,84,10,33,17,0,12>>};
+                        (S, 12, _) when S =:= Sock ->
+                            {ok, <<127,50,210,1,210,21,16,142,250,32,1,181>>}
                      end),
     {ok, #proxy_socket{inet = inet4,
                        src_addr = {127,50,210,1},
                        dst_addr = {210,21,16,142},
                        src_port = 64032,
-                       dst_port = 437}} = recv_proxy_info().
+                       dst_port = 437}} = recv_proxy_info(Sock).
 
 t_recv_pp_invalid(_) ->
-    send_proxy_info(ProxyInfo = <<"Invalid PROXY\r\n">>),
-    {error, {invalid_proxy_info, ProxyInfo}} = recv_proxy_info().
+    Sock = sock(),
+    send_proxy_info(Sock, <<"Invalid PROXY\r\n">>),
+    {error, invalid_proxy_info} = recv_proxy_info(Sock).
 
 t_recv_socket_error(_) ->
+    Sock = sock(),
     Reason = closed,
-    ok = send_socket_error(Reason),
-    ?assertEqual({error, {recv_proxy_info_error, Reason}}, recv_proxy_info()),
+    ok = send_socket_error(Sock, Reason),
+    ?assertEqual({error, recv_proxy_info_error}, recv_proxy_info(Sock)),
 
-    ok = send_socket_closed(),
-    ?assertEqual({error, proxy_proto_close}, recv_proxy_info()).
+    ok = send_socket_closed(Sock),
+    ?assertEqual({error, proxy_proto_close}, recv_proxy_info(Sock)).
 
-send_proxy_info(ProxyInfo) ->
-    self() ! {tcp, sock, ProxyInfo}, ok.
+send_proxy_info(Sock, ProxyInfo) ->
+    self() ! {tcp, Sock, ProxyInfo}, ok.
 
-send_socket_error(Reason) ->
-    self() ! {tcp_error, sock, Reason}, ok.
+send_socket_error(Sock, Reason) ->
+    self() ! {tcp_error, Sock, Reason}, ok.
 
-send_socket_closed() ->
-    self() ! {tcp_closed, sock}, ok.
+send_socket_closed(Sock) ->
+    self() ! {tcp_closed, Sock}, ok.
 
-recv_proxy_info() ->
-    esockd_proxy_protocol:recv(esockd_transport, sock, 1000).
+recv_proxy_info(Sock) ->
+    esockd_proxy_protocol:recv(esockd_transport, Sock, 1000).
+
+sock() ->
+    {ok, Sock} = gen_tcp:listen(0, [{reuseaddr, true}, list]),
+    Sock.
 
 %%--------------------------------------------------------------------
 %% Test cases for parse

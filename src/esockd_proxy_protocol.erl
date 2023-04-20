@@ -25,6 +25,16 @@
 -export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2, parse_pp2_ssl/1]).
 -endif.
 
+-define(ERR_MSG_IN_PP_MODE, "The listener ~s is working in proxy protocol mode, but ").
+
+-define(LOG(LEVEL, FROMAT, ARGS), logger:log(LEVEL, "[~s] " ++ FROMAT, [?MODULE | ARGS])).
+-define(LOG_PP_ERROR(FROMAT, ARGS, Sock),
+        ?LOG(error, ?ERR_MSG_IN_PP_MODE ++ FROMAT, [
+            case Transport:sockname(Sock) of
+                {ok, SockName} -> esockd:format(SockName);
+                _ -> unknown
+            end | explain_posix_errors(ARGS)])).
+
 %% Protocol Command
 -define(LOCAL, 16#0).
 -define(PROXY, 16#1).
@@ -83,19 +93,23 @@ recv(Transport, Sock, Timeout) ->
                     Transport:setopts(Sock, OriginOpts),
                     parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
                 {error, Reason} ->
-                    {error, {recv_proxy_info_error, Reason}}
+                    ?LOG_PP_ERROR("got an error while receiving proxy_protocol header, reason=~p", [Reason], Sock),
+                    {error, recv_proxy_info_error}
             end;
         {tcp_error, _Sock, Reason} ->
-            {error, {recv_proxy_info_error, Reason}};
+            ?LOG_PP_ERROR("got an error while waiting for proxy_protocol header, reason=~p", [Reason], Sock),
+            {error, recv_proxy_info_error};
         {tcp_closed, _Sock} ->
             %% Socket closed before any data is received.
             %% Here we return an atom here to avoid error level logging.
             %% See the from the connection_crashed function in esockd_connection_sup.erl.
             {error, proxy_proto_close};
         {_, _Sock, ProxyInfo} ->
-            {error, {invalid_proxy_info, ProxyInfo}}
+            ?LOG_PP_ERROR("received invalid proxy_protocol header, raw_bytes=~p", [ProxyInfo], Sock),
+            {error, invalid_proxy_info}
     after
         Timeout ->
+            ?LOG_PP_ERROR("timed out while waiting for proxy_protocol header", [], Sock),
             {error, proxy_proto_timeout}
     end.
 
@@ -211,3 +225,5 @@ inet_family(?UNIX)   -> unix.
 bool(1) -> true;
 bool(_) -> false.
 
+explain_posix_errors(Args) ->
+    [esockd_utils:explain_posix(A) || A <- Args].
