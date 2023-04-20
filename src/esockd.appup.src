@@ -1,16 +1,7 @@
 %%-*- mode: erlang; -*-
 
 {"5.8.10",
-  [{"5.8.9",
-    [{add_module,esockd_utils},
-     {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
-    ]},
-   {"5.8.8",
-    [{add_module,esockd_utils},
-     {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
-    ]},
-   {<<"5\\.8\\.[6-7]">>,
+  [{<<"5\\.8\\.[6-9]">>,
     [{add_module,esockd_utils},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
@@ -28,7 +19,7 @@
      {load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module, esockd_limiter, brutal_purge, soft_purge, []},
+     {load_module,esockd_limiter, brutal_purge, soft_purge, []},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]}
     ]},
    {<<"5\\.8\\.[0-2]">>,
@@ -44,15 +35,7 @@
     ]},
    {<<".*">>, []}
   ],
-  [{"5.8.9",
-    [{load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {delete_module,esockd_utils}]},
-   {"5.8.8",
-    [{load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
-     {delete_module,esockd_utils}
-    ]},
-   {<<"5\\.8\\.[6-7]">>,
+  [{<<"5\\.8\\.[6-9]">>,
     [{load_module,esockd_transport,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
@@ -69,7 +52,7 @@
     [{load_module,esockd_udp,brutal_purge,soft_purge,[]},
      {load_module,esockd_acceptor,brutal_purge,soft_purge,[]},
      {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]},
-     {load_module, esockd_limiter, brutal_purge, soft_purge, []},
+     {load_module,esockd_limiter, brutal_purge, soft_purge, []},
      {load_module,esockd_transport,brutal_purge,soft_purge,[]},
      {delete_module,esockd_utils}
     ]},
