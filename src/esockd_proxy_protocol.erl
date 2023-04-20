@@ -96,7 +96,7 @@ recv(Transport, Sock, Timeout) ->
             {error, {invalid_proxy_info, ProxyInfo}}
     after
         Timeout ->
-            {error, proxy_proto_timeout}
+            {error, {proxy_proto_timeout, Timeout}}
     end.
 
 parse_v1(ProxyInfo, ProxySock) ->
