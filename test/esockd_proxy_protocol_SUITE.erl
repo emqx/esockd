@@ -182,7 +182,79 @@ t_ppv2_connect(_) ->
                                                      12,127,50,210,1,210,21,16,142,250,32,1,181>>),
                            ok = gen_tcp:send(Sock, <<"Hello">>),
                            {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
-                   end).
+                   end),
+    with_pp_server(fun(Sock) ->
+                            ok = gen_tcp:send(Sock, <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                                    12,127,50,210,1,210,21,16,142,250,32,1,181>>),
+                            ok = gen_tcp:send(Sock, <<"Hello">>),
+                            {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+                   end,
+                   [{proxy_protocol_timeout, infinity}]).
+
+
+t_ppv2_connect_first_marker_timeout(_) ->
+    with_pp_server(
+        fun(Sock) ->
+            timer:sleep(200),
+            {error, closed} = gen_tcp:recv(Sock, 0)
+        end,
+        [{proxy_protocol_timeout, 100}]),
+    with_pp_server(
+        fun(Sock) ->
+            timer:sleep(400),
+            ok = gen_tcp:send(Sock, <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                      12,127,50,210,1,210,21,16,142,250,32,1,181>>),
+            ok = gen_tcp:send(Sock, <<"Hello">>),
+            {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+        end,
+        [{proxy_protocol_timeout, 500}]).
+
+t_ppv2_connect_header_timeout(_) ->
+    with_pp_server(
+        fun(Sock) ->
+            timer:sleep(200),
+            ok = gen_tcp:send(Sock, <<13,10>>),
+            timer:sleep(200),
+            ok = gen_tcp:send(Sock, <<13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                     12,127,50,210,1,210,21,16,142,250,32,1,181>>),
+            ok = gen_tcp:send(Sock, <<"Hello">>),
+            {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+        end,
+        [{proxy_protocol_timeout, 500}]),
+    with_pp_server(
+        fun(Sock) ->
+            timer:sleep(200),
+            ok = gen_tcp:send(Sock, <<13,10>>),
+            timer:sleep(400),
+            {error, closed} = gen_tcp:recv(Sock, 0)
+        end,
+        [{proxy_protocol_timeout, 500}]).
+
+t_ppv2_connect_proxy_info_timeout(_) ->
+    with_pp_server(
+        fun(Sock) ->
+            timer:sleep(100),
+            ok = gen_tcp:send(Sock, <<13,10>>),
+            timer:sleep(100),
+            ok = gen_tcp:send(Sock, <<13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                        12,127,50,210,1,210,21,16,142>>),
+            timer:sleep(200),
+            ok = gen_tcp:send(Sock, <<250,32,1,181>>),
+            ok = gen_tcp:send(Sock, <<"Hello">>),
+            {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+        end,
+        [{proxy_protocol_timeout, 500}]),
+    with_pp_server(
+        fun(Sock) ->
+            timer:sleep(100),
+            ok = gen_tcp:send(Sock, <<13,10>>),
+            timer:sleep(100),
+            ok = gen_tcp:send(Sock, <<13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                        12,127,50,210,1,210,21,16,142>>),
+            timer:sleep(400),
+            {error, closed} = gen_tcp:recv(Sock, 0)
+        end,
+        [{proxy_protocol_timeout, 500}]).
 
 t_ppv1_unknown(_) ->
     with_pp_server(fun(Sock) ->
@@ -198,11 +270,15 @@ t_ppv1_garbage_data(_) ->
                    end).
 
 with_pp_server(TestFun) ->
-    {ok, _} = esockd:open(echo, 5000, [{tcp_options, [binary]},
-                                       proxy_protocol,
-                                       {proxy_protocol_timeout, 3000}
-                                      ],
-                          {echo_server, start_link, []}),
+    PPOpts = [{proxy_protocol_timeout, 3000}],
+    with_pp_server(TestFun, PPOpts).
+
+with_pp_server(TestFun, PPOpts) ->
+    Opts = PPOpts ++
+    [
+        {tcp_options, [binary]},
+        proxy_protocol
+    ],
+    {ok, _} = esockd:open(echo, 5000, Opts, {echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, [binary, {active, false}]),
     try TestFun(Sock) after ok = esockd:close(echo, 5000) end.
-
