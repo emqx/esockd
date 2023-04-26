@@ -40,7 +40,7 @@
 
 -define(SPACE, 16#20).
 
--define(TIMEOUT, 5000).
+-define(MAX_TIMEOUT, 17000).
 
 %% Proxy Protocol Additional Fields
 -define(PP2_TYPE_ALPN,           16#01).
@@ -62,6 +62,7 @@
 -spec(recv(module(), inet:socket() | #ssl_socket{}, timeout()) ->
       {ok, #proxy_socket{}} | {error, term()}).
 recv(Transport, Sock, Timeout) ->
+    Deadline = deadline(Timeout),
     {ok, OriginOpts} = Transport:getopts(Sock, [mode, active, packet]),
     ok = Transport:setopts(Sock, [binary, {active, once}, {packet, line}]),
     receive
@@ -75,16 +76,7 @@ recv(Transport, Sock, Timeout) ->
             {ok, Sock};
         %% V2 TCP
         {_, _Sock, <<"\r\n">>} ->
-            Transport:setopts(Sock, [{active, false}, {packet, raw}]),
-            {ok, Header} = Transport:recv(Sock, 14, 1000),
-            <<?SIG, 2:4, Cmd:4, AF:4, Trans:4, Len:16>> = Header,
-            case Transport:recv(Sock, Len, 1000) of
-                {ok, ProxyInfo} ->
-                    Transport:setopts(Sock, OriginOpts),
-                    parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
-                {error, Reason} ->
-                    {error, {recv_proxy_info_error, Reason}}
-            end;
+            recv_v2(Transport, Sock, OriginOpts, Deadline);
         {tcp_error, _Sock, Reason} ->
             {error, {recv_proxy_info_error, Reason}};
         {tcp_closed, _Sock} ->
@@ -97,6 +89,31 @@ recv(Transport, Sock, Timeout) ->
         Timeout ->
             {error, proxy_proto_timeout}
     end.
+
+recv_v2(Transport, Sock, OriginOpts, Deadline) ->
+    Transport:setopts(Sock, [{active, false}, {packet, raw}]),
+    with_remaining_timeout(Deadline, fun(HeaderTimeout) ->
+        case Transport:recv(Sock, 14, HeaderTimeout) of
+            {ok, <<?SIG, 2:4, Cmd:4, AF:4, Trans:4, Len:16>>} ->
+                with_remaining_timeout(Deadline, fun(ProxyInfoTimeout) ->
+                    case Transport:recv(Sock, Len, ProxyInfoTimeout) of
+                        {ok, ProxyInfo} ->
+                            Transport:setopts(Sock, OriginOpts),
+                            parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
+                        {error, closed} ->
+                            {error, proxy_proto_close};
+                        {error, Reason} ->
+                            {error, {recv_proxy_info_error, Reason}}
+                    end
+                end);
+            {ok, UnknownHeader} ->
+                {error, {invalid_proxy_info, UnknownHeader}};
+            {error, closed} ->
+                {error, proxy_proto_close};
+            {error, Reason} ->
+                {error, {recv_proxy_info_error, Reason}}
+        end
+    end).
 
 parse_v1(ProxyInfo, ProxySock) ->
     [SrcAddrBin, DstAddrBin, SrcPortBin, DstPortBin]
@@ -210,3 +227,22 @@ inet_family(?UNIX)   -> unix.
 bool(1) -> true;
 bool(_) -> false.
 
+maybe_limit_timeout(infinity) -> ?MAX_TIMEOUT;
+maybe_limit_timeout(Timeout) when is_integer(Timeout) andalso Timeout > ?MAX_TIMEOUT ->
+    ?MAX_TIMEOUT;
+maybe_limit_timeout(Timeout) when is_integer(Timeout) andalso Timeout > 0 ->
+    Timeout.
+
+deadline(Timeout) ->
+    erlang:monotonic_time(millisecond) + maybe_limit_timeout(Timeout).
+
+timeout_left(Deadline) ->
+    Deadline - erlang:monotonic_time(millisecond).
+
+with_remaining_timeout(Timer, Fun) ->
+    case timeout_left(Timer) of
+        Timeout when Timeout > 0 ->
+            Fun(Timeout);
+        _ ->
+            {error, proxy_proto_timeout}
+    end.
