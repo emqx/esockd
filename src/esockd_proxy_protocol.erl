@@ -59,24 +59,33 @@
 %% 16#0D,16#0A,16#00,16#0D,16#0A,16#51,16#55,16#49,16#54,16#0A
 -define(SIG, "\r\n\0\r\nQUIT\n").
 
+-type maybe_proxy_socket() :: #proxy_socket{} | inet:socket() | #ssl_socket{}.
+
 -spec(recv(module(), inet:socket() | #ssl_socket{}, timeout()) ->
-      {ok, #proxy_socket{}} | {error, term()}).
+      {ok, maybe_proxy_socket()} | {error, term()}).
 recv(Transport, Sock, Timeout) ->
+    {ok, OriginalOpts} = Transport:getopts(Sock, [mode, active, packet]),
+    case do_recv(Transport, Sock, Timeout) of
+        {ok, _} = OkResult ->
+            Transport:setopts(Sock, OriginalOpts),
+            OkResult;
+        {error, _} = Error ->
+            Error
+    end.
+
+do_recv(Transport, Sock, Timeout) ->
     Deadline = deadline(Timeout),
-    {ok, OriginOpts} = Transport:getopts(Sock, [mode, active, packet]),
     ok = Transport:setopts(Sock, [binary, {active, once}, {packet, line}]),
     receive
         %% V1 TCP
         {_, _Sock, <<"PROXY TCP", Proto, ?SPACE, ProxyInfo/binary>>} ->
-            Transport:setopts(Sock, OriginOpts),
             parse_v1(ProxyInfo, #proxy_socket{inet = inet_family(Proto), socket = Sock});
         %% V1 Unknown
         {_, _Sock, <<"PROXY UNKNOWN", _ProxyInfo/binary>>} ->
-            Transport:setopts(Sock, OriginOpts),
             {ok, Sock};
         %% V2 TCP
         {_, _Sock, <<"\r\n">>} ->
-            recv_v2(Transport, Sock, OriginOpts, Deadline);
+            recv_v2(Transport, Sock, Deadline);
         {tcp_error, _Sock, Reason} ->
             {error, {recv_proxy_info_error, Reason}};
         {tcp_closed, _Sock} ->
@@ -90,7 +99,7 @@ recv(Transport, Sock, Timeout) ->
             {error, proxy_proto_timeout}
     end.
 
-recv_v2(Transport, Sock, OriginOpts, Deadline) ->
+recv_v2(Transport, Sock, Deadline) ->
     Transport:setopts(Sock, [{active, false}, {packet, raw}]),
     with_remaining_timeout(Deadline, fun(HeaderTimeout) ->
         case Transport:recv(Sock, 14, HeaderTimeout) of
@@ -98,7 +107,6 @@ recv_v2(Transport, Sock, OriginOpts, Deadline) ->
                 with_remaining_timeout(Deadline, fun(ProxyInfoTimeout) ->
                     case Transport:recv(Sock, Len, ProxyInfoTimeout) of
                         {ok, ProxyInfo} ->
-                            Transport:setopts(Sock, OriginOpts),
                             parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
                         {error, closed} ->
                             {error, proxy_proto_close};
