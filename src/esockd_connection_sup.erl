@@ -265,10 +265,19 @@ connection_crashed(_Pid, Reason, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
 connection_crashed(_Pid, {shutdown, Reason}, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
+connection_crashed(Pid, {shutdown, {ssl_error, Reason}}, State) ->
+    count_shutdown(ssl_error),
+    log(info, ssl_error, Reason, Pid, State);
+connection_crashed(Pid, {shutdown, #{shutdown_count := Key} = Reason}, State) when is_atom(Key) ->
+    count_shutdown(Key),
+    log(info, Key, maps:without([shutdown_count], Reason), Pid, State);
 connection_crashed(Pid, {shutdown, Reason}, State) ->
-    report_error(connection_shutdown, Reason, Pid, State);
+    %% unidentified shutdown, cannot keep a counter of it,
+    %% ideally we should try to add a 'shutdown_count' filed to the reason.
+    log(error, connection_shutdown, Reason, Pid, State);
 connection_crashed(Pid, Reason, State) ->
-    report_error(connection_crashed, Reason, Pid, State).
+    %% unexpected crash, probably deserve a fix
+    log(error, connection_crashed, Reason, Pid, State).
 
 count_shutdown(Reason) ->
     Key = {shutdown_count, Reason},
@@ -291,7 +300,7 @@ terminate_children(State = #state{curr_connections = Conns, shutdown = Shutdown}
              end,
     %% Unroll stacked errors and report them
     dict:fold(fun(Reason, Pid, _) ->
-                  report_error(connection_shutdown_error, Reason, Pid, State)
+                  log(error, connection_shutdown_error, Reason, Pid, State)
               end, ok, EStack).
 
 monitor_children(Conns) ->
@@ -371,15 +380,19 @@ wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
             wait_children(Shutdown, Pids, Sz-1, undefined, EStack)
     end.
 
-report_error(Error, Reason, Pid, #state{mfargs = MFA}) ->
-    SupName  = list_to_atom("esockd_connection_sup - " ++ pid_to_list(self())),
-    ErrorMsg = [{supervisor, SupName},
+log(Level, Error, Reason, Pid, #state{mfargs = MFA}) ->
+    ErrorMsg = [{supervisor, {?MODULE, Pid}},
                 {errorContext, Error},
                 {reason, Reason},
                 {offender, [{pid, Pid},
                             {name, connection},
                             {mfargs, MFA}]}],
-    error_logger:error_report(supervisor_report, ErrorMsg).
+    case Level of
+        info ->
+            error_logger:info_report(supervisor_report, ErrorMsg);
+        error ->
+            error_logger:error_report(supervisor_report, ErrorMsg)
+    end.
 
 get_module({M, _F, _A}) -> M;
 get_module({M, _F}) -> M;

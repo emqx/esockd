@@ -24,17 +24,53 @@
 all() -> esockd_ct:all(?MODULE).
 
 t_start_connection(_) ->
-    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
-    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
-    ok = meck:expect(esockd_transport, wait, fun(Sock) -> {ok, Sock} end),
-    ok = meck:expect(esockd_transport, recv, fun(_Sock, 0) -> {ok, <<"Hi">>} end),
-    ok = meck:expect(esockd_transport, send, fun(_Sock, _Data) -> ok end),
-    ok = meck:expect(esockd_transport, controlling_process, fun(_Sock, _ConnPid) -> ok end),
-    ok = meck:expect(esockd_transport, ready, fun(_ConnPid, _Sock, []) -> ok end),
+    ok = meck_esockd_transport(fun(_, _) ->
+                                       timer:sleep(100),
+                                       {ok, <<"Hi">>}
+                               end),
     with_conn_sup([{max_connections, 1024}],
                   fun(ConnSup) ->
                           {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
                           ?assert(is_process_alive(ConnPid))
+                  end),
+    ok = meck:unload(esockd_transport).
+
+t_shutdown_connection_count(_) ->
+    RecvFn = fun(_, _) ->
+                     receive
+                         {shutdown, Reason} ->
+                             {shutdown, Reason}
+                     end
+             end,
+    ok = meck_esockd_transport(RecvFn),
+    StartThenShutdown =
+        fun(ConnSup, Reason) ->
+                {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                ?assert(is_process_alive(ConnPid)),
+                _ = monitor(process, ConnPid),
+                ConnPid ! {shutdown, Reason},
+                ConnPid
+        end,
+    WaitDown =
+        fun(ConnPid, ExpectedReason) ->
+                receive
+                    {'DOWN', _, _, ConnPid, Reason} ->
+                        ?assertEqual({shutdown, ExpectedReason}, Reason)
+                    after
+                        1000 ->
+                            error(timeout)
+               end
+        end,
+    with_conn_sup([{max_connections, 1024}],
+                  fun(ConnSup) ->
+                          Reason1 = {ssl_error, bar},
+                          Reason2 = #{shutdown_count => foo, reason => bar},
+                          Pid1 = StartThenShutdown(ConnSup, Reason1),
+                          Pid2 = StartThenShutdown(ConnSup, Reason2),
+                          WaitDown(Pid1, Reason1),
+                          WaitDown(Pid2, Reason2),
+                          Counts = esockd_connection_sup:get_shutdown_count(ConnSup),
+                          ?assertEqual([{foo, 1}, {ssl_error, 1}], lists:sort(Counts))
                   end),
     ok = meck:unload(esockd_transport).
 
@@ -81,4 +117,14 @@ with_conn_sup(Opts, Fun) ->
     {ok, ConnSup} = esockd_connection_sup:start_link(Opts, {echo_server, start_link, []}),
     Fun(ConnSup),
     ok = esockd_connection_sup:stop(ConnSup).
+
+meck_esockd_transport(RecvFn) ->
+    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
+    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
+    ok = meck:expect(esockd_transport, wait, fun(Sock) -> {ok, Sock} end),
+    ok = meck:expect(esockd_transport, recv, RecvFn),
+    ok = meck:expect(esockd_transport, send, fun(_Sock, _Data) -> ok end),
+    ok = meck:expect(esockd_transport, controlling_process, fun(_Sock, _ConnPid) -> ok end),
+    ok = meck:expect(esockd_transport, ready, fun(_ConnPid, _Sock, []) -> ok end),
+    ok.
 

@@ -3,24 +3,28 @@
 {"5.9.7",
  [{"5.9.6",
    [ {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.5",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.4",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
-  , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.3",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.2",
@@ -28,12 +32,14 @@
    , {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.1",
    [ {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
    , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.0",
@@ -46,30 +52,35 @@
    , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {add_module,esockd_generic_limiter}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {<<".*">>, []}
  ],
  [{"5.9.6",
    [ {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.5",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.4",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.3",
    [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.2",
@@ -77,12 +88,14 @@
    , {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.1",
     [ {load_module,esockd_acceptor,brutal_purge,soft_purge,[]}
     , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
     , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
+    , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
     ]
   },
   {"5.9.0",
@@ -95,6 +108,7 @@
     , {load_module,esockd_udp,brutal_purge,soft_purge,[]}
     , {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
     , {delete_module,esockd_generic_limiter}
+    , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
     ]
   },
   {<<".*">>, []}
