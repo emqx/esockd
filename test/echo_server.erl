@@ -39,6 +39,8 @@ loop(Transport, Sock) ->
             %%io:format("RECV from ~s: ~s~n", [esockd:format(Peername), Data]),
             Transport:send(Sock, Data),
             loop(Transport, Sock);
+        {shutdown, Reason} ->
+            exit({shutdown, Reason});
         {error, Reason} ->
             exit({shutdown, Reason})
 	end.
