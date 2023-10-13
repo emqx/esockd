@@ -378,7 +378,7 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
     shutdown(Sock, How).
 
 %% @doc TCP/DTLS socket -> #ssl_socket{}
--spec(ssl_upgrade_fun([ssl:ssl_option()]) -> esockd:sock_fun()).
+-spec(ssl_upgrade_fun([ssl_option()]) -> esockd:sock_fun()).
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
     {GCAfterHandshake, SslOpts2} = take_gc_after_handshake(SslOpts1),

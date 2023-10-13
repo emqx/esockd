@@ -65,4 +65,10 @@
 
 -define(IS_PROXY(Sock), is_record(Sock, proxy_socket)).
 
--endif.
+-if(?OTP_RELEASE >= 26).
+-type ssl_option() :: ssl:tls_option().
+-else.
+-type ssl_option() :: ssl:ssl_option().
+-endif. % OTP_RELEASE
+
+-endif. % ESOCKD_HRL
