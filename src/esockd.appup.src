@@ -1,9 +1,14 @@
 %%-*- mode: erlang; -*-
-
-{"5.9.7",
- [{"5.9.6",
+{"5.9.8",
+ [
+  {"5.9.7",
+   [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   ]
+  },
+  {"5.9.6",
    [ {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.5",
@@ -57,9 +62,15 @@
   },
   {<<".*">>, []}
  ],
- [{"5.9.6",
+ [
+  {"5.9.7",
+   [ {load_module,esockd_transport,brutal_purge,soft_purge,[]}
+   ]
+  },
+  {"5.9.6",
    [ {load_module,esockd_proxy_protocol,brutal_purge,soft_purge,[]}
    , {load_module,esockd_connection_sup,brutal_purge,soft_purge,[]}
+   , {load_module,esockd_transport,brutal_purge,soft_purge,[]}
    ]
   },
   {"5.9.5",
