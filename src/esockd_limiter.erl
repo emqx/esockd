@@ -134,13 +134,9 @@ pause_time(Name, Now) ->
             max(1, LastTime + (Interval * 1000) - Now)
     end.
 
-%% The dialyzer cannot support this type specification
--dialyzer({nowarn_function, delete/1}).
--spec delete(esockd_generic_limiter:limter()) -> ok;
-            (bucket_name()) -> ok.
+-spec delete(esockd_generic_limiter:limiter() | bucket_name()) -> ok.
 delete(#{name := Name}) ->
     delete(Name);
-
 delete(Name) ->
     gen_server:cast(?SERVER, {delete, Name}).
 

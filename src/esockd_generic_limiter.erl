@@ -17,6 +17,7 @@
 -module(esockd_generic_limiter).
 
 -export([create/1, consume/2, delete/1]).
+-export_type([limiter/0, create_options/0, consume_result/0]).
 
 -type pause_time() :: non_neg_integer().
 
@@ -39,8 +40,6 @@
 -callback consume(integer(), limiter()) -> consume_result().
 
 -callback delete(limiter()) -> ok.
-
--export_type([limiter/0, create_options/0, consume_result/0]).
 
 %%--------------------------------------------------------------------
 %% Callbacks

@@ -104,8 +104,8 @@
 
 -type(host() :: inet:ip_address() | string()).
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
--type ssl_options() :: [{handshake_timeout, pos_integer()} | ssl:ssl_option()].
--type dtls_options() :: [{handshake_timeout, pos_integer()} | ssl:ssl_option()].
+-type ssl_options() :: [{handshake_timeout, pos_integer()} | ssl_option()].
+-type dtls_options() :: [{handshake_timeout, pos_integer()} | ssl_option()].
 
 %%--------------------------------------------------------------------
 %% APIs

@@ -9,11 +9,12 @@ jobs:
         runs-on: ubuntu-latest
 
         strategy:
+          fail-fast: false
           matrix:
             otp:
-              - erlang:23.0.3
-              - erlang:22.3
-              - erlang:21.3
+              - erlang:26
+              - erlang:25
+              - erlang:24
 
         container:
             image: ${{ matrix.otp }}

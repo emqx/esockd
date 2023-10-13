@@ -38,15 +38,20 @@ t_dtls_server(Config) ->
     DtlsOpts = [{mode, binary},
                 {reuseaddr, true},
                 {certfile, esockd_ct:certfile(Config)},
-                {keyfile, esockd_ct:keyfile(Config)}
+                {keyfile, esockd_ct:keyfile(Config)},
+                {verify, verify_none}
                ],
     Options = [{acceptors, 4},
                {max_connections, 1000},
                {max_conn_rate, 10},
                {dtls_options, DtlsOpts}],
 
+    ClientOpts = [binary,
+                  {protocol, dtls},
+                  {active, false},
+                  {verify, verify_none}],
     {ok, _} = esockd:open_dtls('echo/dtls', 9876, Options, {?MODULE, dtls_echo_init, []}),
-    {ok, Sock} = ssl:connect({127,0,0,1}, 9876, [binary, {protocol, dtls}, {active, false}], 5000),
+    {ok, Sock} = ssl:connect({127,0,0,1}, 9876, ClientOpts, 5000),
     ok = ssl:send(Sock, <<"hello">>),
     {ok, <<"hello">>} = ssl:recv(Sock, 5, 3000),
     ok = ssl:send(Sock, <<"world">>),

@@ -150,21 +150,41 @@ async_send(Sock, Data) ->
 -spec(async_send(socket(), iodata(), [force|nosuspend]) -> ok | {error, Reason} when
       Reason :: close | timeout | inet:posix()).
 async_send(Sock, Data, Options) when is_port(Sock) ->
+    do_port_command(Sock, Data, Options);
+async_send(Sock = #ssl_socket{ssl = SslSock}, Data, _Options) ->
+    case ssl:send(SslSock, Data) of
+        ok ->
+            %% TODO: get rid of this message send
+            self() ! {inet_reply, Sock, ok},
+            ok;
+        Error ->
+            Error
+    end;
+async_send(#proxy_socket{socket = Sock}, Data, _Options) ->
+    async_send(Sock, Data).
+
+-if(?OTP_RELEASE >= 26).
+do_port_command(Sock, Data, _Options) ->
+    case gen_tcp:send(Sock, Data) of
+        ok ->
+            %% TODO: get rid of this message send
+            self() ! {inet_reply, Sock, ok},
+            ok;
+        {error, Reason} ->
+            {error, Reason}
+    end.
+-else.
+do_port_command(Sock, Data, Options) ->
     try erlang:port_command(Sock, Data, Options) of
-        true -> ok;
+        true ->
+            ok;
         false -> %% nosuspend option and port busy
             {error, busy}
     catch
         error:_Error ->
             {error, einval}
-    end;
-async_send(Sock = #ssl_socket{ssl = SslSock}, Data, _Options) ->
-    case ssl:send(SslSock, Data) of
-        ok -> self() ! {inet_reply, Sock, ok}, ok;
-        Error -> Error
-    end;
-async_send(#proxy_socket{socket = Sock}, Data, _Options) ->
-    async_send(Sock, Data).
+    end.
+-endif.
 
 -spec(recv(socket(), non_neg_integer())
       -> {ok, iodata()} | {error, closed | inet:posix()}).
@@ -358,7 +378,7 @@ shutdown(#proxy_socket{socket = Sock}, How) ->
     shutdown(Sock, How).
 
 %% @doc TCP/DTLS socket -> #ssl_socket{}
--spec(ssl_upgrade_fun([ssl:ssl_option()]) -> esockd:sock_fun()).
+-spec(ssl_upgrade_fun([ssl_option()]) -> esockd:sock_fun()).
 ssl_upgrade_fun(SslOpts) ->
     {Timeout, SslOpts1} = take_handshake_timeout(SslOpts),
     {GCAfterHandshake, SslOpts2} = take_gc_after_handshake(SslOpts1),
