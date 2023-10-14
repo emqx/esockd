@@ -353,6 +353,24 @@ t_allow_deny(_) ->
                  ], esockd:get_access_rules({udp_echo, 7001})),
     ok = esockd:close(udp_echo, 7001).
 
+t_close_port_and_resume_port(_) ->
+    {ok, _LSup} = esockd:open(echo, {"127.0.0.1", 5000}, [binary, {packet, raw}],
+                              {echo_server, start_link, []}),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", 5000, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
+    ok = esockd:close_port(echo, {"127.0.0.1", 5000}),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
+    {error, econnrefused} = gen_tcp:connect("127.0.0.1", 5000, [binary, {active, false}]),
+    esockd:resume_port(echo, {"127.0.0.1", 5000}),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 5000, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock1, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock1, 0),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
+    ok = esockd:close(echo, {"127.0.0.1", 5000}).
+
 t_ulimit(_) ->
     ?assert(is_integer(esockd:ulimit())).
 
