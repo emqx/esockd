@@ -55,8 +55,8 @@ count_acceptors(AcceptorSup) ->
 
 init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter]) ->
     SupFlags = #{strategy => simple_one_for_one,
-                 intensity => 100,
-                 period => 3600
+                 intensity => 100000,
+                 period => 1
                 },
     Acceptor = #{id => acceptor,
                  start => {esockd_acceptor, start_link,
