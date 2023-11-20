@@ -416,6 +416,34 @@ t_tune_fun_ok(_) ->
     ?assertEqual(1, proplists:get_value(accepted, Cnts)),
     ok = esockd:close(Name, LPort).
 
+t_listener_handle_port_exit(_) ->
+    LPort = 7005,
+    Name = ?FUNCTION_NAME,
+    %% GIVEN: when listener is started
+    {ok, LSup} = esockd:open(Name, LPort, [],
+                              {echo_server, start_link, []}),
+    L = esockd_listener_sup:listener(LSup),
+    PortInUse = esockd_listener:get_port(L),
+    ?assertEqual(LPort, PortInUse),
+    LSock = esockd_listener:get_lsock(L),
+    erlang:process_flag(trap_exit, true),
+    link(L),
+    %% GIVEN: when port is closed
+    erlang:port_close(LSock),
+    %% THEN: listener process should EXIT, ABNORMALLY
+    receive
+        {'EXIT', L, lsock_closed} ->
+            ok
+    after 300 ->
+            ct:fail(listener_still_alive)
+    end,
+    %% THEN: new listener should be restarted
+    NewListener = esockd_listener_sup:listener(LSup),
+    ?assertNotEqual(L, NewListener),
+    ?assertEqual(PortInUse, esockd_listener:get_port(NewListener)),
+    ?assertMatch({error, eaddrinuse}, gen_tcp:listen(PortInUse, [])),
+    ok = esockd:close(Name, LPort).
+
 %% helper
 sock_tune_fun(Ret) ->
     Ret.

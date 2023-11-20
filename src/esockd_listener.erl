@@ -24,6 +24,7 @@
 
 -export([ options/1
         , get_port/1
+        , get_lsock/1
         ]).
 
 %% gen_server callbacks
@@ -64,6 +65,10 @@ options(Listener) ->
 -spec(get_port(pid()) -> inet:port_number()).
 get_port(Listener) ->
     gen_server:call(Listener, get_port).
+
+-spec get_lsock(pid())  -> inet:socket().
+get_lsock(Listener) ->
+    gen_server:call(Listener, get_lsock).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -108,6 +113,9 @@ handle_call(options, _From, State = #state{options = Opts}) ->
 
 handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
+
+handle_call(get_lsock, _From, State = #state{lsock = LSock}) ->
+    {reply, LSock, State};
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
