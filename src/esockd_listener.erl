@@ -117,6 +117,9 @@ handle_cast(Msg, State) ->
     error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
+handle_info({'EXIT', LSock, _}, #state{lsock = LSock} = State) ->
+    error_logger:error_msg("~s Lsocket ~p closed", [?MODULE, LSock]),
+    {stop, lsock_closed, State};
 handle_info(Info, State) ->
     error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.
