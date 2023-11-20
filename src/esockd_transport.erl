@@ -365,6 +365,10 @@ ssl_upgrade_fun(SslOpts) ->
     {fun ?MODULE:ssl_upgrade/3, [SslOpts2, #{timeout => Timeout,
                                              gc_after_handshake => GCAfterHandshake}]}.
 
+%% NOTE: The first clause of the function `ssl_upgrade` (with an integer parameter
+%% `Timeout`) will be called by the running process after relup. So don't delete it.
+ssl_upgrade(Sock, SslOpts1, Timeout) when is_integer(Timeout) ->
+    ssl_upgrade(Sock, SslOpts1, #{timeout => Timeout, gc_after_handshake => false});
 ssl_upgrade(Sock, SslOpts1, #{timeout := Timeout,
                               gc_after_handshake := GCAfterHandshake}) ->
     try do_ssl_handshake(Sock, SslOpts1, Timeout) of
