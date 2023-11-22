@@ -134,6 +134,8 @@ handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock}) ->
             Reason =:= enfile
         ->
             {next_state, suspending, State, {state_timeout, 1000, begin_waiting}};
+        {error, econnaborted} ->
+            {next_state, waiting, State, {next_event, internal, begin_waiting}};
         {error, closed} ->
             {stop, normal, State};
         {error, Reason} ->
