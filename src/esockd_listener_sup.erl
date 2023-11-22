@@ -73,10 +73,7 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
                     type => supervisor,
                     modules => [esockd_connection_sup]},
     {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
-
     %% Start acceptor sup
-    ok = esockd_server:init_stats({Proto, ListenOn}, accepted),
-    ok = esockd_server:init_stats({Proto, ListenOn}, closed_overloaded),
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),

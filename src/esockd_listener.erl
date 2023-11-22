@@ -77,6 +77,7 @@ get_lsock(Listener) ->
 init({Proto, ListenOn, Opts, AcceptorSup}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
+    esockd_server:ensure_stats({Proto, ListenOn}),
     SockOpts = merge_addr(ListenOn, sockopts(Opts)),
     %% Don't active the socket...
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of

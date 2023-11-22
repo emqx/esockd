@@ -27,6 +27,7 @@
         , inc_stats/3
         , dec_stats/3
         , del_stats/1
+        , ensure_stats/1
         ]).
 
 %% gen_server callbacks
@@ -85,6 +86,10 @@ update_counter(Key, Num) ->
 del_stats({Protocol, ListenOn}) ->
     gen_server:cast(?SERVER, {del, {Protocol, ListenOn}}).
 
+-spec ensure_stats({atom(), esockd:listen_on()}) -> ok.
+ensure_stats(StatsKey) ->
+    ok = ?MODULE:init_stats(StatsKey, accepted),
+    ok = ?MODULE:init_stats(StatsKey, closed_overloaded).
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------

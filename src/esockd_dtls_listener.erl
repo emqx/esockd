@@ -70,6 +70,7 @@ get_port(Listener) ->
 init({Proto, ListenOn, Opts, AcceptorSup}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
+    esockd_server:ensure_stats({Proto, ListenOn}),
     SockOpts = merge_addr(ListenOn, dltsopts(Opts)),
     %% Don't active the socket...
     case ssl:listen(Port, SockOpts) of
