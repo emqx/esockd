@@ -24,6 +24,7 @@
 
 -export([ options/1
         , get_port/1
+        , get_lsock/1
         ]).
 
 %% gen_server callbacks
@@ -65,6 +66,10 @@ options(Listener) ->
 get_port(Listener) ->
     gen_server:call(Listener, get_port).
 
+-spec get_lsock(pid())  -> inet:socket().
+get_lsock(Listener) ->
+    gen_server:call(Listener, get_lsock).
+
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
@@ -72,6 +77,7 @@ get_port(Listener) ->
 init({Proto, ListenOn, Opts, AcceptorSup}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
+    esockd_server:ensure_stats({Proto, ListenOn}),
     SockOpts = merge_addr(ListenOn, sockopts(Opts)),
     %% Don't active the socket...
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
@@ -109,6 +115,9 @@ handle_call(options, _From, State = #state{options = Opts}) ->
 handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
 
+handle_call(get_lsock, _From, State = #state{lsock = LSock}) ->
+    {reply, LSock, State};
+
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
     {noreply, State}.
@@ -117,6 +126,9 @@ handle_cast(Msg, State) ->
     error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
+handle_info({'EXIT', LSock, _}, #state{lsock = LSock} = State) ->
+    error_logger:error_msg("~s Lsocket ~p closed", [?MODULE, LSock]),
+    {stop, lsock_closed, State};
 handle_info(Info, State) ->
     error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.

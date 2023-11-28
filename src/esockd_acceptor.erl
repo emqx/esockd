@@ -134,9 +134,12 @@ handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock}) ->
             Reason =:= enfile
         ->
             {next_state, suspending, State, {state_timeout, 1000, begin_waiting}};
+        {error, econnaborted} ->
+            {next_state, waiting, State, {next_event, internal, begin_waiting}};
         {error, closed} ->
             {stop, normal, State};
         {error, Reason} ->
+            error_logger:error_msg("~p async_accept error: ~p", [?MODULE, Reason]),
             {stop, Reason, State}
     end;
 handle_event(
@@ -210,8 +213,11 @@ handle_event(Type, Content, StateName, _) ->
     ),
     keep_state_and_data.
 
-terminate(_Reason, _StateName, #state{lsock = LSock}) ->
-    close(LSock).
+terminate(normal, _StateName, #state{}) ->
+    ok;
+terminate(Reason, _StateName, #state{}) ->
+    error_logger:error_msg("~p terminating due to ~p", [?MODULE, Reason]),
+    ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
     {ok, StateName, State}.

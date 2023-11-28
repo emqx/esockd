@@ -416,6 +416,83 @@ t_tune_fun_ok(_) ->
     ?assertEqual(1, proplists:get_value(accepted, Cnts)),
     ok = esockd:close(Name, LPort).
 
+
+t_listener_handle_port_exit_tcp(Config) ->
+    do_listener_handle_port_exit(Config, false).
+
+t_listener_handle_port_exit_tls(Config) ->
+    do_listener_handle_port_exit(Config, true).
+
+do_listener_handle_port_exit(Config, IsTls) ->
+    LPort = 7005,
+    Name = ?FUNCTION_NAME,
+    SslOpts = [{certfile, esockd_ct:certfile(Config)},
+               {keyfile, esockd_ct:keyfile(Config)},
+               {gc_after_handshake, true},
+               {verify, verify_none}
+              ],
+    OpenOpts = case IsTls of
+                   true ->
+                       ssl:start(),
+                       [{ssl_options, SslOpts}];
+                   false -> []
+               end,
+    %% GIVEN: when listener is started
+    {ok, LSup} = esockd:open(Name, LPort, OpenOpts,
+                              {echo_server, start_link, []}),
+    L = esockd_listener_sup:listener(LSup),
+    PortInUse = esockd_listener:get_port(L),
+    ?assertEqual(LPort, PortInUse),
+    LSock = esockd_listener:get_lsock(L),
+    erlang:process_flag(trap_exit, true),
+    link(L),
+    Acceptors = get_acceptors(LSup),
+    ?assertNotEqual([], Acceptors),
+
+    case IsTls of
+        true ->
+            {ok, ClientSock} = ssl:connect("localhost", LPort, [{verify, verify_none}
+                                                               ], 1000),
+            ssl:close(ClientSock);
+        false ->
+            {ok, ClientSock} = gen_tcp:connect("localhost", LPort, [], 1000),
+            ok = gen_tcp:close(ClientSock)
+    end,
+
+    timer:sleep(100),
+
+    %% WHEN: when port is closed
+    erlang:port_close(LSock),
+    %% THEN: listener process should EXIT, ABNORMALLY
+    receive
+        {'EXIT', L, lsock_closed} ->
+            ok
+    after 300 ->
+            ct:fail(listener_still_alive)
+    end,
+
+    %% THEN: listener should be restarted
+    NewListener = esockd_listener_sup:listener(LSup),
+    ?assertNotEqual(L, NewListener),
+
+    %% THEN: listener should be listening on the same port
+    ?assertEqual(PortInUse, esockd_listener:get_port(NewListener)),
+    ?assertMatch({error, eaddrinuse}, gen_tcp:listen(PortInUse, [])),
+
+    %% THEN: New acceptors should be started with new LSock to accept,
+    %%      (old acceptors should be terminated due to `closed')
+    NewAcceptors = get_acceptors(LSup),
+    ?assertNotEqual([], NewAcceptors),
+    ?assert(sets:is_empty(sets:intersection(sets:from_list(Acceptors), sets:from_list(NewAcceptors)))),
+
+    ok = esockd:close(Name, LPort).
+
 %% helper
 sock_tune_fun(Ret) ->
     Ret.
+
+-spec get_acceptors(supervisor:supervisor()) -> [Acceptor::pid()].
+get_acceptors(LSup) ->
+    Children = supervisor:which_children(LSup),
+    {acceptor_sup, AcceptorSup, _, _} = lists:keyfind(acceptor_sup, 1, Children),
+    supervisor:which_children(AcceptorSup).
