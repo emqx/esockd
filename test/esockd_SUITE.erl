@@ -319,6 +319,23 @@ t_update_options(_) ->
     {ok, <<"Sock2">>} = gen_tcp:recv(Sock2, 0),
     ok = esockd:close(echo, 6000).
 
+t_update_options_error(_) ->
+    {ok, _LSup} = esockd:open(echo, 6000, [{acceptors, 4}],
+                              {echo_server, start_link, []}),
+    ?assertEqual(4, esockd:get_acceptors({echo, 6000})),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+    ?assertEqual( {error, bad_access_rules}
+                , esockd:set_options({echo, 6000}, [ {acceptors, 1}
+                                                   , {access_rules, [{allow, "OOPS"}]}])
+                ),
+    {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+    ?assertEqual(4, esockd:get_acceptors({echo, 6000})),
+    ok = gen_tcp:send(Sock1, <<"Sock1">>),
+    {ok, <<"Sock1">>} = gen_tcp:recv(Sock1, 0),
+    ok = gen_tcp:send(Sock2, <<"Sock2">>),
+    {ok, <<"Sock2">>} = gen_tcp:recv(Sock2, 0),
+    ok = esockd:close(echo, 6000).
+
 t_update_tls_options(Config) ->
     LPort = 7000,
     SslOpts1 = [ {certfile, esockd_ct:certfile(Config)}
