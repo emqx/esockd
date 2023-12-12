@@ -20,11 +20,13 @@
 
 -include("esockd.hrl").
 
--export([start_link/4]).
+-export([ start_link/4
+        , start_supervised/1
+        ]).
 
--export([ options/1
-        , get_port/1
+-export([ get_port/1
         , get_lsock/1
+        , get_state/1
         ]).
 
 %% gen_server callbacks
@@ -45,24 +47,30 @@
           lport     :: inet:port_number()
          }).
 
--define(ACCEPTOR_POOL, 16).
 -define(DEFAULT_TCP_OPTIONS,
         [{nodelay, true},
          {reuseaddr, true},
          {send_timeout, 30000},
          {send_timeout_close, true}
         ]).
-
--spec(start_link(atom(), esockd:listen_on(), [esockd:option()], pid())
-      -> {ok, pid()} | ignore | {error, term()}).
+-spec start_link(atom(), esockd:listen_on(), [esockd:option()], pid() | ignore)
+      -> {ok, pid()} | ignore | {error, term()}.
 start_link(Proto, ListenOn, Opts, AcceptorSup) ->
     gen_server:start_link(?MODULE, {Proto, ListenOn, Opts, AcceptorSup}, []).
 
--spec(options(pid()) -> [esockd:option()]).
-options(Listener) ->
-    gen_server:call(Listener, options).
+-spec start_supervised(esockd:listener_ref())
+      -> {ok, pid()} | ignore | {error, term()}.
+start_supervised(ListenerRef = {Proto, ListenOn}) ->
+    Opts = esockd_server:get_listener_prop(ListenerRef, options),
+    case start_link(Proto, ListenOn, Opts, ignore) of
+        {ok, Pid} ->
+            _ = esockd_server:set_listener_prop(ListenerRef, listener, {?MODULE, Pid}),
+            {ok, Pid};
+        Error ->
+            Error
+    end.
 
--spec(get_port(pid()) -> inet:port_number()).
+-spec get_port(pid()) -> inet:port_number().
 get_port(Listener) ->
     gen_server:call(Listener, get_port).
 
@@ -70,11 +78,15 @@ get_port(Listener) ->
 get_lsock(Listener) ->
     gen_server:call(Listener, get_lsock).
 
+-spec get_state(pid())  -> proplists:proplist().
+get_state(Listener) ->
+    gen_server:call(Listener, get_state).
+
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init({Proto, ListenOn, Opts, AcceptorSup}) ->
+init({Proto, ListenOn, Opts, _Ignore}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
@@ -82,10 +94,6 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
     %% Don't active the socket...
     case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
-            AcceptorNum = proplists:get_value(acceptors, Opts, ?ACCEPTOR_POOL),
-            lists:foreach(fun (_) ->
-                {ok, _APid} = esockd_acceptor_sup:start_acceptor(AcceptorSup, LSock)
-            end, lists:seq(1, AcceptorNum)),
             {ok, {LAddr, LPort}} = inet:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
             %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
@@ -117,6 +125,12 @@ handle_call(get_port, _From, State = #state{lport = LPort}) ->
 
 handle_call(get_lsock, _From, State = #state{lsock = LSock}) ->
     {reply, LSock, State};
+
+handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
+    Reply = [ {listen_sock, LSock}
+            , {listen_port, LPort}
+            ],
+    {reply, Reply, State};
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),

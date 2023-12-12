@@ -20,10 +20,13 @@
 
 -include("esockd.hrl").
 
--export([start_link/4]).
+-export([ start_link/4
+        , start_supervised/1
+        ]).
 
 -export([ options/1
         , get_port/1
+        , get_state/1
         ]).
 
 %% gen_server callbacks
@@ -44,16 +47,27 @@
           lport     :: inet:port_number()
          }).
 
--define(ACCEPTOR_POOL, 8).
 -define(DEFAULT_DTLS_OPTIONS,
         [{protocol, dtls},
          {mode, binary},
          {reuseaddr, true}]).
 
--spec(start_link(atom(), esockd:listen_on(), [esockd:option()], pid())
-      -> {ok, pid()} | ignore | {error, term()}).
+-spec start_link(atom(), esockd:listen_on(), [esockd:option()], pid() | ignore)
+      -> {ok, pid()} | ignore | {error, term()}.
 start_link(Proto, ListenOn, Opts, AcceptorSup) ->
     gen_server:start_link(?MODULE, {Proto, ListenOn, Opts, AcceptorSup}, []).
+
+-spec start_supervised(esockd:listener_ref())
+      -> {ok, pid()} | ignore | {error, term()}.
+start_supervised(ListenerRef = {Proto, ListenOn}) ->
+    Opts = esockd_server:get_listener_prop(ListenerRef, options),
+    case start_link(Proto, ListenOn, Opts, ignore) of
+        {ok, Pid} ->
+            _ = esockd_server:set_listener_prop(ListenerRef, listener, {?MODULE, Pid}),
+            {ok, Pid};
+        Error ->
+            Error
+    end.
 
 -spec(options(pid()) -> [esockd:option()]).
 options(Listener) ->
@@ -63,11 +77,15 @@ options(Listener) ->
 get_port(Listener) ->
     gen_server:call(Listener, get_port).
 
+-spec get_state(pid())  -> proplists:proplist().
+get_state(Listener) ->
+    gen_server:call(Listener, get_state).
+
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init({Proto, ListenOn, Opts, AcceptorSup}) ->
+init({Proto, ListenOn, Opts, _Ignore}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
@@ -76,13 +94,6 @@ init({Proto, ListenOn, Opts, AcceptorSup}) ->
     case ssl:listen(Port, SockOpts) of
     %%case ssl:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
-            AcceptorNum = proplists:get_value(acceptors, Opts, ?ACCEPTOR_POOL),
-            lists:foreach(fun (_) ->
-                case esockd_dtls_acceptor_sup:start_acceptor(AcceptorSup, LSock) of
-                    {ok, _APid} -> ok;
-                    {error, Reason} -> exit({start_accepptors_failed, Reason})
-                end
-            end, lists:seq(1, AcceptorNum)),
             {ok, {LAddr, LPort}} = ssl:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
             %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
@@ -114,6 +125,12 @@ handle_call(options, _From, State = #state{options = Opts}) ->
 
 handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
+
+handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
+    Reply = [ {listen_sock, LSock}
+            , {listen_port, LPort}
+            ],
+    {reply, Reply, State};
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),

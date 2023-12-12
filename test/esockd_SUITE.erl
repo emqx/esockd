@@ -305,6 +305,46 @@ t_get_shutdown_count(Config) ->
     ?assertEqual([], esockd:get_shutdown_count({udp_echo, 7001})),
     ok = esockd:close(udp_echo, 7001).
 
+t_update_options(_) ->
+    {ok, _LSup} = esockd:open(echo, 6000, [{acceptors, 4}],
+                              {echo_server, start_link, []}),
+    ?assertEqual(4, esockd:get_acceptors({echo, 6000})),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+    ok = esockd:set_options({echo, 6000}, [{acceptors, 16}, tune_buffer]),
+    {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+    ?assertEqual(16, esockd:get_acceptors({echo, 6000})),
+    ok = gen_tcp:send(Sock1, <<"Sock1">>),
+    {ok, <<"Sock1">>} = gen_tcp:recv(Sock1, 0),
+    ok = gen_tcp:send(Sock2, <<"Sock2">>),
+    {ok, <<"Sock2">>} = gen_tcp:recv(Sock2, 0),
+    ok = esockd:close(echo, 6000).
+
+t_update_tls_options(Config) ->
+    LPort = 7000,
+    SslOpts1 = [ {certfile, esockd_ct:certfile(Config)}
+               , {keyfile, esockd_ct:keyfile(Config)}
+               , {verify, verify_none}
+               ],
+    ClientSslOpts = [binary, {active, false}, {verify, verify_none}],
+    {ok, _LSup} = esockd:open(echo_tls, LPort, [{ssl_options, SslOpts1}],
+                              {echo_server, start_link, []}),
+    {ok, Sock1} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
+
+    SslOpts2 = lists:keystore(verify, 1, SslOpts1, {verify, verify_peer}),
+    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts2}]),
+    ?assertEqual( {error, closed}
+                , ssl:connect("localhost", LPort, ClientSslOpts, 1000)),
+
+    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts1}]),
+    {ok, Sock2} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
+
+    ok = ssl:send(Sock1, <<"Sock1">>),
+    {ok, <<"Sock1">>} = ssl:recv(Sock1, 0, 1000),
+    ok = ssl:send(Sock2, <<"Sock2">>),
+    {ok, <<"Sock2">>} = ssl:recv(Sock2, 0, 1000),
+
+    ok = esockd:close(echo_tls, LPort).
+
 t_allow_deny(_) ->
     AccessRules = [{allow, "192.168.1.0/24"}],
     {ok, _LSup} = esockd:open(echo, 7000, [{access_rules, AccessRules}],
@@ -440,12 +480,13 @@ do_listener_handle_port_exit(Config, IsTls) ->
     %% GIVEN: when listener is started
     {ok, LSup} = esockd:open(Name, LPort, OpenOpts,
                               {echo_server, start_link, []}),
-    L = esockd_listener_sup:listener(LSup),
-    PortInUse = esockd_listener:get_port(L),
-    ?assertEqual(LPort, PortInUse),
-    LSock = esockd_listener:get_lsock(L),
+    {LMod, LPid} = esockd_listener_sup:listener(LSup),
+    LState = LMod:get_state(LPid),
+    PortInUse = proplists:get_value(listen_port, LState),
+    LSock = proplists:get_value(listen_sock, LState),
+    ?assertEqual(LPort, proplists:get_value(listen_port, LState)),
     erlang:process_flag(trap_exit, true),
-    link(L),
+    link(LPid),
     Acceptors = get_acceptors(LSup),
     ?assertNotEqual([], Acceptors),
 
@@ -465,18 +506,19 @@ do_listener_handle_port_exit(Config, IsTls) ->
     erlang:port_close(LSock),
     %% THEN: listener process should EXIT, ABNORMALLY
     receive
-        {'EXIT', L, lsock_closed} ->
+        {'EXIT', LPid, lsock_closed} ->
             ok
     after 300 ->
             ct:fail(listener_still_alive)
     end,
 
     %% THEN: listener should be restarted
-    NewListener = esockd_listener_sup:listener(LSup),
-    ?assertNotEqual(L, NewListener),
+    {NewLMod, NewLPid} = esockd_listener_sup:listener(LSup),
+    ?assertNotEqual(LPid, NewLPid),
 
     %% THEN: listener should be listening on the same port
-    ?assertEqual(PortInUse, esockd_listener:get_port(NewListener)),
+    NewLState = NewLMod:get_state(NewLPid),
+    ?assertEqual(PortInUse, proplists:get_value(listen_port, NewLState)),
     ?assertMatch({error, eaddrinuse}, gen_tcp:listen(PortInUse, [])),
 
     %% THEN: New acceptors should be started with new LSock to accept,

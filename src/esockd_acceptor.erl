@@ -108,6 +108,7 @@ set_conn_limiter(Acceptor, Limiter) ->
 callback_mode() -> handle_event_function.
 
 init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter, LSock]) ->
+    _ = erlang:process_flag(trap_exit, true),
     _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
@@ -214,6 +215,8 @@ handle_event(Type, Content, StateName, _) ->
     keep_state_and_data.
 
 terminate(normal, _StateName, #state{}) ->
+    ok;
+terminate(shutdown, _StateName, #state{}) ->
     ok;
 terminate(Reason, _StateName, #state{}) ->
     error_logger:error_msg("~p terminating due to ~p", [?MODULE, Reason]),

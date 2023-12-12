@@ -104,7 +104,7 @@ t_get_set_max_connections(_) ->
     with_conn_sup([{max_connections, 100}],
                   fun(ConnSup) ->
                           ?assertEqual(100, esockd_connection_sup:get_max_connections(ConnSup)),
-                          ok = esockd_connection_sup:set_max_connections(ConnSup, 200),
+                          ok = esockd_connection_sup:set_options(ConnSup, [{max_connections, 200}]),
                           ?assertEqual(200, esockd_connection_sup:get_max_connections(ConnSup))
                   end).
 
