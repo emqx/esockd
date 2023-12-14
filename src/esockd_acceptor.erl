@@ -222,7 +222,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %% Internal funcs
 %%--------------------------------------------------------------------
 
-close(Sock) -> catch port_close(Sock).
+close(Sock) ->
+    try
+        true = port_close(Sock),
+        receive {'EXIT', Sock, _} -> ok after 1 -> ok end
+    catch
+        error:_ -> ok
+    end.
 
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock | Args1]).
