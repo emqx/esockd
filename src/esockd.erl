@@ -280,8 +280,26 @@ deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 -spec(merge_opts(proplists:proplist(), proplists:proplist())
       -> proplists:proplist()).
 merge_opts(Opts1, Opts2) ->
-    Opts2 ++ lists:foldl(fun proplists:delete/2, Opts1, proplists:get_keys(Opts2)).
-    
+    squash_opts(Opts1 ++ Opts2).
+
+squash_opts([{Name, Value} | Rest]) ->
+    Overrides = proplists:get_all_values(Name, Rest),
+    Merged = lists:foldl(fun(O, V) -> merge_opt(Name, V, O) end, Value, Overrides),
+    make_opt(Name, Merged) ++ squash_opts(proplists:delete(Name, Rest));
+squash_opts([Name | Rest]) when is_atom(Name) ->
+    [Name | squash_opts([Opt || Opt <- Rest, Opt =/= Name])];
+squash_opts([]) ->
+    [].
+
+make_opt(_Name, undefined) -> [];
+make_opt(Name, Value) -> [{Name, Value}].
+
+merge_opt(ssl_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(tcp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(udp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(dtls_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(_, _Opt1, Opt2) -> Opt2.
+
 %% @doc Parse option.
 parse_opt(Options) ->
     parse_opt(Options, []).

@@ -364,8 +364,7 @@ t_update_tls_options(Config) ->
                               {echo_server, start_link, []}),
     {ok, Sock1} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
 
-    SslOptsChanged = lists:keystore(verify, 1, SslOpts1, {verify, verify_peer}),
-    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOptsChanged}]),
+    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, [{verify, verify_peer}]}]),
     ?assertEqual( {error, closed}
                 , ssl:connect("localhost", LPort, ClientSslOpts, 1000)),
 
@@ -437,9 +436,16 @@ t_ulimit(_) ->
     ?assert(is_integer(esockd:ulimit())).
 
 t_merge_opts(_) ->
-    Opts = [binary, {acceptors, 8}, {tune_buffer, true}],
-    ?assertEqual([binary, {acceptors, 16}, {tune_buffer, true}],
-                 lists:sort(esockd:merge_opts(Opts, [{acceptors, 16}]))).
+    Opts1 = [ binary, {acceptors, 8}, {tune_buffer, true}
+            , {ssl_options, [{keyfile, "key.pem"}, {certfile, "cert.pem"}]}
+            ],
+    Opts2 = [ binary, {acceptors, 16}
+            , {ssl_options, [{keyfile, undefined}]}
+            ],
+    Result = [ binary, {acceptors, 16}, {tune_buffer, true}
+             , {ssl_options, [{certfile, "cert.pem"}]}
+             ],
+    ?assertEqual(Result, esockd:merge_opts(Opts1, Opts2)).
 
 t_parse_opt(_) ->
     Opts = [{acceptors, 10}, {tune_buffer, true}, {proxy_protocol, true}, {ssl_options, []}],
