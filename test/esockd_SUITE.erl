@@ -346,23 +346,38 @@ t_update_tls_options(Config) ->
                , {keyfile, esockd_ct:keyfile(Config)}
                , {verify, verify_none}
                ],
-    ClientSslOpts = [binary, {active, false}, {verify, verify_none}],
+    SslOpts2 = [ {certfile, esockd_ct:certfile(Config, "change.crt")}
+               , {keyfile, esockd_ct:keyfile(Config, "change.key")}
+               , {verify, verify_none}
+               ],
+    ClientSslOpts = [ binary
+                    , {active, false}
+                    , {verify, verify_peer}
+                    , {cacertfile, esockd_ct:cacertfile(Config)}
+                    , {customize_hostname_check, [{match_fun, fun(_, _) -> true end}]}
+                    ],
     {ok, _LSup} = esockd:open(echo_tls, LPort, [{ssl_options, SslOpts1}],
                               {echo_server, start_link, []}),
     {ok, Sock1} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
 
-    SslOpts2 = lists:keystore(verify, 1, SslOpts1, {verify, verify_peer}),
-    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts2}]),
+    SslOptsChanged = lists:keystore(verify, 1, SslOpts1, {verify, verify_peer}),
+    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOptsChanged}]),
     ?assertEqual( {error, closed}
                 , ssl:connect("localhost", LPort, ClientSslOpts, 1000)),
 
-    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts1}]),
+    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts2}]),
     {ok, Sock2} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
 
     ok = ssl:send(Sock1, <<"Sock1">>),
     {ok, <<"Sock1">>} = ssl:recv(Sock1, 0, 1000),
     ok = ssl:send(Sock2, <<"Sock2">>),
     {ok, <<"Sock2">>} = ssl:recv(Sock2, 0, 1000),
+
+    {ok, Cert1} = ssl:peercert(Sock1),
+    {ok, Cert2} = ssl:peercert(Sock2),
+
+    ?assertEqual(<<"Server">>, esockd_peercert:common_name(Cert1)),
+    ?assertEqual(<<"Changed">>, esockd_peercert:common_name(Cert2)),
 
     ok = esockd:close(echo_tls, LPort).
 

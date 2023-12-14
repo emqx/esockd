@@ -16,7 +16,13 @@
 
 -module(esockd_ct).
 
--export([all/1, cacertfile/1, certfile/1, keyfile/1]).
+-export([ all/1
+        , cacertfile/1
+        , certfile/1
+        , keyfile/1
+        , certfile/2
+        , keyfile/2
+        ]).
 
 %% @doc Get all the test cases in a CT suite.
 all(Suite) ->
@@ -28,11 +34,16 @@ cacertfile(Config) ->
     filename:join([test_dir(Config), "certs", "ca.crt"]).
 
 certfile(Config) ->
-    filename:join([test_dir(Config), "certs", "test.crt"]).
+    certfile(Config, "test.crt").
 
 keyfile(Config) ->
-    filename:join([test_dir(Config), "certs", "test.key"]).
+    keyfile(Config, "test.key").
+
+certfile(Config, Name) ->
+    filename:join([test_dir(Config), "certs", Name]).
+
+keyfile(Config, Name) ->
+    filename:join([test_dir(Config), "certs", Name]).
 
 test_dir(Config) ->
     filename:dirname(filename:dirname(proplists:get_value(data_dir, Config))).
-
