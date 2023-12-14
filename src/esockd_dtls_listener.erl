@@ -27,6 +27,7 @@
 -export([ options/1
         , get_port/1
         , get_state/1
+        , set_options/2
         ]).
 
 %% gen_server callbacks
@@ -46,6 +47,8 @@
           laddr     :: inet:ip_address(),
           lport     :: inet:port_number()
          }).
+
+-type option() :: {dtls_options, [gen_tcp:option()]}.
 
 -define(DEFAULT_DTLS_OPTIONS,
         [{protocol, dtls},
@@ -81,6 +84,10 @@ get_port(Listener) ->
 get_state(Listener) ->
     gen_server:call(Listener, get_state).
 
+-spec set_options(pid(), [option()])  -> ok.
+set_options(Listener, Opts) ->
+    gen_server:call(Listener, {set_options, Opts}).
+    
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
@@ -91,7 +98,7 @@ init({Proto, ListenOn, Opts, _Ignore}) ->
     esockd_server:ensure_stats({Proto, ListenOn}),
     SockOpts = merge_addr(ListenOn, dltsopts(Opts)),
     %% Don't active the socket...
-    case ssl:listen(Port, SockOpts) of
+    case ssl:listen(Port, esockd:merge_opts(?DEFAULT_DTLS_OPTIONS, SockOpts)) of
     %%case ssl:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             {ok, {LAddr, LPort}} = ssl:sockname(LSock),
@@ -106,11 +113,10 @@ init({Proto, ListenOn, Opts, _Ignore}) ->
     end.
 
 dltsopts(Opts) ->
-    DtlsOpts = proplists:delete(
-                 handshake_timeout,
-                 proplists:get_value(dtls_options, Opts, [])
-                ),
-    esockd:merge_opts(?DEFAULT_DTLS_OPTIONS, DtlsOpts).
+    proplists:delete(
+     handshake_timeout,
+     proplists:get_value(dtls_options, Opts, [])
+    ).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
@@ -131,6 +137,16 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
             , {listen_port, LPort}
             ],
     {reply, Reply, State};
+
+handle_call({set_options, Opts}, _From, State = #state{lsock = LSock}) ->
+    case ssl:setopts(LSock, dltsopts(Opts)) of
+        ok ->
+            {reply, ok, State#state{options = Opts}};
+        Error = {error, _} ->
+            %% Setting dTLS options on listening socket always succeeds,
+            %% even if the options are invalid.
+            {reply, Error, State}
+    end;
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),

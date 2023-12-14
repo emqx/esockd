@@ -111,27 +111,26 @@ get_child_mod({_, _, _, [Mod | _]}) -> Mod.
 get_options(ListenerRef, _Sup) ->
     esockd_server:get_listener_prop(ListenerRef, options).
 
-update_options(ListenerRef, Sup, UpdateOpts) ->
-    Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    set_options(ListenerRef, Sup, merge_options(Opts, UpdateOpts)).
-
 set_options(ListenerRef, Sup, Opts) ->
-    OptsWas = esockd_server:set_listener_prop(ListenerRef, options, Opts),
+    OptsWas = esockd_server:get_listener_prop(ListenerRef, options),
+    OptsWas = esockd_server:set_listener_prop(ListenerRef, options,
+                                              esockd:merge_opts(OptsWas, Opts)),
     ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
+    {Listener, ListenerPid} = esockd_server:get_listener_prop(ListenerRef, listener),
     try
         _ = ensure_ok(esockd_connection_sup:set_options(ConnSup, Opts)),
+        _ = ensure_ok(Listener:set_options(ListenerPid, Opts)),
         _ = ensure_ok(restart_acceptor_sup(ListenerRef, Sup)),
         ok
     catch
         throw:{?MODULE, Error} ->
+            %% Restore previous options
             _ = esockd_server:set_listener_prop(ListenerRef, options, OptsWas),
             ok = esockd_connection_sup:set_options(ConnSup, OptsWas),
+            ok = Listener:set_options(ListenerPid, OptsWas),
             ok = restart_acceptor_sup(ListenerRef, Sup),
             Error
     end.
-
-merge_options(Opts1, Opts2) ->
-    Opts2 ++ lists:foldl(fun proplists:delete/2, Opts1, proplists:get_keys(Opts2)).
 
 restart_acceptor_sup(ListenerRef, Sup) ->
     _ = supervisor:terminate_child(Sup, acceptor_sup),
@@ -142,13 +141,6 @@ restart_acceptor_sup(ListenerRef, Sup) ->
         Error = {error, _} ->
             Error
     end.
-
-start_acceptors(ListenerRef) ->
-    {LMod, LPid} = esockd_server:get_listener_prop(ListenerRef, listener),
-    LState = LMod:get_state(LPid),
-    LSock = proplists:get_value(listen_sock, LState),
-    ok = esockd_acceptor_sup:start_acceptors(ListenerRef, LSock),
-    ignore.
 
 ensure_ok(ok) ->
     ok;
@@ -162,7 +154,7 @@ get_max_connections(Sup) ->
     esockd_connection_sup:get_max_connections(connection_sup(Sup)).
 
 set_max_connections(ListenerRef, Sup, MaxConns) ->
-    update_options(ListenerRef, Sup, [{max_connections, MaxConns}]).
+    set_options(ListenerRef, Sup, [{max_connections, MaxConns}]).
 
 get_max_conn_rate(_Sup, Proto, ListenOn) ->
     case esockd_limiter:lookup({listener, Proto, ListenOn}) of
@@ -173,7 +165,7 @@ get_max_conn_rate(_Sup, Proto, ListenOn) ->
     end.
 
 set_max_conn_rate(ListenerRef, Sup, Opt) ->
-    update_options(ListenerRef, Sup, [{limiter, Opt}]).
+    set_options(ListenerRef, Sup, [{limiter, Opt}]).
 
 get_current_connections(Sup) ->
     esockd_connection_sup:count_connections(connection_sup(Sup)).
@@ -226,6 +218,14 @@ init({ListenerRef, MFA}) ->
     {ok, { {rest_for_one, 10, 3600}
          , [ConnSup, Listener, AcceptorSup, Starter]
          }}.
+
+-spec start_acceptors(esockd:listener_ref()) -> ignore.
+start_acceptors(ListenerRef) ->
+    {LMod, LPid} = esockd_server:get_listener_prop(ListenerRef, listener),
+    LState = LMod:get_state(LPid),
+    LSock = proplists:get_value(listen_sock, LState),
+    ok = esockd_acceptor_sup:start_acceptors(ListenerRef, LSock),
+    ignore.
 
 %%--------------------------------------------------------------------
 %% Sock tune/upgrade functions

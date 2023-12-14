@@ -27,6 +27,7 @@
 -export([ get_port/1
         , get_lsock/1
         , get_state/1
+        , set_options/2
         ]).
 
 %% gen_server callbacks
@@ -47,12 +48,15 @@
           lport     :: inet:port_number()
          }).
 
+-type option() :: {tcp_options, [gen_tcp:option()]}.
+
 -define(DEFAULT_TCP_OPTIONS,
         [{nodelay, true},
          {reuseaddr, true},
          {send_timeout, 30000},
          {send_timeout_close, true}
         ]).
+
 -spec start_link(atom(), esockd:listen_on(), [esockd:option()], pid() | ignore)
       -> {ok, pid()} | ignore | {error, term()}.
 start_link(Proto, ListenOn, Opts, AcceptorSup) ->
@@ -82,6 +86,10 @@ get_lsock(Listener) ->
 get_state(Listener) ->
     gen_server:call(Listener, get_state).
 
+-spec set_options(pid(), [option()])  -> ok.
+set_options(Listener, Opts) ->
+    gen_server:call(Listener, {set_options, Opts}).
+
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
@@ -91,8 +99,7 @@ init({Proto, ListenOn, Opts, _Ignore}) ->
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
     SockOpts = merge_addr(ListenOn, sockopts(Opts)),
-    %% Don't active the socket...
-    case esockd_transport:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
+    case esockd_transport:listen(Port, esockd:merge_opts(?DEFAULT_TCP_OPTIONS, SockOpts)) of
         {ok, LSock} ->
             {ok, {LAddr, LPort}} = inet:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
@@ -106,8 +113,9 @@ init({Proto, ListenOn, Opts, _Ignore}) ->
     end.
 
 sockopts(Opts) ->
-    esockd:merge_opts(?DEFAULT_TCP_OPTIONS,
-                      proplists:get_value(tcp_options, Opts, [])).
+    %% Don't active the socket...
+    SockOpts = proplists:get_value(tcp_options, Opts, []),
+    [{active, false} | proplists:delete(active, SockOpts)].
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
@@ -131,6 +139,14 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
             , {listen_port, LPort}
             ],
     {reply, Reply, State};
+
+handle_call({set_options, Opts}, _From, State = #state{lsock = LSock}) ->
+    case inet:setopts(LSock, sockopts(Opts)) of
+        ok ->
+            {reply, ok, State#state{options = Opts}};
+        Error = {error, _} ->
+            {reply, Error, State}
+    end;
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),

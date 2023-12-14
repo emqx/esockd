@@ -279,14 +279,9 @@ deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 %% @doc Merge two options
 -spec(merge_opts(proplists:proplist(), proplists:proplist())
       -> proplists:proplist()).
-merge_opts(Defaults, Options) ->
-    lists:foldl(
-      fun({Opt, Val}, Acc) ->
-          lists:keystore(Opt, 1, Acc, {Opt, Val});
-         (Opt, Acc) ->
-          lists:usort([Opt | Acc])
-      end, Defaults, Options).
-
+merge_opts(Opts1, Opts2) ->
+    Opts2 ++ lists:foldl(fun proplists:delete/2, Opts1, proplists:get_keys(Opts2)).
+    
 %% @doc Parse option.
 parse_opt(Options) ->
     parse_opt(Options, []).

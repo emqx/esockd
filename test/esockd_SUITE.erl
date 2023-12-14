@@ -328,6 +328,10 @@ t_update_options_error(_) ->
                 , esockd:set_options({echo, 6000}, [ {acceptors, 1}
                                                    , {access_rules, [{allow, "OOPS"}]}])
                 ),
+    ?assertEqual( {error, einval}
+                , esockd:set_options({echo, 6000}, [ {acceptors, 1}
+                                                   , {tcp_options, [{backlog, 1}]}])
+                ),
     {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
     ?assertEqual(4, esockd:get_acceptors({echo, 6000})),
     ok = gen_tcp:send(Sock1, <<"Sock1">>),
@@ -416,7 +420,7 @@ t_ulimit(_) ->
 t_merge_opts(_) ->
     Opts = [binary, {acceptors, 8}, {tune_buffer, true}],
     ?assertEqual([binary, {acceptors, 16}, {tune_buffer, true}],
-                 esockd:merge_opts(Opts, [{acceptors, 16}])).
+                 lists:sort(esockd:merge_opts(Opts, [{acceptors, 16}]))).
 
 t_parse_opt(_) ->
     Opts = [{acceptors, 10}, {tune_buffer, true}, {proxy_protocol, true}, {ssl_options, []}],
