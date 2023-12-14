@@ -46,7 +46,9 @@
         , code_change/3
         ]).
 
--record(state, {}).
+-record(state, {
+    listener_props :: #{esockd:listener_ref() => #{_Name => _Value}}
+}).
 
 -define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
@@ -118,36 +120,33 @@ erase_listener_props(ListenerRef = {_Proto, _ListenOn}) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
--define(LPROP(LREF, NAME), {LREF, prop, NAME}).
-
 init([]) ->
     _ = ets:new(?STATS_TAB, [public, set, named_table,
                              {write_concurrency, true}]),
-    {ok, #state{}}.
+    {ok, #state{listener_props = #{}}}.
 
 handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
     true = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
     {reply, ok, State, hibernate};
 
-handle_call({get_listener_prop, ListenerRef, Name}, _From, State) ->
-    Value = erlang:get(?LPROP(ListenerRef, Name)),
-    {reply, Value, State};
+handle_call({get_listener_prop, ListenerRef, Name}, _From,
+            State = #state{listener_props = LProps}) ->
+    {reply, lprops_get(ListenerRef, Name, LProps), State};
 
-handle_call({set_listener_prop, ListenerRef, Name, Value}, _From, State) ->
-    ValueWas = erlang:put(?LPROP(ListenerRef, Name), Value),
-    {reply, ValueWas, State};
+handle_call({set_listener_prop, ListenerRef, Name, NValue}, _From,
+            State = #state{listener_props = LProps}) ->
+    Value = lprops_get(ListenerRef, Name, LProps),
+    NLProps = lprops_set(ListenerRef, Name, NValue, LProps),
+    {reply, Value, State#state{listener_props = NLProps}};
 
-handle_call({list_listener_props, ListenerRef}, _From, State) ->
-    Props = [{Name, Value} || {?LPROP(Ref, Name), Value} <- erlang:get()
-                            , Ref == ListenerRef
-                            ],
-    {reply, Props, State};
+handle_call({list_listener_props, ListenerRef}, _From,
+            State = #state{listener_props = LProps}) ->
+    {reply, lprops_list(ListenerRef, LProps), State};
 
-handle_call({erase_listener_props, ListenerRef}, _From, State) ->
-    Props = [{Name, erlang:erase(K)} || {K = ?LPROP(Ref, Name), _} <- erlang:get()
-                                      , Ref == ListenerRef
-                                      ],
-    {reply, Props, State};
+handle_call({erase_listener_props, ListenerRef}, _From,
+            State = #state{listener_props = LProps}) ->
+    Props = lprops_list(ListenerRef, LProps),
+    {reply, Props, State#state{listener_props = lprops_erase(ListenerRef, LProps)}};
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
@@ -171,3 +170,23 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
+%%
+
+lprops_get(ListenerRef, Name, LProps) ->
+    case LProps of
+        #{ListenerRef := Props} ->
+            maps:get(Name, Props, undefined);
+        #{} ->
+            undefined
+    end.
+
+lprops_set(ListenerRef, Name, Value, LProps) ->
+    Props = maps:get(ListenerRef, LProps, #{}),
+    LProps#{ListenerRef => Props#{Name => Value}}.
+
+lprops_list(ListenerRef, LProps) ->
+    Props = maps:get(ListenerRef, LProps, #{}),
+    maps:to_list(Props).
+
+lprops_erase(ListenerRef, LProps) ->
+    maps:remove(ListenerRef, LProps).
