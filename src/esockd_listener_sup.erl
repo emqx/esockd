@@ -117,30 +117,25 @@ set_options(ListenerRef, Sup, Opts) ->
                                               esockd:merge_opts(OptsWas, Opts)),
     ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
     {Listener, ListenerPid} = esockd_server:get_listener_prop(ListenerRef, listener),
-    try
-        _ = ensure_ok(esockd_connection_sup:set_options(ConnSup, Opts)),
-        _ = ensure_ok(Listener:set_options(ListenerPid, Opts)),
-        _ = ensure_ok(restart_acceptor_sup(ListenerRef, Sup)),
-        ok
+    Result = try
+        ensure_ok(esockd_connection_sup:set_options(ConnSup, Opts)),
+        ensure_ok(Listener:set_options(ListenerPid, Opts))
     catch
         throw:{?MODULE, Error} ->
             %% Restore previous options
             _ = esockd_server:set_listener_prop(ListenerRef, options, OptsWas),
             ok = esockd_connection_sup:set_options(ConnSup, OptsWas),
             ok = Listener:set_options(ListenerPid, OptsWas),
-            ok = restart_acceptor_sup(ListenerRef, Sup),
             Error
-    end.
+    end,
+    ok = restart_acceptor_sup(ListenerRef, Sup),
+    Result.
 
 restart_acceptor_sup(ListenerRef, Sup) ->
     _ = supervisor:terminate_child(Sup, acceptor_sup),
-    case supervisor:restart_child(Sup, acceptor_sup) of
-        {ok, _Child} ->
-            _ = start_acceptors(ListenerRef),
-            ok;
-        Error = {error, _} ->
-            Error
-    end.
+    {ok, _Child} = supervisor:restart_child(Sup, acceptor_sup),
+    _ = start_acceptors(ListenerRef),
+    ok.
 
 ensure_ok(ok) ->
     ok;
