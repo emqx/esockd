@@ -21,8 +21,7 @@
 -include("esockd.hrl").
 
 -export([
-    start_link/7,
-    set_conn_limiter/2
+    start_link/7
 ]).
 
 %% state callbacks
@@ -97,10 +96,6 @@ start_link(
         ],
         []
     ).
-
--spec set_conn_limiter(pid(), esockd_generic_limiter:limiter()) -> ok.
-set_conn_limiter(Acceptor, Limiter) ->
-    gen_statem:call(Acceptor, {set_conn_limiter, Limiter}, 5000).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -198,8 +193,6 @@ handle_event(state_timeout, {token_request, _} = Content, suspending, State) ->
     {next_state, token_request, State, {next_event, internal, Content}};
 handle_event(state_timeout, begin_waiting, suspending, State) ->
     {next_state, waiting, State, {next_event, internal, begin_waiting}};
-handle_event({call, From}, {set_conn_limiter, Limiter}, _, State) ->
-    {keep_state, State#state{conn_limiter = Limiter}, {reply, From, ok}};
 handle_event(
     info,
     {inet_async, LSock, Ref, {error, Reason}},

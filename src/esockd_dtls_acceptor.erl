@@ -24,7 +24,6 @@
 
 -export([ accepting/3
         , suspending/3
-        , set_conn_limiter/2
         ]).
 
 %% gen_statem callbacks
@@ -38,13 +37,11 @@
           proto        :: atom(),
           listen_on    :: esockd:listen_on(),
           lsock        :: ssl:sslsocket(),
-          sockmod      :: module(), %% FIXME: NOT-USE
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
           upgrade_funs :: [esockd:sock_fun()],
           conn_limiter :: undefined | esockd_generic_limiter:limiter(),
-          conn_sup     :: pid(),
-          accept_ref   :: term()  %% FIXME: NOT-USE
+          conn_sup     :: pid()
          }).
 
 %% @doc Start an acceptor
@@ -56,10 +53,6 @@ start_link(Proto, ListenOn, ConnSup,
            TuneFun, UpgradeFuns, Limiter, LSock) ->
     gen_statem:start_link(?MODULE, [Proto, ListenOn, ConnSup,
                                     TuneFun, UpgradeFuns, Limiter, LSock], []).
-
-set_conn_limiter(Acceptor, Limiter) ->
-    %% NOTE: the acceptor process will blocked at `accept` function call
-    gen_statem:cast(Acceptor, {set_conn_limiter, Limiter}).
 
 %%--------------------------------------------------------------------
 %% gen_statem callbacks
@@ -125,10 +118,7 @@ accepting(internal, accept,
             {stop, normal, State};
         {error, Reason} ->
             {stop, Reason, State}
-    end;
-
-accepting(cast, {set_conn_limiter, Limiter}, State) ->
-    {keep_state, State#state{conn_limiter = Limiter}}.
+    end.
 
 suspending(timeout, _Timeout, State) ->
     {next_state, accepting, State, {next_event, internal, accept}};

@@ -18,8 +18,7 @@
 
 -behaviour(supervisor).
 
--export([ start_link/6
-        , start_supervised/1
+-export([ start_supervised/1
         ]).
 
 -export([ start_acceptors/2
@@ -38,15 +37,6 @@
 %%--------------------------------------------------------------------
 %% API
 %%--------------------------------------------------------------------
-
-%% @doc Start Acceptor Supervisor.
--spec(start_link(atom(), esockd:listen_on(), pid(),
-                 esockd:sock_fun(), [esockd:sock_fun()], esockd_generic_limiter:limiter())
-     -> {ok, pid()}).
-start_link(Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter) ->
-    supervisor:start_link(?MODULE, { esockd_acceptor
-                                   , [Proto, ListenOn, ConnSup,
-                                      TuneFun, UpgradeFuns, Limiter]}).
 
 %% @doc Start Acceptor Supervisor.
 -spec start_supervised(esockd:listener_ref()) -> {ok, pid()}.

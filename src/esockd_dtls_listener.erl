@@ -20,7 +20,7 @@
 
 -include("esockd.hrl").
 
--export([ start_link/4
+-export([ start_link/3
         , start_supervised/1
         ]).
 
@@ -55,16 +55,16 @@
          {mode, binary},
          {reuseaddr, true}]).
 
--spec start_link(atom(), esockd:listen_on(), [esockd:option()], pid() | ignore)
+-spec start_link(atom(), esockd:listen_on(), [esockd:option()])
       -> {ok, pid()} | ignore | {error, term()}.
-start_link(Proto, ListenOn, Opts, AcceptorSup) ->
-    gen_server:start_link(?MODULE, {Proto, ListenOn, Opts, AcceptorSup}, []).
+start_link(Proto, ListenOn, Opts) ->
+    gen_server:start_link(?MODULE, {Proto, ListenOn, Opts}, []).
 
 -spec start_supervised(esockd:listener_ref())
       -> {ok, pid()} | ignore | {error, term()}.
 start_supervised(ListenerRef = {Proto, ListenOn}) ->
     Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    case start_link(Proto, ListenOn, Opts, ignore) of
+    case start_link(Proto, ListenOn, Opts) of
         {ok, Pid} ->
             _ = esockd_server:set_listener_prop(ListenerRef, listener, {?MODULE, Pid}),
             {ok, Pid};
@@ -92,7 +92,7 @@ set_options(Listener, Opts) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init({Proto, ListenOn, Opts, _Ignore}) ->
+init({Proto, ListenOn, Opts}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
