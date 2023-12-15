@@ -102,19 +102,19 @@ ensure_stats(StatsKey) ->
 
 -spec get_listener_prop(esockd:listener_ref(), _Name) -> _Value | undefined.
 get_listener_prop(ListenerRef = {_Proto, _ListenOn}, Name) ->
-    gen_server:call(?SERVER, {get_listener_prop, ListenerRef, Name}).
+    gen_server:call(?SERVER, {get_listener_prop, ListenerRef, Name}, infinity).
 
 -spec list_listener_props(esockd:listener_ref()) -> [{_Name, _Value}].
 list_listener_props(ListenerRef = {_Proto, _ListenOn}) ->
-    gen_server:call(?SERVER, {list_listener_props, ListenerRef}).
+    gen_server:call(?SERVER, {list_listener_props, ListenerRef}, infinity).
 
 -spec set_listener_prop(esockd:listener_ref(), _Name, _Value) -> _ValueWas.
 set_listener_prop(ListenerRef = {_Proto, _ListenOn}, Name, Value) ->
-    gen_server:call(?SERVER, {set_listener_prop, ListenerRef, Name, Value}).    
+    gen_server:call(?SERVER, {set_listener_prop, ListenerRef, Name, Value}, infinity).    
 
 -spec erase_listener_props(esockd:listener_ref()) -> [{_Name, _ValueWas}].
 erase_listener_props(ListenerRef = {_Proto, _ListenOn}) ->
-    gen_server:call(?SERVER, {erase_listener_props, ListenerRef}).
+    gen_server:call(?SERVER, {erase_listener_props, ListenerRef}, infinity).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
