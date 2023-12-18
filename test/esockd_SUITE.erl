@@ -88,9 +88,7 @@ t_udp_child_spec(_) ->
      } = Spec.
 
 t_open_dtls(Config) ->
-    DtlsOpts = [{mode, binary},
-                {reuseaddr, true},
-                {certfile, esockd_ct:certfile(Config)},
+    DtlsOpts = [{certfile, esockd_ct:certfile(Config)},
                 {keyfile,  esockd_ct:keyfile(Config)},
                 {verify, verify_none}
                ],
@@ -245,14 +243,15 @@ t_get_current_connections(Config) ->
     ?assertEqual(0, esockd:get_current_connections({echo, 7000})),
     ok = esockd:close(echo, 7000),
 
-    DtlsOpts = [{mode, binary},
-                {reuseaddr, true},
-                {certfile, esockd_ct:certfile(Config)},
+    UdpOpts = [{mode, binary}, {reuseaddr, true}],
+    DtlsOpts = [{certfile, esockd_ct:certfile(Config)},
                 {keyfile, esockd_ct:keyfile(Config)},
                 {verify, verify_none}
                ],
     ClientOpts = [binary, {protocol, dtls}, {verify, verify_none}],
-    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{dtls_options, DtlsOpts}], {dtls_echo_server, start_link, []}),
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000,
+                                    [{dtls_options, DtlsOpts}, {udp_options, UdpOpts}],
+                                    {dtls_echo_server, start_link, []}),
     {ok, DtlsSock1} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 5000),
     {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 5000),
     timer:sleep(10),
@@ -282,14 +281,15 @@ t_get_shutdown_count(Config) ->
     ?assertEqual([{closed, 2}], esockd:get_shutdown_count({echo, 7000})),
     ok = esockd:close(echo, 7000),
 
-    DtlsOpts = [{mode, binary},
-                {reuseaddr, true},
-                {certfile, esockd_ct:certfile(Config)},
+    UdpOpts = [{mode, binary}, {reuseaddr, true}],
+    DtlsOpts = [{certfile, esockd_ct:certfile(Config)},
                 {keyfile, esockd_ct:keyfile(Config)},
                 {verify, verify_none}
                ],
     ClientOpts = [binary, {protocol, dtls}, {verify, verify_none}],
-    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000, [{dtls_options, DtlsOpts}], {dtls_echo_server, start_link, []}),
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000,
+                                    [{dtls_options, DtlsOpts}, {udp_options, UdpOpts}],
+                                    {dtls_echo_server, start_link, []}),
     {ok, DtlsSock1} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 5000),
     {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 5000),
     ok = ssl:close(DtlsSock1),

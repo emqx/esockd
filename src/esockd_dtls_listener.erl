@@ -112,10 +112,15 @@ init({Proto, ListenOn, Opts}) ->
     end.
 
 dltsopts(Opts) ->
-    proplists:delete(
-     handshake_timeout,
-     proplists:get_value(dtls_options, Opts, [])
-    ).
+    %% Filter out `esockd:ssl_custom_option()`, otherwise DTLS listener will
+    %% fail to start.
+    DTLSOpts = lists:foldl(
+        fun proplists:delete/2,
+        proplists:get_value(dtls_options, Opts, []),
+        [handshake_timeout, gc_after_handshake]
+    ),
+    SockOpts = proplists:get_value(udp_options, Opts, []),
+    SockOpts ++ DTLSOpts.
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.

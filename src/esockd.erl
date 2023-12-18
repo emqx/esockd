@@ -106,8 +106,10 @@
 
 -type(host() :: inet:ip_address() | string()).
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
--type ssl_options() :: [{handshake_timeout, pos_integer()} | ssl_option()].
--type dtls_options() :: [{handshake_timeout, pos_integer()} | ssl_option()].
+-type ssl_options() :: [ssl_custom_option() | ssl_option()].
+-type dtls_options() :: [ssl_custom_option() | ssl_option()].
+-type ssl_custom_option() :: {handshake_timeout, pos_integer()}
+                           | {gc_after_handshake, boolean()}.
 -type listener_ref() :: {proto(), listen_on()}.
 
 %%--------------------------------------------------------------------
