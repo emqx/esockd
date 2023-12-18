@@ -447,6 +447,16 @@ t_merge_opts(_) ->
              ],
     ?assertEqual(Result, esockd:merge_opts(Opts1, Opts2)).
 
+t_changed_opts(_) ->
+    Opts1 = [ binary, {acceptors, 8}, {tune_buffer, true}
+            , {ssl_options, [{keyfile, "key.pem"}, {certfile, "cert.pem"}]}
+            ],
+    Opts2 = [ binary, inet6, {acceptors, 16}
+            , {ssl_options, [{keyfile, "key.pem"}, {certfile, "cert.pem"}]}
+            ],
+    Result = [inet6, {acceptors, 16}],
+    ?assertEqual(Result, esockd:changed_opts(Opts2, Opts1)).
+
 t_parse_opt(_) ->
     Opts = [{acceptors, 10}, {tune_buffer, true}, {proxy_protocol, true}, {ssl_options, []}],
     ?assertEqual(Opts, esockd:parse_opt([{badopt1, val1}, {badopt2, val2}|Opts])).

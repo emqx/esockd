@@ -65,6 +65,7 @@
 
 %% Utility functions
 -export([ merge_opts/2
+        , changed_opts/2
         , parse_opt/1
         , ulimit/0
         , fixaddr/1
@@ -301,6 +302,19 @@ merge_opt(tcp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
 merge_opt(udp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
 merge_opt(dtls_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
 merge_opt(_, _Opt1, Opt2) -> Opt2.
+
+-spec changed_opts(proplists:proplist(), proplists:proplist())
+      -> proplists:proplist().
+changed_opts(Opts, OptsRef) ->
+    lists:filter(
+        fun(Opt) ->
+            [Name] = proplists:get_keys([Opt]),
+            Value = proplists:get_value(Name, [Opt]),
+            ValueRef = proplists:get_value(Name, OptsRef),
+            ValueRef =/= Value orelse ValueRef == undefined
+        end,
+        Opts
+    ).
 
 %% @doc Parse option.
 parse_opt(Options) ->
