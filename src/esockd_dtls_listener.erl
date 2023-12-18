@@ -42,7 +42,6 @@
 -record(state, {
           proto     :: atom(),
           listen_on :: esockd:listen_on(),
-          options   :: [esockd:option()],
           lsock     :: ssl:sslsocket(),
           laddr     :: inet:ip_address(),
           lport     :: inet:port_number()
@@ -104,7 +103,7 @@ init({Proto, ListenOn, Opts}) ->
             {ok, {LAddr, LPort}} = ssl:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
             %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
-            {ok, #state{proto = Proto, listen_on = ListenOn, options = Opts,
+            {ok, #state{proto = Proto, listen_on = ListenOn,
                         lsock = LSock, laddr = LAddr, lport = LPort}};
         {error, Reason} ->
             error_logger:error_msg("~s failed to listen on ~p - ~p (~s)",
@@ -126,9 +125,6 @@ merge_addr(Port, SockOpts) when is_integer(Port) ->
 merge_addr({Addr, _Port}, SockOpts) ->
     lists:keystore(ip, 1, SockOpts, {ip, Addr}).
 
-handle_call(options, _From, State = #state{options = Opts}) ->
-    {reply, Opts, State};
-
 handle_call(get_port, _From, State = #state{lport = LPort}) ->
     {reply, LPort, State};
 
@@ -141,7 +137,7 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
 handle_call({set_options, Opts}, _From, State = #state{lsock = LSock}) ->
     case ssl:setopts(LSock, dltsopts(Opts)) of
         ok ->
-            {reply, ok, State#state{options = Opts}};
+            {reply, ok, State};
         Error = {error, _} ->
             %% Setting dTLS options on listening socket always succeeds,
             %% even if the options are invalid.
