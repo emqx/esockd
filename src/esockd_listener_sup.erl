@@ -125,7 +125,7 @@ set_options(ListenerRef, Sup, Opts) ->
             %% Restore previous options
             _ = esockd_server:set_listener_prop(ListenerRef, options, OptsWas),
             ok = esockd_connection_sup:set_options(ConnSup, OptsWas),
-            ok = Listener:set_options(ListenerPid, OptsWas),
+            %% Listener has failed to set options, no need to restore
             Error
     end,
     ok = restart_acceptor_sup(ListenerRef, Sup),

@@ -44,7 +44,8 @@
           listen_on :: esockd:listen_on(),
           lsock     :: inet:socket(),
           laddr     :: inet:ip_address(),
-          lport     :: inet:port_number()
+          lport     :: inet:port_number(),
+          sockopts  :: [gen_tcp:listen_option()]
          }).
 
 -type option() :: {tcp_options, [gen_tcp:option()]}.
@@ -97,14 +98,14 @@ init({Proto, ListenOn, Opts}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
-    SockOpts = merge_addr(ListenOn, sockopts(Opts)),
-    case esockd_transport:listen(Port, esockd:merge_opts(?DEFAULT_TCP_OPTIONS, SockOpts)) of
+    SockOpts = merge_addr(ListenOn, merge_defaults(sockopts(Opts))),
+    case esockd_transport:listen(Port, SockOpts) of
         {ok, LSock} ->
             {ok, {LAddr, LPort}} = inet:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
             %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
-            {ok, #state{proto = Proto, listen_on = ListenOn,
-                        lsock = LSock, laddr = LAddr, lport = LPort}};
+            {ok, #state{proto = Proto, listen_on = ListenOn, lsock = LSock,
+                        laddr = LAddr, lport = LPort, sockopts = SockOpts}};
         {error, Reason} ->
             error_logger:error_msg("~s failed to listen on ~p - ~p (~s)",
                                    [Proto, Port, Reason, inet:format_error(Reason)]),
@@ -115,6 +116,9 @@ sockopts(Opts) ->
     %% Don't active the socket...
     SockOpts = proplists:get_value(tcp_options, Opts, []),
     [{active, false} | proplists:delete(active, SockOpts)].
+
+merge_defaults(SockOpts) ->
+    esockd:merge_opts(?DEFAULT_TCP_OPTIONS, SockOpts).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
@@ -136,10 +140,13 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
             ],
     {reply, Reply, State};
 
-handle_call({set_options, Opts}, _From, State = #state{lsock = LSock}) ->
-    case inet:setopts(LSock, sockopts(Opts)) of
+handle_call({set_options, Opts}, _From, State = #state{lsock = LSock, sockopts = SockOpts}) ->
+    SockOptsIn = sockopts(Opts),
+    SockOptsChanged = esockd:changed_opts(SockOptsIn, SockOpts),
+    case inet:setopts(LSock, SockOptsChanged) of
         ok ->
-            {reply, ok, State};
+            SockOptsMerged = esockd:merge_opts(SockOpts, SockOptsChanged),
+            {reply, ok, State#state{sockopts = SockOptsMerged}};
         Error = {error, _} ->
             {reply, Error, State}
     end;

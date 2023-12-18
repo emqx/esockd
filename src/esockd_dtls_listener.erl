@@ -44,10 +44,11 @@
           listen_on :: esockd:listen_on(),
           lsock     :: ssl:sslsocket(),
           laddr     :: inet:ip_address(),
-          lport     :: inet:port_number()
+          lport     :: inet:port_number(),
+          sockopts  :: [ssl:tls_server_option()]
          }).
 
--type option() :: {dtls_options, [gen_tcp:option()]}.
+-type option() :: {dtls_options, [gen_udp:option()]}.
 
 -define(DEFAULT_DTLS_OPTIONS,
         [{protocol, dtls},
@@ -95,16 +96,16 @@ init({Proto, ListenOn, Opts}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
-    SockOpts = merge_addr(ListenOn, dltsopts(Opts)),
+    SockOpts = merge_defaults(merge_addr(ListenOn, dltsopts(Opts))),
     %% Don't active the socket...
-    case ssl:listen(Port, esockd:merge_opts(?DEFAULT_DTLS_OPTIONS, SockOpts)) of
+    case ssl:listen(Port, SockOpts) of
     %%case ssl:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             {ok, {LAddr, LPort}} = ssl:sockname(LSock),
             %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
             %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
-            {ok, #state{proto = Proto, listen_on = ListenOn,
-                        lsock = LSock, laddr = LAddr, lport = LPort}};
+            {ok, #state{proto = Proto, listen_on = ListenOn, lsock = LSock,
+                        laddr = LAddr, lport = LPort, sockopts = SockOpts}};
         {error, Reason} ->
             error_logger:error_msg("~s failed to listen on ~p - ~p (~s)",
                                    [Proto, Port, Reason, inet:format_error(Reason)]),
@@ -125,6 +126,9 @@ dltsopts(Opts) ->
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
 
+merge_defaults(SockOpts) ->
+    esockd:merge_opts(?DEFAULT_DTLS_OPTIONS, SockOpts).
+
 merge_addr(Port, SockOpts) when is_integer(Port) ->
     SockOpts;
 merge_addr({Addr, _Port}, SockOpts) ->
@@ -139,10 +143,13 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
             ],
     {reply, Reply, State};
 
-handle_call({set_options, Opts}, _From, State = #state{lsock = LSock}) ->
-    case ssl:setopts(LSock, dltsopts(Opts)) of
+handle_call({set_options, Opts}, _From, State = #state{lsock = LSock, sockopts = SockOpts}) ->
+    SockOptsIn = dltsopts(Opts),
+    SockOptsChanged = esockd:changed_opts(SockOptsIn, SockOpts),
+    case ssl:setopts(LSock, SockOptsChanged) of
         ok ->
-            {reply, ok, State};
+            SockOptsMerged = esockd:merge_opts(SockOpts, SockOptsChanged),
+            {reply, ok, State#state{sockopts = SockOptsMerged}};
         Error = {error, _} ->
             %% Setting dTLS options on listening socket always succeeds,
             %% even if the options are invalid.
