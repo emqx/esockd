@@ -21,8 +21,7 @@
 -include("esockd.hrl").
 
 -export([
-    start_link/7,
-    set_conn_limiter/2
+    start_link/7
 ]).
 
 %% state callbacks
@@ -98,16 +97,13 @@ start_link(
         []
     ).
 
--spec set_conn_limiter(pid(), esockd_generic_limiter:limiter()) -> ok.
-set_conn_limiter(Acceptor, Limiter) ->
-    gen_statem:call(Acceptor, {set_conn_limiter, Limiter}, 5000).
-
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 callback_mode() -> handle_event_function.
 
 init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter, LSock]) ->
+    _ = erlang:process_flag(trap_exit, true),
     _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = inet:sockname(LSock),
     {ok, SockMod} = inet_db:lookup_socket(LSock),
@@ -197,8 +193,6 @@ handle_event(state_timeout, {token_request, _} = Content, suspending, State) ->
     {next_state, token_request, State, {next_event, internal, Content}};
 handle_event(state_timeout, begin_waiting, suspending, State) ->
     {next_state, waiting, State, {next_event, internal, begin_waiting}};
-handle_event({call, From}, {set_conn_limiter, Limiter}, _, State) ->
-    {keep_state, State#state{conn_limiter = Limiter}, {reply, From, ok}};
 handle_event(
     info,
     {inet_async, LSock, Ref, {error, Reason}},
@@ -215,6 +209,8 @@ handle_event(Type, Content, StateName, _) ->
 
 terminate(normal, _StateName, #state{}) ->
     ok;
+terminate(shutdown, _StateName, #state{}) ->
+    ok;
 terminate(Reason, _StateName, #state{}) ->
     error_logger:error_msg("~p terminating due to ~p", [?MODULE, Reason]),
     ok.
@@ -226,7 +222,13 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %% Internal funcs
 %%--------------------------------------------------------------------
 
-close(Sock) -> catch port_close(Sock).
+close(Sock) ->
+    try
+        true = port_close(Sock),
+        receive {'EXIT', Sock, _} -> ok after 1 -> ok end
+    catch
+        error:_ -> ok
+    end.
 
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock | Args1]).

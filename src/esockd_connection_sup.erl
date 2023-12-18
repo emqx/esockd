@@ -20,17 +20,17 @@
 
 -import(proplists, [get_value/3]).
 
--export([start_link/2, stop/1]).
+-export([start_link/2, start_supervised/2, stop/1]).
 
 -export([ start_connection/3
         , count_connections/1
         ]).
 
 -export([ get_max_connections/1
-        , set_max_connections/2
+        , get_shutdown_count/1
+        , get_options/1
+        , set_options/2
         ]).
-
--export([get_shutdown_count/1]).
 
 %% Allow, Deny
 -export([ access_rules/1
@@ -48,6 +48,10 @@
         ]).
 
 -type(shutdown() :: brutal_kill | infinity | pos_integer()).
+
+-type option() :: {shutdown, shutdown()}
+                | {max_connections, pos_integer()}
+                | {access_rules, list()}.
 
 -record(state, {
           curr_connections :: map(),
@@ -68,8 +72,28 @@
 start_link(Opts, MFA) ->
     gen_server:start_link(?MODULE, [Opts, MFA], []).
 
+-spec start_supervised(esockd:listener_ref(), esockd:mfargs())
+      -> {ok, pid()} | ignore | {error, term()}.
+start_supervised(ListenerRef, MFA) ->
+    Opts = esockd_server:get_listener_prop(ListenerRef, options),
+    case start_link(Opts, MFA) of
+        {ok, Pid} ->
+            _ = esockd_server:set_listener_prop(ListenerRef, connection_sup, Pid),
+            {ok, Pid};
+        {error, _} = Error ->
+            Error
+    end.
+
 -spec(stop(pid()) -> ok).
 stop(Pid) -> gen_server:stop(Pid).
+
+-spec get_options(pid()) -> [option()].
+get_options(Pid) ->
+    call(Pid, get_options).
+
+-spec set_options(pid(), [option()]) -> ok | {error, _Reason}.
+set_options(Pid, Opts) ->
+    call(Pid, {set_options, Opts}).
 
 %%--------------------------------------------------------------------
 %% API
@@ -102,20 +126,16 @@ start_connection_proc({M, F, Args}, Sock) when is_atom(M), is_atom(F), is_list(A
 count_connections(Sup) ->
     call(Sup, count_connections).
 
--spec(get_max_connections(pid()) -> integer()).
+-spec get_max_connections(pid()) -> pos_integer().
 get_max_connections(Sup) when is_pid(Sup) ->
-    call(Sup, get_max_connections).
-
--spec(set_max_connections(pid(), integer()) -> ok).
-set_max_connections(Sup, MaxConns) when is_pid(Sup) ->
-    call(Sup, {set_max_connections, MaxConns}).
+    proplists:get_value(max_connections, get_options(Sup)).
 
 -spec(get_shutdown_count(pid()) -> [{atom(), integer()}]).
 get_shutdown_count(Sup) ->
     call(Sup, get_shutdown_count).
 
 access_rules(Sup) ->
-    call(Sup, access_rules).
+    proplists:get_value(access_rules, get_options(Sup)).
 
 allow(Sup, CIDR) ->
     call(Sup, {add_rule, {allow, CIDR}}).
@@ -175,18 +195,9 @@ handle_call({start_connection, Sock}, _From,
 handle_call(count_connections, _From, State = #state{curr_connections = Conns}) ->
     {reply, maps:size(Conns), State};
 
-handle_call(get_max_connections, _From, State = #state{max_connections = MaxConns}) ->
-    {reply, MaxConns, State};
-
-handle_call({set_max_connections, MaxConns}, _From, State) ->
-    {reply, ok, State#state{max_connections = MaxConns}};
-
 handle_call(get_shutdown_count, _From, State) ->
     Counts = [{Reason, Count} || {{shutdown_count, Reason}, Count} <- get()],
     {reply, Counts, State};
-
-handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
-    {reply, [raw(Rule) || Rule <- Rules], State};
 
 handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
     try esockd_access:compile(RawRule) of
@@ -201,6 +212,22 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
         error:Reason ->
             error_logger:error_msg("Bad access rule: ~p, compile errro: ~p", [RawRule, Reason]),
             {reply, {error, bad_access_rule}, State}
+    end;
+
+handle_call(get_options, _From, State) ->
+    Options = [
+        {shutdown, get_state_option(shutdown, State)},
+        {max_connections, get_state_option(max_connections, State)},
+        {access_rules, get_state_option(access_rules, State)}
+    ],
+    {reply, Options, State};
+
+handle_call({set_options, Options}, _From, State) ->
+    case set_state_options(Options, State) of
+        NState = #state{} ->
+            {reply, ok, NState};
+        {error, Reason} ->
+            {reply, {error, Reason}, State}
     end;
 
 %% mimic the supervisor's which_children reply
@@ -247,6 +274,33 @@ allowed(Addr, Rules) ->
         {matched, allow} -> true;
         {matched, deny}  -> false
     end.
+
+get_state_option(max_connections, #state{max_connections = MaxConnections}) ->
+    MaxConnections;
+get_state_option(shutdown, #state{shutdown = Shutdown}) ->
+    Shutdown;
+get_state_option(access_rules, #state{access_rules = Rules}) ->
+    [raw(Rule) || Rule <- Rules].
+
+set_state_option({max_connections, MaxConns}, State) ->
+    State#state{max_connections = MaxConns};
+set_state_option({shutdown, Shutdown}, State) ->
+    State#state{shutdown = Shutdown};
+set_state_option({access_rules, Rules}, State) ->
+    try
+        CompiledRules = [esockd_access:compile(Rule) || Rule <- Rules],
+        State#state{access_rules = CompiledRules}
+    catch
+        error:_Reason -> {error, bad_access_rules}
+    end;
+set_state_option(_, State) ->
+    State.
+
+set_state_options(Options, State) ->
+    lists:foldl(fun
+        (Option, St = #state{}) -> set_state_option(Option, St);
+        (_, Error) -> Error
+    end, State, Options).
 
 raw({allow, CIDR = {_Start, _End, _Len}}) ->
      {allow, esockd_cidr:to_string(CIDR)};

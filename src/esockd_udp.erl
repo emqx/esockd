@@ -26,7 +26,7 @@
         ]).
 
 %% get/set
--export([ get_options/1
+-export([ get_options/2
         , get_acceptors/1
         , get_max_connections/1
         , get_max_conn_rate/3
@@ -34,8 +34,9 @@
         , get_shutdown_count/1
         ]).
 
--export([ set_max_connections/2
-        , set_max_conn_rate/4
+-export([ set_options/3
+        , set_max_connections/3
+        , set_max_conn_rate/3
         ]).
 
 -export([ get_access_rules/1
@@ -107,7 +108,7 @@ stop(Pid) -> gen_server:stop(Pid).
 %% GET/SET APIs
 %%--------------------------------------------------------------------
 
-get_options(Pid) ->
+get_options(_ListenerRef, Pid) ->
     gen_server:call(Pid, options).
 
 get_acceptors(_Pid) ->
@@ -130,10 +131,13 @@ get_current_connections(Pid) ->
 get_shutdown_count(_Pid) ->
     [].
 
-set_max_connections(Pid, MaxLimit) when is_integer(MaxLimit) ->
+set_options(_ListenerRef, _Pid, _Opts) ->
+    {error, not_supported}.
+
+set_max_connections(_ListenerRef, Pid, MaxLimit) when is_integer(MaxLimit) ->
     gen_server:call(Pid, {max_peers, MaxLimit}).
 
-set_max_conn_rate(Pid, Proto, ListenOn, Opts) ->
+set_max_conn_rate(_ListenerRef = {Proto, ListenOn}, Pid, Opts) ->
     gen_server:call(Pid, {max_conn_rate, Proto, ListenOn, Opts}).
 
 get_access_rules(Pid) ->

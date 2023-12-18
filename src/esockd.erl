@@ -44,6 +44,7 @@
 
 -export([ get_stats/1
         , get_options/1
+        , set_options/2
         , get_acceptors/1
         ]).
 
@@ -79,6 +80,7 @@
              , mfargs/0
              , option/0
              , listen_on/0
+             , listener_ref/0
              ]).
 
 -type(proto() :: atom()).
@@ -106,6 +108,7 @@
 -type(listen_on() :: inet:port_number() | {host(), inet:port_number()}).
 -type ssl_options() :: [{handshake_timeout, pos_integer()} | ssl_option()].
 -type dtls_options() :: [{handshake_timeout, pos_integer()} | ssl_option()].
+-type listener_ref() :: {proto(), listen_on()}.
 
 %%--------------------------------------------------------------------
 %% APIs
@@ -210,7 +213,15 @@ get_stats({Proto, ListenOn}) when is_atom(Proto) ->
 %% @doc Get options
 -spec(get_options({atom(), listen_on()}) -> options()).
 get_options({Proto, ListenOn}) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
+    with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, []).
+
+%% @doc Set applicable options
+%% If some options could not be set, either because they are not applicable or
+%% because they require a listener restart, function returns an error.
+-spec set_options({atom(), listen_on()}, options()) ->
+    {ok, options()} | {error, _TODO}.
+set_options({Proto, ListenOn}, Options) when is_atom(Proto) ->
+    with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, [Options]).
 
 %% @doc Get acceptors number
 -spec(get_acceptors({atom(), listen_on()}) -> pos_integer()).
@@ -225,7 +236,7 @@ get_max_connections({Proto, ListenOn}) when is_atom(Proto) ->
 %% @doc Set max connections
 -spec(set_max_connections({atom(), listen_on()}, pos_integer()) -> ok).
 set_max_connections({Proto, ListenOn}, MaxConns) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [MaxConns]).
+    with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, [MaxConns]).
 
 %% @doc Set max connection rate
 -spec(get_max_conn_rate({atom(), listen_on()}) -> conn_limit()).
@@ -235,7 +246,7 @@ get_max_conn_rate({Proto, ListenOn}) when is_atom(Proto) ->
 %% @doc Set max connection rate
 -spec(set_max_conn_rate({atom(), listen_on()}, conn_limit()) -> ok).
 set_max_conn_rate({Proto, ListenOn}, Opt) when is_atom(Proto) ->
-    with_listener({Proto, ListenOn}, ?FUNCTION_NAME, [Proto, ListenOn, Opt]).
+    with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, [Opt]).
 
 %% @doc Get current connections
 -spec(get_current_connections({atom(), listen_on()}) -> non_neg_integer()).
@@ -268,13 +279,26 @@ deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 %% @doc Merge two options
 -spec(merge_opts(proplists:proplist(), proplists:proplist())
       -> proplists:proplist()).
-merge_opts(Defaults, Options) ->
-    lists:foldl(
-      fun({Opt, Val}, Acc) ->
-          lists:keystore(Opt, 1, Acc, {Opt, Val});
-         (Opt, Acc) ->
-          lists:usort([Opt | Acc])
-      end, Defaults, Options).
+merge_opts(Opts1, Opts2) ->
+    squash_opts(Opts1 ++ Opts2).
+
+squash_opts([{Name, Value} | Rest]) ->
+    Overrides = proplists:get_all_values(Name, Rest),
+    Merged = lists:foldl(fun(O, V) -> merge_opt(Name, V, O) end, Value, Overrides),
+    make_opt(Name, Merged) ++ squash_opts(proplists:delete(Name, Rest));
+squash_opts([Name | Rest]) when is_atom(Name) ->
+    [Name | squash_opts([Opt || Opt <- Rest, Opt =/= Name])];
+squash_opts([]) ->
+    [].
+
+make_opt(_Name, undefined) -> [];
+make_opt(Name, Value) -> [{Name, Value}].
+
+merge_opt(ssl_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(tcp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(udp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(dtls_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
+merge_opt(_, _Opt1, Opt2) -> Opt2.
 
 %% @doc Parse option.
 parse_opt(Options) ->
@@ -353,4 +377,12 @@ with_listener({Proto, ListenOn}, Fun, Args) ->
             error(not_found);
         {LSup, Mod} ->
             erlang:apply(Mod, Fun, [LSup | Args])
+    end.
+
+with_listener_ref(ListenerRef = {Proto, ListenOn}, Fun, Args) ->
+    case esockd_sup:listener_and_module({Proto, ListenOn}) of
+        undefined ->
+            error(not_found);
+        {LSup, Mod} ->
+            erlang:apply(Mod, Fun, [ListenerRef, LSup | Args])
     end.

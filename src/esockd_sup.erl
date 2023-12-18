@@ -57,8 +57,11 @@ start_listener(Proto, ListenOn, Opts, MFA) ->
 -spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
+    ListenerRef = {Proto, ListenOn},
+    _ = esockd_server:set_listener_prop(ListenerRef, type, tcp),
+    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),    
     #{id => child_id(Proto, ListenOn),
-      start => {esockd_listener_sup, start_link, [tcp, Proto, ListenOn, Opts, MFA]},
+      start => {esockd_listener_sup, start_link, [Proto, ListenOn, MFA]},
       restart => transient,
       shutdown => infinity,
       type => supervisor,
@@ -77,8 +80,11 @@ udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
 -spec(dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
       -> supervisor:child_spec()).
 dtls_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
+    ListenerRef = {Proto, Port},
+    _ = esockd_server:set_listener_prop(ListenerRef, type, dtls),
+    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),    
     #{id => child_id(Proto, Port),
-      start => {esockd_listener_sup, start_link, [dtls, Proto, Port, Opts, MFA]},
+      start => {esockd_listener_sup, start_link, [Proto, Port, MFA]},
       restart => transient,
       shutdown => infinity,
       type => supervisor,
@@ -90,10 +96,18 @@ start_child(ChildSpec) ->
 
 -spec(stop_listener(atom(), esockd:listen_on()) -> ok | {error, term()}).
 stop_listener(Proto, ListenOn) ->
+    ListenerRef = {Proto, ListenOn},
     case match_listeners(Proto, ListenOn) of
         [] -> {error, not_found};
         Listeners ->
-            return_ok_or_error([terminate_and_delete(ChildId) || ChildId <- Listeners])
+            Results = [terminate_and_delete(ChildId) || ChildId <- Listeners],
+            case ok_or_error(Results) of
+                ok ->
+                    _ = esockd_server:erase_listener_props(ListenerRef),
+                    ok;
+                Error ->
+                    Error
+            end
     end.
 
 terminate_and_delete(ChildId) ->
@@ -129,7 +143,7 @@ restart_listener(Proto, ListenOn) ->
     case match_listeners(Proto, ListenOn) of
         [] -> {error, not_found};
         Listeners ->
-            return_ok_or_error([terminate_and_restart(ChildId) || ChildId <- Listeners])
+            ok_or_error([terminate_and_restart(ChildId) || ChildId <- Listeners])
     end.
 
 terminate_and_restart(ChildId) ->
@@ -152,12 +166,12 @@ match_listener(_Proto, _ListenOn, _ChildId) ->
 child_id(Proto, ListenOn) ->
     {listener_sup, {Proto, ListenOn}}.
 
-return_ok_or_error([]) -> ok;
-return_ok_or_error([ok|Results]) ->
-    return_ok_or_error(Results);
-return_ok_or_error([{ok, _Pid}|Results]) ->
-    return_ok_or_error(Results);
-return_ok_or_error([{error, Reason}|_]) ->
+ok_or_error([]) -> ok;
+ok_or_error([ok|Results]) ->
+    ok_or_error(Results);
+ok_or_error([{ok, _Pid}|Results]) ->
+    ok_or_error(Results);
+ok_or_error([{error, Reason}|_]) ->
     {error, Reason}.
 
 %%--------------------------------------------------------------------
