@@ -268,7 +268,7 @@ get_options({Proto, ListenOn}) when is_atom(Proto) ->
 %% If some options could not be set, either because they are not applicable or
 %% because they require a listener restart, function returns an error.
 -spec set_options({atom(), listen_on()}, options()) ->
-    {ok, options()} | {error, _TODO}.
+    ok | {error, not_supported | _UpdateErrorReason}.
 set_options({Proto, ListenOn}, Options) when is_atom(Proto) ->
     with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, [Options]).
 
