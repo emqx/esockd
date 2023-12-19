@@ -22,7 +22,7 @@
 
 -export([child_id/2]).
 
--export([ start_listener/4
+-export([ start_child/1
         , stop_listener/2
         , restart_listener/2
         ]).
@@ -32,10 +32,9 @@
         , listener_and_module/1
         ]).
 
--export([ child_spec/4
-        , udp_child_spec/4
-        , dtls_child_spec/4
-        , start_child/1
+-export([ child_spec/3
+        , udp_child_spec/3
+        , dtls_child_spec/3
         ]).
 
 %% supervisor callback
@@ -49,42 +48,37 @@
 start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
--spec(start_listener(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
-      -> {ok, pid()} | {error, term()}).
-start_listener(Proto, ListenOn, Opts, MFA) ->
-    start_child(child_spec(Proto, ListenOn, Opts, MFA)).
-
--spec(child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
-      -> supervisor:child_spec()).
-child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
+-spec child_spec(atom(), esockd:listen_on(), [esockd:option()])
+      -> supervisor:child_spec().
+child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
     ListenerRef = {Proto, ListenOn},
     _ = esockd_server:set_listener_prop(ListenerRef, type, tcp),
     _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),    
     #{id => child_id(Proto, ListenOn),
-      start => {esockd_listener_sup, start_link, [Proto, ListenOn, MFA]},
+      start => {esockd_listener_sup, start_link, [Proto, ListenOn]},
       restart => transient,
       shutdown => infinity,
       type => supervisor,
       modules => [esockd_listener_sup]}.
 
--spec(udp_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
-      -> supervisor:child_spec()).
-udp_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
+-spec udp_child_spec(atom(), esockd:listen_on(), [esockd:option()])
+      -> supervisor:child_spec().
+udp_child_spec(Proto, Port, Opts) when is_atom(Proto) ->
     #{id => child_id(Proto, Port),
-      start => {esockd_udp, server, [Proto, Port, Opts, MFA]},
+      start => {esockd_udp, server, [Proto, Port, Opts]},
       restart => transient,
       shutdown => 5000,
       type => worker,
       modules => [esockd_udp]}.
 
--spec(dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
-      -> supervisor:child_spec()).
-dtls_child_spec(Proto, Port, Opts, MFA) when is_atom(Proto) ->
+-spec dtls_child_spec(atom(), esockd:listen_on(), [esockd:option()])
+      -> supervisor:child_spec().
+dtls_child_spec(Proto, Port, Opts) when is_atom(Proto) ->
     ListenerRef = {Proto, Port},
     _ = esockd_server:set_listener_prop(ListenerRef, type, dtls),
     _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),    
     #{id => child_id(Proto, Port),
-      start => {esockd_listener_sup, start_link, [Proto, Port, MFA]},
+      start => {esockd_listener_sup, start_link, [Proto, Port]},
       restart => transient,
       shutdown => infinity,
       type => supervisor,

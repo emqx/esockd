@@ -18,9 +18,9 @@
 
 -behaviour(gen_server).
 
--import(proplists, [get_value/3]).
+-import(proplists, [get_value/3, get_value/2]).
 
--export([start_link/2, start_supervised/2, stop/1]).
+-export([start_link/1, start_supervised/1, stop/1]).
 
 -export([ start_connection/3
         , count_connections/1
@@ -67,16 +67,16 @@
         error_logger:error_msg("[~s] " ++ Format, [?MODULE | Args])).
 
 %% @doc Start connection supervisor.
--spec(start_link([esockd:option()], esockd:mfargs())
-      -> {ok, pid()} | ignore | {error, term()}).
-start_link(Opts, MFA) ->
-    gen_server:start_link(?MODULE, [Opts, MFA], []).
-
--spec start_supervised(esockd:listener_ref(), esockd:mfargs())
+-spec start_link([esockd:option()])
       -> {ok, pid()} | ignore | {error, term()}.
-start_supervised(ListenerRef, MFA) ->
+start_link(Opts) ->
+    gen_server:start_link(?MODULE, Opts, []).
+
+-spec start_supervised(esockd:listener_ref())
+      -> {ok, pid()} | ignore | {error, term()}.
+start_supervised(ListenerRef) ->
     Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    case start_link(Opts, MFA) of
+    case start_link(Opts) of
         {ok, Pid} ->
             _ = esockd_server:set_listener_prop(ListenerRef, connection_sup, Pid),
             {ok, Pid};
@@ -113,14 +113,10 @@ start_connection(Sup, Sock, UpgradeFuns) ->
     end.
 
 %% @doc Start the connection process.
--spec(start_connection_proc(esockd:mfargs(), esockd_transport:socket())
-      -> {ok, pid()} | ignore | {error, term()}).
-start_connection_proc(M, Sock) when is_atom(M) ->
-    M:start_link(?TRANSPORT, Sock);
-start_connection_proc({M, F}, Sock) when is_atom(M), is_atom(F) ->
-    M:F(?TRANSPORT, Sock);
-start_connection_proc({M, F, Args}, Sock) when is_atom(M), is_atom(F), is_list(Args) ->
-    erlang:apply(M, F, [?TRANSPORT, Sock | Args]).
+-spec start_connection_proc(esockd:mfargs(), esockd_transport:socket())
+      -> {ok, pid()} | ignore | {error, term()}.
+start_connection_proc(MFA, Sock) ->
+    esockd:start_mfargs(MFA, ?TRANSPORT, Sock).
 
 -spec(count_connections(pid()) -> integer()).
 count_connections(Sup) ->
@@ -150,12 +146,13 @@ call(Sup, Req) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init([Opts, MFA]) ->
+init(Opts) ->
     process_flag(trap_exit, true),
     Shutdown = get_value(shutdown, Opts, brutal_kill),
     MaxConns = get_value(max_connections, Opts, ?DEFAULT_MAX_CONNS),
     RawRules = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
+    MFA = get_value(connection_mfargs, Opts),
     {ok, #state{curr_connections = #{},
                 max_connections  = MaxConns,
                 access_rules     = AccessRules,
@@ -218,7 +215,8 @@ handle_call(get_options, _From, State) ->
     Options = [
         {shutdown, get_state_option(shutdown, State)},
         {max_connections, get_state_option(max_connections, State)},
-        {access_rules, get_state_option(access_rules, State)}
+        {access_rules, get_state_option(access_rules, State)},
+        {connection_mfargs, get_state_option(connection_mfargs, State)}
     ],
     {reply, Options, State};
 
@@ -280,7 +278,9 @@ get_state_option(max_connections, #state{max_connections = MaxConnections}) ->
 get_state_option(shutdown, #state{shutdown = Shutdown}) ->
     Shutdown;
 get_state_option(access_rules, #state{access_rules = Rules}) ->
-    [raw(Rule) || Rule <- Rules].
+    [raw(Rule) || Rule <- Rules];
+get_state_option(connection_mfargs, #state{mfargs = MFA}) ->
+    MFA.
 
 set_state_option({max_connections, MaxConns}, State) ->
     State#state{max_connections = MaxConns};
@@ -293,6 +293,8 @@ set_state_option({access_rules, Rules}, State) ->
     catch
         error:_Reason -> {error, bad_access_rules}
     end;
+set_state_option({connection_mfargs, MFA}, State) ->
+    State#state{mfargs = MFA};
 set_state_option(_, State) ->
     State.
 

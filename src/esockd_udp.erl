@@ -20,7 +20,7 @@
 
 -import(esockd_listener_sup, [conn_rate_limiter/1, conn_limiter_opts/2, conn_limiter_opt/2]).
 
--export([ server/4
+-export([ server/3
         , count_peers/1
         , stop/1
         ]).
@@ -79,10 +79,10 @@
 %% API
 %%--------------------------------------------------------------------
 
--spec(server(atom(), esockd:listen_on(), [gen_udp:option()], mfa())
+-spec(server(atom(), esockd:listen_on(), [esockd:option()])
       -> {ok, pid()} | {error, term()}).
-server(Proto, ListenOn, Opts, MFA) ->
-    gen_server:start_link(?MODULE, [Proto, ListenOn, Opts, MFA], []).
+server(Proto, ListenOn, Opts) ->
+    gen_server:start_link(?MODULE, [Proto, ListenOn, Opts], []).
 
 resolve_addr(Port, SockOpts) when is_integer(Port) ->
     SockOpts;
@@ -153,10 +153,11 @@ deny(Pid, CIDR) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init([Proto, ListenOn, Opts, MFA]) ->
+init([Proto, ListenOn, Opts]) ->
     process_flag(trap_exit, true),
     put(incoming_peers, 0),
 
+    MFA = proplists:get_value(connection_mfargs, Opts),
     RawRules = proplists:get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
 
@@ -346,8 +347,8 @@ should_throttle(#state{max_peers = infinity}) -> false;
 should_throttle(#state{max_peers = MaxLimit, peers = Peers}) ->
     (maps:size(Peers) div 2) > MaxLimit.
 
-start_channel(Transport, Peer, #state{mfa = {M, F, Args}}) ->
-    erlang:apply(M, F, [Transport, Peer | Args]).
+start_channel(Transport, Peer, #state{mfa = MFA}) ->
+    esockd:start_mfargs(MFA, Transport, Peer).
 
 activate_sock(State = #state{sock = Sock}) ->
     ok = inet:setopts(Sock, [{active, ?ACTIVE_N}]), State.
