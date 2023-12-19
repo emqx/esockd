@@ -21,18 +21,26 @@
 -export([start/0]).
 
 %% Core API
--export([ open/4
-        , open_udp/4
-        , open_dtls/4
+-export([ open/3
+        , open_udp/3
+        , open_dtls/3
         , close/2
         , close/1
+        %% Legacy API
+        , open/4
+        , open_udp/4
+        , open_dtls/4
         ]).
 
 -export([ reopen/1
         , reopen/2
         ]).
 
--export([ child_spec/4
+-export([ child_spec/3
+        , udp_child_spec/3
+        , dtls_child_spec/3
+        %% Legacy API
+        , child_spec/4
         , udp_child_spec/4
         , dtls_child_spec/4
         ]).
@@ -67,6 +75,7 @@
 -export([ merge_opts/2
         , changed_opts/2
         , parse_opt/1
+        , start_mfargs/3
         , ulimit/0
         , fixaddr/1
         , to_string/1
@@ -95,6 +104,7 @@
 -type(option() :: {acceptors, pos_integer()}
                 | {max_connections, pos_integer()}
                 | {max_conn_rate, conn_limit()}
+                | {connection_mfargs, mfargs()}
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}
                 | tune_buffer | {tune_buffer, boolean()}
@@ -126,35 +136,51 @@ start() ->
 %% Open & Close
 
 %% @doc Open a TCP or SSL listener
--spec(open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, term()}).
-open(Proto, Port, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
-	esockd_sup:start_listener(Proto, Port, Opts, MFA);
-open(Proto, {Host, Port}, Opts, MFA) when is_atom(Proto), is_integer(Port) ->
+-spec open(atom(), listen_on(), options()) -> {ok, pid()} | {error, term()}.
+open(Proto, Port, Opts) when is_atom(Proto), is_integer(Port) ->
+	esockd_sup:start_child(child_spec(Proto, Port, Opts));
+open(Proto, {Host, Port}, Opts) when is_atom(Proto), is_integer(Port) ->
     {IPAddr, _Port} = fixaddr({Host, Port}),
     case proplists:get_value(ip, tcp_options(Opts)) of
         undefined -> ok;
         IPAddr    -> ok;
         Other     -> error({badmatch, Other})
     end,
-	esockd_sup:start_listener(Proto, {IPAddr, Port}, Opts, MFA).
+	esockd_sup:start_child(child_spec(Proto, {IPAddr, Port}, Opts)).
 
 %% @private
 tcp_options(Opts) ->
     proplists:get_value(tcp_options, Opts, []).
 
+%% @doc Open a TCP or SSL listener
+-spec open(atom(), listen_on(), [option()], mfargs()) -> {ok, pid()} | {error, term()}.
+open(Proto, Port, Opts, MFA) ->
+	open(Proto, Port, merge_mfargs(Opts, MFA)).
+
 %% @doc Open a UDP listener
--spec(open_udp(atom(), listen_on(), [option()], mfargs())
-     -> {ok, pid()}
-      | {error, term()}).
+-spec open_udp(atom(), listen_on(), [option()])
+      -> {ok, pid()} | {error, term()}.
+open_udp(Proto, Port, Opts) ->
+    esockd_sup:start_child(udp_child_spec(Proto, Port, Opts)).
+
+%% @doc Open a UDP listener
+-spec open_udp(atom(), listen_on(), [option()], mfargs())
+      -> {ok, pid()} | {error, term()}.
 open_udp(Proto, Port, Opts, MFA) ->
-    esockd_sup:start_child(udp_child_spec(Proto, Port, Opts, MFA)).
+    open_udp(Proto, Port, merge_mfargs(Opts, MFA)).
+
+%% @doc Open a DTLS listener
+-spec open_dtls(atom(), listen_on(), options())
+      -> {ok, pid()} | {error, term()}.
+open_dtls(Proto, ListenOn, Opts) ->
+    esockd_sup:start_child(dtls_child_spec(Proto, ListenOn, Opts)).
 
 %% @doc Open a DTLS listener
 -spec(open_dtls(atom(), listen_on(), options(), mfargs())
      -> {ok, pid()}
       | {error, term()}).
 open_dtls(Proto, ListenOn, Opts, MFA) ->
-    esockd_sup:start_child(dtls_child_spec(Proto, ListenOn, Opts, MFA)).
+    open_dtls(Proto, ListenOn, merge_mfargs(Opts, MFA)).
 
 %% @doc Close the listener
 -spec(close({atom(), listen_on()}) -> ok | {error, term()}).
@@ -179,22 +205,42 @@ reopen(Proto, ListenOn) when is_atom(Proto) ->
 
 %% @doc Create a Child spec for a TCP/SSL Listener. It is a convenient method
 %% for creating a Child spec to hang on another Application supervisor.
--spec(child_spec(atom(), listen_on(), [option()], mfargs())
-      -> supervisor:child_spec()).
+-spec child_spec(atom(), listen_on(), options())
+      -> supervisor:child_spec().
+child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
+    esockd_sup:child_spec(Proto, fixaddr(ListenOn), Opts).
+
+-spec child_spec(atom(), listen_on(), options(), mfargs())
+      -> supervisor:child_spec().
 child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
-    esockd_sup:child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
+    child_spec(Proto, ListenOn, merge_mfargs(Opts, MFA)).
 
 %% @doc Create a Child spec for a UDP Listener.
--spec(udp_child_spec(atom(), listen_on(), options(), mfargs())
-     -> supervisor:child_spec()).
+-spec udp_child_spec(atom(), listen_on(), options())
+     -> supervisor:child_spec().
+udp_child_spec(Proto, Port, Opts) ->
+    esockd_sup:udp_child_spec(Proto, fixaddr(Port), Opts).
+
+%% @doc Create a Child spec for a UDP Listener.
+-spec udp_child_spec(atom(), listen_on(), options(), mfargs())
+     -> supervisor:child_spec().
 udp_child_spec(Proto, Port, Opts, MFA) ->
-    esockd_sup:udp_child_spec(Proto, fixaddr(Port), Opts, MFA).
+    udp_child_spec(Proto, Port, merge_mfargs(Opts, MFA)).
 
 %% @doc Create a Child spec for a DTLS Listener.
--spec(dtls_child_spec(atom(), listen_on(), options(), mfargs())
-     -> supervisor:child_spec()).
+-spec dtls_child_spec(atom(), listen_on(), options())
+     -> supervisor:child_spec().
+dtls_child_spec(Proto, ListenOn, Opts) ->
+    esockd_sup:dtls_child_spec(Proto, fixaddr(ListenOn), Opts).
+
+%% @doc Create a Child spec for a DTLS Listener.
+-spec dtls_child_spec(atom(), listen_on(), options(), mfargs())
+     -> supervisor:child_spec().
 dtls_child_spec(Proto, ListenOn, Opts, MFA) ->
-    esockd_sup:dtls_child_spec(Proto, fixaddr(ListenOn), Opts, MFA).
+    dtls_child_spec(Proto, ListenOn, merge_mfargs(Opts, MFA)).
+
+merge_mfargs(Opts, MFA) ->
+    [{connection_mfargs, MFA} | proplists:delete(connection_mfargs, Opts)].
 
 %%--------------------------------------------------------------------
 %% Get/Set APIs
@@ -278,6 +324,14 @@ deny({Proto, ListenOn}, CIDR) when is_atom(Proto) ->
 
 %%--------------------------------------------------------------------
 %% Utils
+
+-spec start_mfargs(mfargs(), _Arg1, _Arg2) -> _Ret.
+start_mfargs(M, A1, A2) when is_atom(M) ->
+    M:start_link(A1, A2);
+start_mfargs({M, F}, A1, A2) when is_atom(M), is_atom(F) ->
+    M:F(A1, A2);
+start_mfargs({M, F, Args}, A1, A2) when is_atom(M), is_atom(F), is_list(Args) ->
+    erlang:apply(M, F, [A1, A2 | Args]).
 
 %% @doc Merge two options
 -spec(merge_opts(proplists:proplist(), proplists:proplist())

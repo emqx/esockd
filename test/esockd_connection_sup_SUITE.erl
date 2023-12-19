@@ -114,7 +114,7 @@ t_handle_unexpected(_) ->
     {noreply, state} = esockd_connection_sup:handle_info(info, state).
 
 with_conn_sup(Opts, Fun) ->
-    {ok, ConnSup} = esockd_connection_sup:start_link(Opts, {echo_server, start_link, []}),
+    {ok, ConnSup} = esockd_connection_sup:start_link([{connection_mfargs, echo_server} | Opts]),
     Fun(ConnSup),
     ok = esockd_connection_sup:stop(ConnSup).
 

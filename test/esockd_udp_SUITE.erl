@@ -68,8 +68,11 @@ udp_send_and_recv(Sock, Port, Data) ->
     ok.
 
 with_udp_server(TestFun) ->
-    MFA = {?MODULE, udp_echo_init, []},
-    {ok, Srv} = esockd_udp:server(test, {{127,0,0,1}, 6000}, [], MFA),
+    dbg:tracer(),
+    dbg:p(all, c),
+    dbg:tpl({emqx_connection_sup, '_', '_'}, x),
+    MFA = {?MODULE, udp_echo_init},
+    {ok, Srv} = esockd_udp:server(test, {{127,0,0,1}, 6000}, [{connection_mfargs, MFA}]),
     TestFun(Srv, 6000),
     ok = esockd_udp:stop(Srv).
 

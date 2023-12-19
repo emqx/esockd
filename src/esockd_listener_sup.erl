@@ -20,8 +20,7 @@
 
 -include("esockd.hrl").
 
--export([ start_link/5
-        , start_link/3
+-export([ start_link/2
         , listener/1
         , acceptor_sup/1
         , connection_sup/1
@@ -56,30 +55,16 @@
         , start_acceptors/1
         ]).
 
--type listen_type() :: tcp | dtls.
-
 %%--------------------------------------------------------------------
 %% APIs
 %%--------------------------------------------------------------------
 
 %% @doc Start listener supervisor
--spec start_link(listen_type(), atom(), esockd:listen_on(), [esockd:option()], esockd:mfargs())
+-spec start_link(atom(), esockd:listen_on())
       -> {ok, pid()} | {error, term()}.
-start_link(Type, Proto, ListenOn, Opts, MFA) ->
-    %% NOTE
-    %% `Opts` are still part of the childspec, which means if whole listener supervisor
-    %% restarts, any changes done through `set_options` will be lost.
+start_link(Proto, ListenOn) ->
     ListenerRef = {Proto, ListenOn},
-    _ = esockd_server:set_listener_prop(ListenerRef, type, Type),
-    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),
-    supervisor:start_link(?MODULE, {ListenerRef, MFA}).
-
-%% @doc Start listener supervisor
--spec start_link(atom(), esockd:listen_on(), esockd:mfargs())
-      -> {ok, pid()} | {error, term()}.
-start_link(Proto, ListenOn, MFA) ->
-    ListenerRef = {Proto, ListenOn},
-    supervisor:start_link(?MODULE, {ListenerRef, MFA}).
+    supervisor:start_link(?MODULE, ListenerRef).
 
 %% @doc Get listener.
 -spec(listener(pid()) -> {module(), pid()}).
@@ -181,9 +166,9 @@ deny(Sup, CIDR) ->
 %% Supervisor callbacks
 %%--------------------------------------------------------------------
 
-init({ListenerRef, MFA}) ->
+init(ListenerRef) ->
     ConnSup = #{id => connection_sup,
-                start => {esockd_connection_sup, start_supervised, [ListenerRef, MFA]},
+                start => {esockd_connection_sup, start_supervised, [ListenerRef]},
                 restart => transient,
                 shutdown => infinity,
                 type => supervisor,
