@@ -287,6 +287,11 @@ handle_info({udp_passive, Sock}, State = #state{sock = Sock, rate_limit = Rl}) -
              end,
     {noreply, NState, hibernate};
 
+handle_info({udp_error, _Sock, Reason}, State) ->
+    {stop, {udp_error, Reason}, State};
+handle_info({udp_closed, _Sock}, State) ->
+    {stop, udp_closed, State};
+
 handle_info({timeout, TRef, activate_sock}, State = #state{limit_timer = TRef}) ->
     NState = State#state{limit_timer = undefined},
     {noreply, activate_sock(NState)};
