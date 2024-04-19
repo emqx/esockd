@@ -255,7 +255,7 @@ handle_info({udp, Sock, IP, InPortNo, Packet},
                                        [esockd:format(Peer)]),
                             {noreply, State};
                         {ok, Pid} ->
-                            _Ref = erlang:monitor(process, Pid),
+                            true = erlang:link(Pid),
                             Pid ! {datagram, self(), Packet},
                             {noreply, store_peer(Peer, Pid, State)};
                         {error, Reason} ->
@@ -286,6 +286,11 @@ handle_info({udp_passive, Sock}, State = #state{sock = Sock, rate_limit = Rl}) -
                      State#state{rate_limit = Rl1, limit_timer = TRef}
              end,
     {noreply, NState, hibernate};
+
+handle_info({udp_error, Sock, Reason}, State = #state{sock = Sock}) ->
+  {stop, {udp_error, Reason}, State};
+handle_info({udp_closed, Sock}, State = #state{sock = Sock}) ->
+  {stop, udp_closed, State};
 
 handle_info({timeout, TRef, activate_sock}, State = #state{limit_timer = TRef}) ->
     NState = State#state{limit_timer = undefined},

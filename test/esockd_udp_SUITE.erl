@@ -20,6 +20,9 @@
 -compile(nowarn_export_all).
 
 -include_lib("eunit/include/eunit.hrl").
+-record(state, {proto, sock, port, rate_limit,
+  conn_limiter, limit_timer, max_peers,
+  peers, options, access_rules, mfa}).
 
 all() -> esockd_ct:all(?MODULE).
 
@@ -62,6 +65,29 @@ t_peer_down(_) ->
               ?assertEqual(0, esockd_udp:count_peers(Srv))
       end).
 
+t_udp_error(_) ->
+  with_udp_server(
+    fun(Srv, Port) ->
+      process_flag(trap_exit, true),
+      {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+      ok = udp_send_and_recv(Sock, Port, <<"hello">>),
+      ?assertEqual(1, esockd_udp:count_peers(Srv)),
+      #state{sock = SrvSock, peers = Peers} = sys:get_state(Srv),
+      ?assertEqual(2, maps:size(Peers)),
+      erlang:send(Srv, {udp_error, SrvSock, unknown}),
+      receive
+        Msg ->
+          ?assertMatch({'EXIT', _, {udp_error,unknown}}, Msg)
+      after 1000 ->
+        throw(udp_error_timeout)
+      end,
+      ?assertEqual(false, erlang:is_process_alive(Srv)),
+      maps:foreach(fun(K, V) ->
+        ?assertNot(is_pid(K) andalso erlang:is_process_alive(K)),
+        ?assertNot(is_pid(V) andalso erlang:is_process_alive(V))
+                   end, Peers)
+    end).
+
 udp_send_and_recv(Sock, Port, Data) ->
     ok = gen_udp:send(Sock, {127,0,0,1}, Port, Data),
     {ok, {_Addr, Port, Data}} = gen_udp:recv(Sock, 0),
@@ -74,7 +100,7 @@ with_udp_server(TestFun) ->
     MFA = {?MODULE, udp_echo_init},
     {ok, Srv} = esockd_udp:server(test, {{127,0,0,1}, 6000}, [{connection_mfargs, MFA}]),
     TestFun(Srv, 6000),
-    ok = esockd_udp:stop(Srv).
+    is_process_alive(Srv) andalso (ok = esockd_udp:stop(Srv)).
 
 udp_echo_init(Transport, Peer) ->
     {ok, spawn(fun() -> udp_echo_loop(Transport, Peer) end)}.
@@ -95,8 +121,7 @@ t_handle_cast(_) ->
     {noreply, state} = esockd_udp:handle_cast(msg, state).
 
 t_handle_info(_) ->
-    {noreply, state} = esockd_udp:handle_info(info, state).
+  {noreply, state} = esockd_udp:handle_info(info, state).
 
 t_code_change(_) ->
     {ok, state} = esockd_udp:code_change(oldvsn, state, extra).
-
