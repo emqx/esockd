@@ -1,0 +1,43 @@
+@startuml
+skinparam dpi 300
+left to right direction
+
+frame client {
+      card clinet1
+      card client2
+      card client3
+}
+
+frame proxy {
+      label "proxy converts the udp connection\nto long connection in the application"
+      agent proxy1
+      agent proxy2
+      agent proxy3
+}
+
+frame connection {
+      card connection1
+      card connection2
+      card connection3
+}
+
+clinet1 .[#red].> proxy1
+client2 .[#blue].> proxy1
+client3 ..> proxy2
+client3 ..> proxy3
+
+proxy1 -[#red]-> connection1 : client1
+proxy1 -[#blue]-> connection2 : client2
+proxy2 --> connection3 : client3
+proxy3 --> connection3 : client3
+
+note bottom of proxy1
+different clients use the same UDP channel,e.g NAT, the proxy will first disconnect the existing connection and then connect to the new one
+endnote
+
+
+note right of proxy
+proxy2 and proxy3 are multiple channels used by a client,e.g LB
+endnote
+
+@enduml
