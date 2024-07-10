@@ -53,7 +53,7 @@ start_link() ->
 child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
     ListenerRef = {Proto, ListenOn},
     _ = esockd_server:set_listener_prop(ListenerRef, type, tcp),
-    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),    
+    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),
     #{id => child_id(Proto, ListenOn),
       start => {esockd_listener_sup, start_link, [Proto, ListenOn]},
       restart => transient,
@@ -76,7 +76,7 @@ udp_child_spec(Proto, Port, Opts) when is_atom(Proto) ->
 dtls_child_spec(Proto, Port, Opts) when is_atom(Proto) ->
     ListenerRef = {Proto, Port},
     _ = esockd_server:set_listener_prop(ListenerRef, type, dtls),
-    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),    
+    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),
     #{id => child_id(Proto, Port),
       start => {esockd_listener_sup, start_link, [Proto, Port]},
       restart => transient,
@@ -191,5 +191,11 @@ init([]) ->
                type => worker,
                modules => [esockd_server]
               },
-    {ok, {SupFlags, [Limiter, Server]}}.
-
+    ProxyDB = #{id => esockd_udp_proxy_db,
+                start => {esockd_udp_proxy_db, start_link, []},
+                restart => permanent,
+                shutdown => 5000,
+                type => worker,
+                modules => [esockd_udp_proxy_db]
+               },
+    {ok, {SupFlags, [Limiter, Server, ProxyDB]}}.
