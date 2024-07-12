@@ -53,6 +53,8 @@
         , code_change/3
         ]).
 
+-export([proxy_request/1]).
+
 -type(maybe(T) :: undefined | T).
 
 -record(state, {
@@ -105,6 +107,10 @@ count_peers(Pid) ->
 
 -spec(stop(pid()) -> ok).
 stop(Pid) -> gen_server:stop(Pid).
+
+proxy_request(Fun) ->
+    Parent = gen:get_parent(),
+    gen_server:call(Parent, {?FUNCTION_NAME, Fun}, infinity).
 
 %%--------------------------------------------------------------------
 %% GET/SET APIs
@@ -232,6 +238,10 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
 handle_call(which_children, _From, State = #state{peers = Peers, mfa = {Mod, _Func, _Args}}) ->
      {reply, [{undefined, Pid, worker, [Mod]}
               || Pid <- maps:keys(Peers), is_pid(Pid), erlang:is_process_alive(Pid)], State};
+
+handle_call({proxy_request, Fun}, _From, State) ->
+    Result = Fun(),
+    {reply, Result, State};
 
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("Unexpected call: ~p", [Req]),
