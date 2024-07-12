@@ -22,7 +22,7 @@
 -include_lib("eunit/include/eunit.hrl").
 -record(state, {proto, sock, port, rate_limit,
   conn_limiter, limit_timer, max_peers,
-  peers, options, access_rules, mfa}).
+  peers, options, access_rules, mfa, health_check_request, health_check_reply}).
 
 all() -> esockd_ct:all(?MODULE).
 
@@ -88,17 +88,33 @@ t_udp_error(_) ->
                    end, Peers)
     end).
 
+t_health_check(_) ->
+    with_udp_server(fun(_Srv, Port) ->
+                            {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+                            ok = udp_send_and_recv(Sock, Port, <<"hello">>),
+                           ok = udp_send_and_recv(Sock, Port, <<"request">>, <<"reply">>)
+                    end,
+                    [{health_check, #{request => <<"request">>, reply => <<"reply">>}}]).
+
 udp_send_and_recv(Sock, Port, Data) ->
-    ok = gen_udp:send(Sock, {127,0,0,1}, Port, Data),
-    {ok, {_Addr, Port, Data}} = gen_udp:recv(Sock, 0),
+    udp_send_and_recv(Sock, Port, Data, Data).
+
+udp_send_and_recv(Sock, Port, Send, Recv) ->
+    ok = gen_udp:send(Sock, {127,0,0,1}, Port, Send),
+    {ok, {_Addr, Port, Recv}} = gen_udp:recv(Sock, 0),
     ok.
 
 with_udp_server(TestFun) ->
+    with_udp_server(TestFun, []).
+
+with_udp_server(TestFun, ExtraOpts) ->
     dbg:tracer(),
     dbg:p(all, c),
     dbg:tpl({emqx_connection_sup, '_', '_'}, x),
     MFA = {?MODULE, udp_echo_init},
-    {ok, Srv} = esockd_udp:server(test, {{127,0,0,1}, 6000}, [{connection_mfargs, MFA}]),
+    {ok, Srv} = esockd_udp:server(test,
+                                  {{127,0,0,1}, 6000},
+                                  [{connection_mfargs, MFA}] ++ ExtraOpts),
     TestFun(Srv, 6000),
     is_process_alive(Srv) andalso (ok = esockd_udp:stop(Srv)).
 

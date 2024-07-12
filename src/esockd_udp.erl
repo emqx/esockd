@@ -66,7 +66,9 @@
           peers        :: map(),
           options      :: [esockd:option()],
           access_rules :: list(),
-          mfa          :: esockd:mfargs()
+          mfa          :: esockd:mfargs(),
+          health_check_request :: maybe(binary()),
+          health_check_reply :: maybe(binary())
          }).
 
 -define(ACTIVE_N, 100).
@@ -169,15 +171,16 @@ init([Proto, ListenOn, Opts]) ->
             ok = inet:setopts(Sock, [{active, 1}]),
             Limiter = conn_rate_limiter(conn_limiter_opts(Opts, {listener, Proto, ListenOn})),
             MaxPeers = proplists:get_value(max_connections, Opts, infinity),
-            {ok, #state{proto = Proto,
-                        sock = Sock,
-                        port = Port,
-                        max_peers = MaxPeers,
-                        peers = #{},
-                        access_rules = AccessRules,
-                        conn_limiter = Limiter,
-                        options = Opts,
-                        mfa = MFA}};
+            init_health_check(#state{proto = Proto,
+                                     sock = Sock,
+                                     port = Port,
+                                     max_peers = MaxPeers,
+                                     peers = #{},
+                                     access_rules = AccessRules,
+                                     conn_limiter = Limiter,
+                                     options = Opts,
+                                     mfa = MFA},
+                              Opts);
         {error, Reason} ->
             {stop, Reason}
     end.
@@ -238,6 +241,17 @@ handle_cast(Msg, State) ->
     ?ERROR_MSG("Unexpected cast: ~p", [Msg]),
     {noreply, State}.
 
+handle_info({udp, Sock, IP, Port, Request},
+            State = #state{sock = Sock,
+                           health_check_request = Request,
+                           health_check_reply = Reply}) ->
+    case gen_udp:send(Sock, IP, Port, Reply) of
+        ok -> ok;
+        {error, Reason} ->
+            ?ERROR_MSG("Health check response to: ~s failed, reason: ~s",
+                       [esockd:format({IP, Port}), Reason])
+    end,
+    {noreply, State};
 handle_info({udp, Sock, IP, InPortNo, Packet},
             State = #state{sock = Sock, peers = Peers, access_rules = Rules}) ->
     case maps:find(Peer = {IP, InPortNo}, Peers) of
@@ -370,3 +384,13 @@ raw({deny, CIDR = {_Start, _End, _Len}}) ->
      {deny, esockd_cidr:to_string(CIDR)};
 raw(Rule) ->
      Rule.
+
+init_health_check(State, Opts) ->
+    case proplists:get_value(health_check, Opts) of
+        #{request := Request, reply := Reply} when is_binary(Request), is_binary(Reply) ->
+            {ok, State#state{health_check_request = Request, health_check_reply = Reply}};
+        undefined ->
+            {ok, State};
+        Any ->
+            {error, {invalid_health_check_data, Any}}
+    end.
