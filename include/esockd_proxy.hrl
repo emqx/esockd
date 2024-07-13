@@ -48,6 +48,7 @@
 -type get_connection_id_result() ::
     %% send decoded packet
     {ok, connection_id(), connection_packet(), connection_state()}
+    | {error, binary()}
     | invalid.
 
 -type connection_options() :: #{

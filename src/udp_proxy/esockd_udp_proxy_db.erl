@@ -23,10 +23,8 @@
 %% API
 -export([
     start_link/0,
-    insert/3,
     attach/2,
-    detach/2,
-    lookup/2
+    detach/2
 ]).
 
 %% gen_server callbacks
@@ -42,14 +40,11 @@
 
 -record(connection, {
     id :: ?ID(connection_module(), connection_id()),
-    %% the connection pid
-    pid :: pid(),
     %% Reference Counter
-    count :: non_neg_integer()
+    proxy :: pid()
 }).
 
 -define(TAB, esockd_udp_proxy_db).
--define(MINIMUM_VAL, -2147483647).
 
 %%--------------------------------------------------------------------
 %%- API
@@ -58,42 +53,27 @@
 start_link() ->
     gen_server:start_link({local, ?MODULE}, ?MODULE, [], []).
 
--spec insert(connection_module(), connection_id(), pid()) -> boolean().
-insert(Mod, CId, Pid) ->
-    ets:insert_new(?TAB, #connection{
-        id = ?ID(Mod, CId),
-        pid = Pid,
-        count = 0
-    }).
-
--spec attach(connection_module(), connection_id()) -> integer().
+-spec attach(connection_module(), connection_id()) -> true.
 attach(Mod, CId) ->
-    ets:update_counter(?TAB, ?ID(Mod, CId), {#connection.count, 1}).
+    ID = ?ID(Mod, CId),
+    case ets:lookup(?TAB, ID) of
+        [] ->
+            ok;
+        [#connection{proxy = ProxyId}] ->
+            esockd_udp_proxy:takeover(ProxyId, CId)
+    end,
+    ets:insert(?TAB, #connection{id = ID, proxy = self()}).
 
--spec detach(connection_module(), connection_id()) -> {Clear :: true, connection_state()} | false.
+-spec detach(connection_module(), connection_id()) -> boolean().
 detach(Mod, CId) ->
-    Id = ?ID(Mod, CId),
-    RC = ets:update_counter(?TAB, Id, {#connection.count, -1, 0, ?MINIMUM_VAL}),
-    if
-        RC < 0 ->
-            case ets:lookup(?TAB, Id) of
-                [#connection{pid = Pid}] ->
-                    ets:delete(?TAB, Id),
-                    {true, Pid};
-                _ ->
-                    false
-            end;
-        true ->
-            false
-    end.
-
--spec lookup(connection_module(), connection_id()) -> {ok, pid()} | undefined.
-lookup(Mod, CId) ->
-    case ets:lookup(?TAB, ?ID(Mod, CId)) of
-        [#connection{pid = Pid}] ->
-            {ok, Pid};
+    ProxyId = self(),
+    ID = ?ID(Mod, CId),
+    case ets:lookup(?TAB, ID) of
+        [#connection{proxy = ProxyId}] ->
+            ets:delete(?TAB, ID),
+            true;
         _ ->
-            undefined
+            false
     end.
 
 %%--------------------------------------------------------------------

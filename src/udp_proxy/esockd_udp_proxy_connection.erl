@@ -20,7 +20,7 @@
 
 -export([
     initialize/2,
-    create/4,
+    find_or_create/5,
     get_connection_id/5,
     dispatch/4,
     close/3
@@ -34,7 +34,8 @@
 -callback initialize(connection_options()) -> connection_state().
 
 %% Create new connection
--callback create(proxy_transport(), peer(), connection_options()) -> gen_server:start_ret().
+-callback find_or_create(connection_id(), proxy_transport(), peer(), connection_options()) ->
+    gen_server:start_ret().
 
 %% Find routing information
 -callback get_connection_id(
@@ -54,8 +55,8 @@
 initialize(Mod, Opts) ->
     Mod:initialize(Opts).
 
-create(Mod, Transport, Peer, Opts) ->
-    Mod:create(Transport, Peer, Opts).
+find_or_create(Mod, CId, Transport, Peer, Opts) ->
+    Mod:find_or_create(CId, Transport, Peer, Opts).
 
 get_connection_id(Mod, Transport, Peer, State, Data) ->
     Mod:get_connection_id(Transport, Peer, State, Data).
