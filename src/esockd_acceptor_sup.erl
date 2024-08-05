@@ -126,7 +126,11 @@ ssl_upgrade_fun(Type, Opts) ->
           end,
     case proplists:get_value(Key, Opts) of
         undefined -> [];
-        SslOpts -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
+        SslOpts ->
+            %% validate ssl options and prevent the listener from starting if
+            %% validation failed
+            _ = ssl:handle_options(SslOpts, server, undefined),
+            [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
 tune_socket(Sock, []) ->

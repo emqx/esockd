@@ -404,9 +404,10 @@ t_update_tls_options(Config) ->
                               [{ssl_options, SslOpts1}, {connection_mfargs, echo_server}]),
     {ok, Sock1} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
 
-    ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, [{verify, verify_peer}]}]),
-    ?assertEqual( {error, closed}
-                , ssl:connect("localhost", LPort, ClientSslOpts, 1000)),
+    ?assertError(
+        {badmatch, _},
+        esockd:set_options({echo_tls, LPort}, [{ssl_options, [{verify, verify_peer}]}])
+    ),
 
     ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts2}]),
     {ok, Sock2} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
