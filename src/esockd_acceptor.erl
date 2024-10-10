@@ -116,10 +116,11 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
     %% Inc accepted stats.
     esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
 
-    case eval_tune_socket_fun(TuneFun, Sock) of
-        {ok, Sock} ->
+    Result = case eval_tune_socket_fun(TuneFun, Sock) of
+        {ok, _} ->
             case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
-                {ok, _Pid} -> ok;
+                {ok, _Pid} ->
+                    consume_limiter;
                 {error, enotconn} ->
                     close(Sock); %% quiet...issue #10
                 {error, einval} ->
@@ -140,8 +141,7 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
                                    [esockd:format(Sockname), Reason]),
             close(Sock)
     end,
-    rate_limit(State);
-
+    rate_limit(State, Result);
 accepting(info, {inet_async, LSock, Ref, {error, closed}},
           State = #state{lsock = LSock, accept_ref = Ref}) ->
     {stop, normal, State};
@@ -184,13 +184,16 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) -> catch port_close(Sock).
 
-rate_limit(State = #state{conn_limiter = Limiter}) ->
+rate_limit(State = #state{conn_limiter = Limiter}, consume_limiter) ->
     case esockd_limiter:consume(Limiter, 1) of
         {I, Pause} when I =< 0 ->
             {next_state, suspending, State, Pause};
         _ ->
             {keep_state, State, {next_event, internal, accept}}
-    end.
+    end;
+rate_limit(State, _NotAccepted) ->
+    %% Socket closed or error by the time when accepting it
+    {keep_state, State, {next_event, internal, accept}}.
 
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock|Args1]).
