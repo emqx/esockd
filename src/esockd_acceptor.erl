@@ -49,6 +49,10 @@
           accept_ref   :: term()
         }).
 
+%% enotconn happens when client sends TCP reset instead of FIN
+%% einval may happen for connections from haproxy check
+-define(IS_QUIET(R), (R =:= enotconn orelse R =:= einval orelse R =:= closed)).
+
 %% @doc Start an acceptor
 -spec(start_link(atom(), esockd:listen_on(), pid(),
                  esockd:sock_fun(), [esockd:sock_fun()],
@@ -116,32 +120,32 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
     %% Inc accepted stats.
     esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
 
-    case eval_tune_socket_fun(TuneFun, Sock) of
-        {ok, Sock} ->
+    Result = case eval_tune_socket_fun(TuneFun, Sock) of
+        {ok, _} ->
             case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
-                {ok, _Pid} -> ok;
-                {error, enotconn} ->
-                    close(Sock); %% quiet...issue #10
-                {error, einval} ->
-                    close(Sock); %% quiet... haproxy check
+                {ok, _Pid} ->
+                    consume_limiter;
+                {error, Reason} when ?IS_QUIET(Reason) ->
+                    {error, Reason};
                 {error, Reason} ->
                     error_logger:error_msg("Failed to start connection on ~s: ~p",
                                            [esockd:format(Sockname), Reason]),
-                    close(Sock)
-                end;
-        {error, enotconn} ->
-            close(Sock);
-        {error, einval} ->
-            close(Sock);
-        {error, closed} ->
-            close(Sock);
+                    {error, Reason}
+            end;
+        {error, Reason} when ?IS_QUIET(Reason) ->
+            {error, Reason};
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
                                    [esockd:format(Sockname), Reason]),
-            close(Sock)
+            {error, Reason}
     end,
-    rate_limit(State);
-
+    case Result of
+        {error, _} ->
+            close(Sock);
+        _ ->
+            ok
+    end,
+    rate_limit(State, Result);
 accepting(info, {inet_async, LSock, Ref, {error, closed}},
           State = #state{lsock = LSock, accept_ref = Ref}) ->
     {stop, normal, State};
@@ -184,13 +188,16 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) -> catch port_close(Sock).
 
-rate_limit(State = #state{conn_limiter = Limiter}) ->
+rate_limit(State = #state{conn_limiter = Limiter}, consume_limiter) ->
     case esockd_limiter:consume(Limiter, 1) of
         {I, Pause} when I =< 0 ->
             {next_state, suspending, State, Pause};
         _ ->
             {keep_state, State, {next_event, internal, accept}}
-    end.
+    end;
+rate_limit(State, _NotAccepted) ->
+    %% Socket closed or error by the time when accepting it
+    {keep_state, State, {next_event, internal, accept}}.
 
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock|Args1]).
