@@ -76,6 +76,7 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
 
     %% Start acceptor sup
     ok = esockd_server:init_stats({Proto, ListenOn}, accepted),
+    ok = esockd_server:init_stats({Proto, ListenOn}, limited),
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
