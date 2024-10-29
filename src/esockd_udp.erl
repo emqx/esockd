@@ -55,22 +55,22 @@
 
 -export([proxy_request/1]).
 
--type(maybe(T) :: undefined | T).
+%%-type(maybe(T) :: undefined | T).
 
 -record(state, {
           proto        :: atom(),
           sock         :: inet:socket(),
           port         :: inet:port_number(),
-          rate_limit   :: maybe(esockd_rate_limit:bucket()),
+          rate_limit   :: esockd_rate_limit:bucket() | undefined,
           conn_limiter :: esockd_generic_limiter:limiter(),
-          limit_timer  :: maybe(reference()),
+          limit_timer  :: reference() | undefined,
           max_peers    :: infinity | pos_integer(),
           peers        :: map(),
           options      :: [esockd:option()],
           access_rules :: list(),
           mfa          :: esockd:mfargs(),
-          health_check_request :: maybe(binary()),
-          health_check_reply :: maybe(binary())
+          health_check_request :: binary() | undefined,
+          health_check_reply :: binary() | undefined
          }).
 
 -define(ACTIVE_N, 100).
