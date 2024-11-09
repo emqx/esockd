@@ -201,7 +201,7 @@ handle_event(
     inet_db:register_socket(Sock, SockMod),
 
     %% Inc accepted stats.
-    esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
+    _ = esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
 
     case eval_tune_socket_fun(TuneFun, Sock) of
         {ok, Sock} ->
@@ -266,7 +266,7 @@ handle_accept_error(enotconn, _, _) ->
 handle_accept_error(einval, _, _) ->
     ok;
 handle_accept_error(overloaded, _, #state{proto = Proto, listen_on = ListenOn}) ->
-    esockd_server:inc_stats({Proto, ListenOn}, closed_overloaded, 1),
+    _ = esockd_server:inc_stats({Proto, ListenOn}, closed_overloaded, 1),
     ok;
 handle_accept_error(Reason, Msg, #state{sockname = Sockname}) ->
     logger:log(error, #{msg => Msg,
