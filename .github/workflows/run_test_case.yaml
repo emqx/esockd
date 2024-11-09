@@ -12,15 +12,15 @@ jobs:
           fail-fast: false
           matrix:
             otp:
+              - erlang:27
               - erlang:26
               - erlang:25
-              - erlang:24
 
         container:
             image: ${{ matrix.otp }}
 
         steps:
-        - uses: actions/checkout@v1
+        - uses: actions/checkout@v2
         - name: Code dialyzer
           run: |
             make xref
@@ -30,21 +30,4 @@ jobs:
             make eunit
             make ct
             make cover
-        - uses: actions/upload-artifact@v1
-          if: failure()
-          with:
-            name: logs
-            path: _build/test/logs
 
-    coveralls:
-        runs-on: ubuntu-latest
-        container:
-            image: erlang:25
-        steps:
-        - uses: actions/checkout@v1
-        - name: Coveralls
-          env:
-            GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          run: |
-            rebar3 as test do eunit,ct,cover
-            make coveralls
