@@ -253,10 +253,6 @@ consume(_Token, #{name := pause_then_allow} = Limiter) ->
 consume(_Token, #{name := no_limit} = Limiter) ->
     {ok, Limiter}.
 
-%% inspect during tests
-get_pd_counter(Tag) ->
-    get({counter, Tag}).
-
 now_ts() -> erlang:system_time(millisecond).
 
 wait_for_counter(Config, Index, Count, Timeout) ->
