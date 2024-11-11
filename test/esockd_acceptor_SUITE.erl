@@ -26,13 +26,13 @@
 -define(PORT, 30000 + ?LINE).
 -define(COUNTER_ACCPETED, 1).
 -define(COUNTER_OVERLOADED, 2).
--define(COUNTER_RATE_LIMITTED, 3).
+-define(COUNTER_RATE_LIMITED, 3).
 -define(COUNTER_OTHER_REASONS, 4).
 -define(COUNTER_LAST, 10).
 
 counter_tag_to_index(accepted) -> ?COUNTER_ACCPETED;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
-counter_tag_to_index(closed_rate_limitted) -> ?COUNTER_RATE_LIMITTED;
+counter_tag_to_index(closed_rate_limited) -> ?COUNTER_RATE_LIMITED;
 counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
 
 all() -> esockd_ct:all(?MODULE).

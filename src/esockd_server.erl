@@ -99,7 +99,7 @@ del_stats({Protocol, ListenOn}) ->
 ensure_stats(StatsKey) ->
     Stats = [accepted,
              closed_overloaded,
-             closed_rate_limitted,
+             closed_rate_limited,
              closed_other_reasons],
     ok = ?MODULE:init_stats(StatsKey, Stats),
     ok.

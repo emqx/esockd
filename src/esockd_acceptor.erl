@@ -174,7 +174,7 @@ handle_event(
     State = #state{lsock = LSock, accept_ref = Ref}
 ) ->
     _ = close(Sock),
-    inc_stats(State, rate_limitted),
+    inc_stats(State, rate_limited),
     NextEvent = {next_event, internal, accept_and_close},
     {keep_state, State#state{accept_ref = no_ref}, NextEvent};
 handle_event(
@@ -186,7 +186,7 @@ handle_event(
                 {next_event, internal, {accept, Sock}}};
         {pause, PauseTime, Limiter2} ->
             _ = close(Sock),
-            inc_stats(State, rate_limitted),
+            inc_stats(State, rate_limited),
             start_suspending(State#state{conn_limiter = Limiter2}, PauseTime)
     end;
 handle_event(
@@ -243,8 +243,7 @@ terminate(normal, _StateName, #state{}) ->
 terminate(shutdown, _StateName, #state{}) ->
     ok;
 terminate(Reason, _StateName, #state{}) ->
-    logger:log(error, #{msg => "esockd_acceptor_terminating",
-                        reaseon => Reason}),
+    logger:log(error, #{msg => "esockd_acceptor_terminating", reason => Reason}),
     ok.
 
 code_change(_OldVsn, StateName, State, _Extra) ->
@@ -256,7 +255,7 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) ->
     try
-        %% port-close leads to a TPC reset which cuts out the tcp graceful close overheads
+        %% port-close leads to a TCP reset which cuts out the tcp graceful close overheads
         _ = port_close(Sock),
         receive {'EXIT', Sock, _} -> ok after 1 -> ok end
     catch
@@ -320,7 +319,7 @@ counter(accepted) -> accepted;
 counter(emfile) -> closed_overloaded;
 counter(enfile) -> closed_overloaded;
 counter(overloaded) -> closed_overloaded;
-counter(rate_limitted) -> closed_rate_limitted;
+counter(rate_limited) -> closed_rate_limited;
 counter(_) -> closed_other_reasons.
 
 start_connection(ConnSup, Sock, UpgradeFuns) when is_pid(ConnSup) ->
