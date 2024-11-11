@@ -27,10 +27,12 @@
 -define(COUNTER_ACCPETED, 1).
 -define(COUNTER_OVERLOADED, 2).
 -define(COUNTER_RATE_LIMITED, 3).
--define(COUNTER_OTHER_REASONS, 4).
+-define(COUNTER_SYS_LIMIT, 4).
+-define(COUNTER_OTHER_REASONS, 5).
 -define(COUNTER_LAST, 10).
 
 counter_tag_to_index(accepted) -> ?COUNTER_ACCPETED;
+counter_tag_to_index(closed_sys_limit) -> ?COUNTER_SYS_LIMIT;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
 counter_tag_to_index(closed_rate_limited) -> ?COUNTER_RATE_LIMITED;
 counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
@@ -45,7 +47,7 @@ end_per_suite(_Config) ->
 
 init_per_testcase(_Case, Config) ->
     Counters = counters:new(?COUNTER_LAST, []),
-    meck:new(esockd_server, [passthrough, no_history]),
+    meck:new(esockd_server, [passthrough, no_history, no_sticky]),
     meck:expect(esockd_server, inc_stats,
                 fun(_, Tag, Count) ->
                         Index =  counter_tag_to_index(Tag),
@@ -115,7 +117,7 @@ t_rate_limitted(Config) ->
                                       ct:fail({unexpected, Other})
                               end
                       end, Socks),
-        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITTED, Count, 2000),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, Count, 2000),
         timer:sleep(Pause),
         {ok, Sock2} = connect(Port),
         ok = wait_for_counter(Config, ?COUNTER_ACCPETED, 1, 2000),
@@ -147,6 +149,57 @@ t_einval(Config) ->
     after
         stop(Server)
     end.
+
+%% It not possible to trigger a real emfile error while keeping
+%% the Erlang VM healthy (test case may need to write files etc),
+%% so we use meck to simulate one.
+t_sys_limit(Config) ->
+    meck:new(esockd_test_lib, [passthrough, no_history]),
+    meck:expect(esockd_test_lib, async_accept, fun(_) -> {error, emfile} end),
+    Port = ?PORT,
+    Server = start(Port, no_limit()),
+    try
+        %% acceptor to enter suspending state after started
+        %% because async_accept always returns {error, emfile}
+        ok = wait_for_counter(Config, ?COUNTER_SYS_LIMIT, {'>', 1}, 2000),
+        %% now unload the mock
+        meck:unload(esockd_test_lib),
+        %% this one is closed immediately because acceptor is still in suspending state
+        {ok, Sock1} = connect(Port),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, 1, 2000),
+        ok = assert_socket_disconnected(Sock1),
+        %% allow acceptor to exit from suspending state
+        timer:sleep(1000),
+        {ok, Sock2} = connect(Port),
+        ok = wait_for_counter(Config, ?COUNTER_ACCPETED, 1, 2000),
+        ok = assert_socket_connected(Sock2),
+        disconnect(Sock2)
+    after
+        stop(Server)
+    end.
+
+assert_socket_connected(Sock) ->
+    ok = inet:setopts(Sock, [{active, true}]),
+    receive
+        Msg ->
+            error({unexpected, Msg})
+    after
+        10 ->
+            ok
+    end.
+
+assert_socket_disconnected(Sock) ->
+    ok = inet:setopts(Sock, [{active, true}]),
+    receive
+        {tcp_closed, Sock} ->
+            ok;
+        Other ->
+            error({unexpected, Other})
+    after
+        100 ->
+            error(timeout)
+    end,
+    ok.
 
 disconnect(Socket) ->
     port_close(Socket),
@@ -186,29 +239,45 @@ wait_for_counter(Config, Index, Count, Timeout) ->
     Counters = proplists:get_value(counters, Config),
     Now = now_ts(),
     Deadline = Now + Timeout,
-    do_wait_for_counter(Counters, Index, Count, Deadline).
+    try
+        do_wait_for_counter(Counters, Index, Count, Deadline)
+    catch throw : ok ->
+              ok
+    end.
 
 do_wait_for_counter(Counters, Index, Count, Deadline) ->
-    case counters:get(Counters, Index) of
-        Count ->
+    Value = counters:get(Counters, Index),
+    Match = match_counter(Value, Count),
+    case Match of
+        true ->
+            throw(ok);
+        false ->
             ok;
-        Other when Other > Count ->
+        error ->
             error(#{cause => counter_exceeded_expect,
                     expected => Count,
                     counter_index => Index,
-                    got => Other});
-        Other ->
-            case now_ts() > Deadline of
-                true ->
-                    error(#{cause => timeout,
-                            expected => Count,
-                            counter_index=> Index,
-                            got => Other});
-                false ->
-                    timer:sleep(100),
-                    do_wait_for_counter(Counters, Index, Count, Deadline)
-            end
+                    got => Value})
+    end,
+    case now_ts() > Deadline of
+        true ->
+            error(#{cause => timeout,
+                    expected => Count,
+                    counter_index=> Index,
+                    got => Value});
+        false ->
+            timer:sleep(100),
+            do_wait_for_counter(Counters, Index, Count, Deadline)
     end.
+
+match_counter(Value, {'>', Expect}) ->
+    Value > Expect;
+match_counter(Value, Value) ->
+    true;
+match_counter(Value, Expect) when Value > Expect ->
+    error;
+match_counter(_Vlaue, _Expect) ->
+    false.
 
 %% dummy callback to start connection
 start_connection(Opts, _Sock, _UpgradeFuns) ->

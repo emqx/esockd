@@ -52,6 +52,9 @@
 
 -define(NOREF, noref).
 
+%% time to suspend if system-limit reached (emfile/enfile)
+-define(SYS_LIMIT_SUSPEND_MS, 1000).
+
 -record(state, {
     proto :: atom(),
     listen_on :: esockd:listen_on(),
@@ -127,16 +130,9 @@ handle_event(internal, begin_waiting, waiting, #state{accept_ref = Ref}) when Re
     %% started waiting in suspending state
     keep_state_and_data;
 handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock, accept_ref = ?NOREF}) ->
-    case async_accept(LSock) of
+    case async_accept(waiting, LSock) of
         {ok, Ref} ->
             {keep_state, State#state{accept_ref = Ref}};
-        {error, Reason} when
-            Reason =:= emfile;
-            Reason =:= enfile
-        ->
-            inc_stats(State, Reason),
-            log_system_limit(State, Reason),
-            start_suspending(State, 1000);
         {error, econnaborted} ->
             inc_stats(State, econnaborted),
             {next_state, waiting, State, {next_event, internal, begin_waiting}};
@@ -146,15 +142,11 @@ handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock, acc
             {stop, Reason, State}
     end;
 handle_event(internal, accept_and_close, suspending, State = #state{lsock = LSock}) ->
-    case async_accept(LSock) of
+    case async_accept(suspending, LSock) of
         {ok, Ref} ->
             {keep_state, State#state{accept_ref = Ref}};
-        {error, Reason} when
-            Reason =:= emfile;
-            Reason =:= enfile;
-            Reason =:= econnaborted
-        ->
-            inc_stats(State, Reason),
+        {error, connaborted} ->
+            inc_stats(State, connaborted),
             {keep_state_and_data, {next_event, internal, accept_and_close}};
         {error, closed} ->
             {stop, normal, State};
@@ -189,7 +181,7 @@ handle_event(
         {pause, PauseTime, Limiter2} ->
             _ = close(Sock),
             inc_stats(State, rate_limited),
-            start_suspending(State#state{conn_limiter = Limiter2}, PauseTime)
+            enter_suspending(State#state{conn_limiter = Limiter2}, PauseTime)
     end;
 handle_event(
     internal,
@@ -285,14 +277,12 @@ handle_socket_error(Reason, State, suspending) when Reason =:= econnaborted ->
     {keep_state, State, {next_event, internal, accept_and_close}};
 handle_socket_error(Reason, State, _StateName) when Reason =:= econnaborted ->
     {next_state, waiting, State, {next_event, internal, begin_waiting}};
-%% emfile: The per-process limit of open file descriptors has been reached.
-%% enfile: The system limit on the total number of open files has been reached.
 handle_socket_error(Reason, State, suspending) when Reason =:= emfile; Reason =:= enfile ->
     log_system_limit(State, Reason),
     {keep_state, State, {next_event, internal, accept_and_close}};
 handle_socket_error(Reason, State, _StateName) when Reason =:= emfile; Reason =:= enfile ->
     log_system_limit(State, Reason),
-    start_suspending(State, 1000);
+    enter_suspending(State, ?SYS_LIMIT_SUSPEND_MS);
 handle_socket_error(Reason, State, _StateName) ->
     {stop, Reason, State}.
 
@@ -307,19 +297,28 @@ log_system_limit(State, Reason) ->
                  listener => esockd:format(State#state.sockname),
                  cause => explain_posix(Reason)}).
 
-start_suspending(State, Timeout) ->
+enter_suspending(State, Timeout) ->
     Actions = [{next_event, internal, accept_and_close},
                {state_timeout, Timeout, begin_waiting}],
     {next_state, suspending, State, Actions}.
 
 inc_stats(#state{proto = Proto, listen_on = ListenOn}, Tag) ->
     Counter = counter(Tag),
+    case Counter of
+        closed_sys_limit ->
+            %% slow down when system limit reached
+            %% to aovid flooding the error logs
+            %% also, it makes no sense to drain backlog in such condition
+            timer:sleep(100);
+        _ ->
+            ok
+    end,
     _ = esockd_server:inc_stats({Proto, ListenOn}, Counter, 1),
     ok.
 
 counter(accepted) -> accepted;
-counter(emfile) -> closed_overloaded;
-counter(enfile) -> closed_overloaded;
+counter(emfile) -> closed_sys_limit;
+counter(enfile) -> closed_sys_limit;
 counter(overloaded) -> closed_overloaded;
 counter(rate_limited) -> closed_rate_limited;
 counter(_) -> closed_other_reasons.
@@ -330,5 +329,36 @@ start_connection({F, A}, Sock, UpgradeFuns) when is_function(F) ->
     %% only in tests so far
     apply(F, A ++ [Sock, UpgradeFuns]).
 
-async_accept(LSock) ->
+%% To throttle system-limit error logs,
+%% if system limit reached, slow down the state machine by
+%% trunning the immediate return to a delayed async message.
+%% The first delayed message should cause acceptor to enter suspending state.
+%% Then it should continue to accept 10 more sockets (which are all likely
+%% to result in emfile error anyway) during suspending state.
+async_accept(Currentstate, LSock) ->
+    case do_async_accept(LSock) of
+        {error, Reason} when Reason =:= emfile orelse Reason =:= enfile ->
+            Delay = case Currentstate of
+                        suspending ->
+                            ?SYS_LIMIT_SUSPEND_MS div 10;
+                        _Waiting ->
+                            0
+                    end,
+            Ref = make_ref(),
+            Msg = {inet_async, LSock, Ref, {error, Reason}},
+            _ = erlang:send_after(Delay, self(), Msg),
+            {ok, Ref};
+        Other ->
+            Other
+    end.
+
+%% prim_inet is a sticky module.
+%% delegate the call to esockd_test_lib in tests
+%% so it can be mockde.
+-ifndef(TEST).
+do_async_accept(LSock) ->
     prim_inet:async_accept(LSock, -1).
+-else.
+do_async_accept(LSock) ->
+    esockd_test_lib:async_accept(LSock).
+-endif.
