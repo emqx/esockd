@@ -1,6 +1,6 @@
 name: Run test case
 
-on: [push, pull_request]
+on: [pull_request]
 
 jobs:
 
