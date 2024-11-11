@@ -280,10 +280,9 @@ handle_accept_error(Reason, Msg, #state{sockname = Sockname}) ->
 handle_socket_error(closed, State, _StateName) ->
     {stop, normal, State};
 %% {error, econnaborted} -> accept
-%% {error, esslaccept}   -> accept
-handle_socket_error(Reason, State, suspending) when Reason =:= econnaborted; Reason =:= esslaccept ->
+handle_socket_error(Reason, State, suspending) when Reason =:= econnaborted ->
     {keep_state, State, {next_event, internal, accept_and_close}};
-handle_socket_error(Reason, State, _StateName) when Reason =:= econnaborted; Reason =:= esslaccept ->
+handle_socket_error(Reason, State, _StateName) when Reason =:= econnaborted ->
     {next_state, waiting, State, {next_event, internal, begin_waiting}};
 %% emfile: The per-process limit of open file descriptors has been reached.
 %% enfile: The system limit on the total number of open files has been reached.
