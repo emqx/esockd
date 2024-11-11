@@ -32,6 +32,9 @@
 %% callbacks
 -export([tune_socket/2]).
 
+%% Test
+-export([tune_socket_fun/1]).
+
 -define(ACCEPTOR_POOL, 16).
 
 %%--------------------------------------------------------------------
@@ -105,9 +108,19 @@ init({AcceptorMod, AcceptorArgs}) ->
 %% -------------------------------------------------------------------
 
 tune_socket_fun(Opts) ->
-    TuneOpts = [ {tune_buffer, proplists:get_bool(tune_buffer, Opts)}
-                 %% optional callback, returns ok | {error, Reason}
-               , {tune_fun, proplists:get_value(tune_fun, Opts, undefined)}],
+    Opts1 = case proplists:get_bool(tune_buffer, Opts) of
+                true ->
+                    [{tune_buffer, true}];
+                false ->
+                    []
+            end,
+    Opts2 = case proplists:get_value(tune_fun, Opts) of
+                undefined ->
+                    [];
+                MFA ->
+                    [{tune_fun, MFA}]
+            end,
+    TuneOpts = Opts1 ++ Opts2,
     {fun ?MODULE:tune_socket/2, [TuneOpts]}.
 
 upgrade_funs(Type, Opts) ->
@@ -139,12 +152,15 @@ tune_socket(Sock, [{tune_buffer, true}|More]) ->
     case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
         {ok, BufSizes} ->
             BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-            _ = esockd_transport:setopts(Sock, [{buffer, BufSz}]),
-            tune_socket(Sock, More);
-        Error -> Error
-   end;
-tune_socket(Sock, [{tune_fun, undefined} | More]) ->
-    tune_socket(Sock, More);
+            case esockd_transport:setopts(Sock, [{buffer, BufSz}]) of
+                ok ->
+                    tune_socket(Sock, More);
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end;
 tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
     case apply(M, F, A) of
         ok ->
