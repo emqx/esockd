@@ -66,14 +66,14 @@ stop() -> gen_server:stop(?SERVER).
 
 -spec(stats_fun({atom(), esockd:listen_on()}, atom()) -> fun()).
 stats_fun({Protocol, ListenOn}, Metric) ->
-    init_stats({Protocol, ListenOn}, Metric),
+    init_stats({Protocol, ListenOn}, [Metric]),
     fun({inc, Num}) -> esockd_server:inc_stats({Protocol, ListenOn}, Metric, Num);
        ({dec, Num}) -> esockd_server:dec_stats({Protocol, ListenOn}, Metric, Num)
     end.
 
--spec(init_stats({atom(), esockd:listen_on()}, atom()) -> ok).
-init_stats({Protocol, ListenOn}, Metric) ->
-    gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
+-spec(init_stats({atom(), esockd:listen_on()}, [atom()]) -> ok).
+init_stats({Protocol, ListenOn}, Metrics) ->
+    gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metrics}).
 
 -spec(get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
@@ -97,8 +97,13 @@ del_stats({Protocol, ListenOn}) ->
 
 -spec ensure_stats({atom(), esockd:listen_on()}) -> ok.
 ensure_stats(StatsKey) ->
-    ok = ?MODULE:init_stats(StatsKey, accepted),
-    ok = ?MODULE:init_stats(StatsKey, closed_overloaded).
+    Stats = [accepted,
+             closed_nostart,
+             closed_overloaded,
+             closed_rate_limitted,
+             closed_other_reasons],
+    ok = ?MODULE:init_stats(StatsKey, Stats),
+    ok.
 
 -spec get_listener_prop(esockd:listener_ref(), _Name) -> _Value | undefined.
 get_listener_prop(ListenerRef = {_Proto, _ListenOn}, Name) ->
@@ -125,8 +130,10 @@ init([]) ->
                              {write_concurrency, true}]),
     {ok, #state{listener_props = #{}}}.
 
-handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
-    true = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
+handle_call({init, {Protocol, ListenOn}, Metrics}, _From, State) ->
+    lists:foreach(fun(Metric) ->
+        true = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0})
+    end, Metrics),
     {reply, ok, State, hibernate};
 
 handle_call({get_listener_prop, ListenerRef, Name}, _From,

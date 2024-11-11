@@ -26,7 +26,7 @@ all() -> esockd_ct:all(?MODULE).
 t_inc_dec_stats(_) ->
     {ok, _} = esockd_server:start_link(),
     Name = {echo, 3000},
-    esockd_server:init_stats(Name, accepting),
+    esockd_server:init_stats(Name, [accepting]),
     esockd_server:inc_stats(Name, accepting, 2),
     esockd_server:inc_stats(Name, accepting, 2),
     esockd_server:dec_stats(Name, accepting, 1),
