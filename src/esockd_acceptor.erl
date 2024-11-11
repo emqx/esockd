@@ -149,12 +149,10 @@ handle_event(internal, accept_and_close, suspending, State = #state{lsock = LSoc
             {keep_state, State#state{accept_ref = Ref}};
         {error, Reason} when
             Reason =:= emfile;
-            Reason =:= enfile
+            Reason =:= enfile;
+            Reason =:= econnaborted
         ->
             inc_stats(State, Reason),
-            {keep_state_and_data, {next_event, internal, accept_and_close}};
-        {error, econnaborted} ->
-            inc_stats(State, econnaborted),
             {keep_state_and_data, {next_event, internal, accept_and_close}};
         {error, closed} ->
             {stop, normal, State};
@@ -283,13 +281,11 @@ handle_socket_error(closed, State, _StateName) ->
     {stop, normal, State};
 %% {error, econnaborted} -> accept
 %% {error, esslaccept}   -> accept
-%% {error, esslaccept}   -> accept
 handle_socket_error(Reason, State, suspending) when Reason =:= econnaborted; Reason =:= esslaccept ->
     {keep_state, State, {next_event, internal, accept_and_close}};
 handle_socket_error(Reason, State, _StateName) when Reason =:= econnaborted; Reason =:= esslaccept ->
     {next_state, waiting, State, {next_event, internal, begin_waiting}};
 %% emfile: The per-process limit of open file descriptors has been reached.
-%% enfile: The system limit on the total number of open files has been reached.
 %% enfile: The system limit on the total number of open files has been reached.
 handle_socket_error(Reason, State, suspending) when Reason =:= emfile; Reason =:= enfile ->
     log_system_limit(State, Reason),
@@ -322,6 +318,9 @@ inc_stats(#state{proto = Proto, listen_on = ListenOn}, Tag) ->
     ok.
 
 counter(accepted) -> accepted;
+counter(econnaborted) -> closed_nostart;
+%% unsure how this could happen
+counter(esslaccept ) -> closed_nostart;
 counter(closed_nostart) -> closed_nostart;
 counter(emfile) -> closed_overloaded;
 counter(enfile) -> closed_overloaded;
