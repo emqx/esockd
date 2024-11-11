@@ -178,6 +178,30 @@ t_sys_limit(Config) ->
         stop(Server)
     end.
 
+t_close_listener_socket_cause_acceptor_stop(_Config) ->
+    Port = ?PORT,
+    #{acceptor := Acceptor, lsock := LSock} = start(Port, no_limit()),
+    Mref = monitor(process, Acceptor),
+    unlink(Acceptor),
+    unlink(LSock),
+    {ok, Sock1} = connect(Port),
+    ok = assert_socket_connected(Sock1),
+    exit(LSock, kill),
+    receive
+        {'DOWN', Mref, process, Acceptor, Reason} ->
+            ?assertEqual(normal, Reason)
+    after
+        1000 ->
+            error(timeout)
+    end,
+    receive
+        {tcp_closed, Sock1} ->
+            ok
+    after
+        1000 ->
+            error(timeout)
+    end.
+
 assert_socket_connected(Sock) ->
     ok = inet:setopts(Sock, [{active, true}]),
     receive

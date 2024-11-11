@@ -232,9 +232,11 @@ handle_event(Type, Content, StateName, _) ->
                           event_content => Content}),
     keep_state_and_data.
 
-terminate(normal, _StateName, #state{}) ->
+terminate(normal, _StateName, _) ->
     ok;
-terminate(shutdown, _StateName, #state{}) ->
+terminate(shutdown, _StateName, _) ->
+    ok;
+terminate({shutdown, _}, _StateName, _) ->
     ok;
 terminate(Reason, _StateName, #state{}) ->
     logger:log(error, #{msg => "esockd_acceptor_terminating", reason => Reason}),
