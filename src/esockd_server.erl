@@ -98,7 +98,6 @@ del_stats({Protocol, ListenOn}) ->
 -spec ensure_stats({atom(), esockd:listen_on()}) -> ok.
 ensure_stats(StatsKey) ->
     Stats = [accepted,
-             closed_nostart,
              closed_overloaded,
              closed_rate_limitted,
              closed_other_reasons],

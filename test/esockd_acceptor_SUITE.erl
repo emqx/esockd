@@ -25,17 +25,15 @@
 
 -define(PORT, 30000 + ?LINE).
 -define(COUNTER_ACCPETED, 1).
--define(COUNTER_NOSTART, 2).
--define(COUNTER_OVERLOADED, 3).
--define(COUNTER_RATE_LIMITTED, 4).
--define(COUNTER_OTHER_REASONSE, 5).
+-define(COUNTER_OVERLOADED, 2).
+-define(COUNTER_RATE_LIMITTED, 3).
+-define(COUNTER_OTHER_REASONS, 4).
 -define(COUNTER_LAST, 10).
 
 counter_tag_to_index(accepted) -> ?COUNTER_ACCPETED;
-counter_tag_to_index(closed_nostart) -> ?COUNTER_NOSTART;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
 counter_tag_to_index(closed_rate_limitted) -> ?COUNTER_RATE_LIMITTED;
-counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONSE.
+counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
 
 all() -> esockd_ct:all(?MODULE).
 
@@ -68,7 +66,7 @@ start(PortNumber, Limiter, Opts) ->
                 {nodelay, true},
                 {backlog, maps:get(backlog, Opts, 1024)}],
     {ok, ListenSocket} = gen_tcp:listen(PortNumber, SockOpts),
-    TuneFun = maps:get(tune_fun, Opts, esockd_acceptor_sup:tune_socket_fun([])),
+    TuneFun = maps:get(tune_fun, Opts, esockd_acceptor_sup:tune_socket_fun(tcp, [])),
     StartConn = {fun ?MODULE:start_connection/3, [Opts]},
     {ok, AccPid} = esockd_acceptor:start_link(tcp, PortNumber, StartConn, TuneFun, _UpFuns = [], Limiter, ListenSocket),
     #{lsock => ListenSocket, acceptor => AccPid}.
@@ -127,7 +125,7 @@ t_rate_limitted(Config) ->
     end.
 
 %% Failed to spawn new connection process
-t_overloaded(Config) ->
+t_error_when_spawn(Config) ->
     Port = ?PORT,
     Server = start(Port, no_limit(), #{start_connection_result => {error, overloaded}}),
     {ok, Sock1} = connect(Port),
@@ -139,12 +137,12 @@ t_overloaded(Config) ->
     end.
 
 %% Failed to tune the socket opts
-t_nostart(Config) ->
+t_einval(Config) ->
     Port = ?PORT,
     Server = start(Port, no_limit(), #{tune_fun => {fun(_) -> {error, einval} end, []}}),
     {ok, Sock1} = connect(Port),
     try
-        ok = wait_for_counter(Config, ?COUNTER_NOSTART, 1, 2000),
+        ok = wait_for_counter(Config, ?COUNTER_OTHER_REASONS, 1, 2000),
         disconnect(Sock1)
     after
         stop(Server)

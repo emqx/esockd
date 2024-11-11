@@ -33,7 +33,7 @@
 -export([tune_socket/2]).
 
 %% Test
--export([tune_socket_fun/1]).
+-export([tune_socket_fun/2]).
 
 -define(ACCEPTOR_POOL, 16).
 
@@ -46,7 +46,7 @@
 start_supervised(ListenerRef = {Proto, ListenOn}) ->
     Type = esockd_server:get_listener_prop(ListenerRef, type),
     Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    TuneFun = tune_socket_fun(Opts),
+    TuneFun = tune_socket_fun(Type, Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
     Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
@@ -107,7 +107,7 @@ init({AcceptorMod, AcceptorArgs}) ->
 %% Internal functions
 %% -------------------------------------------------------------------
 
-tune_socket_fun(Opts) ->
+tune_socket_fun(Type, Opts) ->
     Opts1 = case proplists:get_bool(tune_buffer, Opts) of
                 true ->
                     [{tune_buffer, true}];

@@ -214,11 +214,11 @@ handle_event(
                     close(NewSock),
                     inc_stats(State, Reason)
             end;
-        {error, _Reason} ->
+        {error, Reason} ->
             %% the socket became invalid before
             %% starting the owner process
             close(Sock),
-            inc_stats(State, closed_nostart)
+            inc_stats(State, Reason)
     end,
     {next_state, waiting, State, {next_event, internal, begin_waiting}};
 handle_event(state_timeout, begin_waiting, suspending, State) ->
@@ -318,10 +318,6 @@ inc_stats(#state{proto = Proto, listen_on = ListenOn}, Tag) ->
     ok.
 
 counter(accepted) -> accepted;
-counter(econnaborted) -> closed_nostart;
-%% unsure how this could happen
-counter(esslaccept ) -> closed_nostart;
-counter(closed_nostart) -> closed_nostart;
 counter(emfile) -> closed_overloaded;
 counter(enfile) -> closed_overloaded;
 counter(overloaded) -> closed_overloaded;
