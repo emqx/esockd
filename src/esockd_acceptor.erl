@@ -50,6 +50,8 @@
     code_change/4
 ]).
 
+-define(NOREF, noref).
+
 -record(state, {
     proto :: atom(),
     listen_on :: esockd:listen_on(),
@@ -60,7 +62,7 @@
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
     conn_sup :: pid() | {function(), list()},
-    accept_ref = no_ref :: term()
+    accept_ref = ?NOREF :: term()
 }).
 
 %% @doc Start an acceptor
@@ -121,10 +123,10 @@ init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter, LSock]) ->
         },
         {next_event, internal, begin_waiting}}.
 
-handle_event(internal, begin_waiting, waiting, #state{accept_ref = Ref}) when Ref =/= no_ref ->
+handle_event(internal, begin_waiting, waiting, #state{accept_ref = Ref}) when Ref =/= ?NOREF ->
     %% started waiting in suspending state
     keep_state_and_data;
-handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock, accept_ref = no_ref}) ->
+handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock, accept_ref = ?NOREF}) ->
     case async_accept(LSock) of
         {ok, Ref} ->
             {keep_state, State#state{accept_ref = Ref}};
@@ -166,7 +168,7 @@ handle_event(
     State = #state{lsock = LSock, accept_ref = Ref}
 ) ->
     NextEvent = {next_event, internal, {token_request, Sock}},
-    {next_state, token_request, State#state{accept_ref = no_ref}, NextEvent};
+    {next_state, token_request, State#state{accept_ref = ?NOREF}, NextEvent};
 handle_event(
     info,
     {inet_async, LSock, Ref, {ok, Sock}},
@@ -176,7 +178,7 @@ handle_event(
     _ = close(Sock),
     inc_stats(State, rate_limited),
     NextEvent = {next_event, internal, accept_and_close},
-    {keep_state, State#state{accept_ref = no_ref}, NextEvent};
+    {keep_state, State#state{accept_ref = ?NOREF}, NextEvent};
 handle_event(
     internal, {token_request, Sock}, token_request, State = #state{conn_limiter = Limiter}
 ) ->
@@ -230,7 +232,7 @@ handle_event(
     State = #state{lsock = LSock, accept_ref = Ref}
 ) ->
     inc_stats(State, Reason),
-    handle_socket_error(Reason, State#state{accept_ref = no_ref}, StateName);
+    handle_socket_error(Reason, State#state{accept_ref = ?NOREF}, StateName);
 handle_event(Type, Content, StateName, _) ->
     logger:log(warning, #{msg => "esockd_acceptor_unhandled_event",
                           state_name => StateName,
