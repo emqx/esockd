@@ -145,8 +145,8 @@ handle_event(internal, accept_and_close, suspending, State = #state{lsock = LSoc
     case async_accept(suspending, LSock) of
         {ok, Ref} ->
             {keep_state, State#state{accept_ref = Ref}};
-        {error, connaborted} ->
-            inc_stats(State, connaborted),
+        {error, econnaborted} ->
+            inc_stats(State, econnaborted),
             {keep_state_and_data, {next_event, internal, accept_and_close}};
         {error, closed} ->
             {stop, normal, State};
@@ -338,7 +338,7 @@ start_connection({F, A}, Sock, UpgradeFuns) when is_function(F) ->
 %% Then it should continue to accept 10 more sockets (which are all likely
 %% to result in emfile error anyway) during suspending state.
 async_accept(Currentstate, LSock) ->
-    case do_async_accept(LSock) of
+    case prim_inet:async_accept(LSock, -1) of
         {error, Reason} when Reason =:= emfile orelse Reason =:= enfile ->
             Delay = case Currentstate of
                         suspending ->
@@ -353,14 +353,3 @@ async_accept(Currentstate, LSock) ->
         Other ->
             Other
     end.
-
-%% prim_inet is a sticky module.
-%% delegate the call to esockd_test_lib in tests
-%% so it can be mockde.
--ifndef(TEST).
-do_async_accept(LSock) ->
-    prim_inet:async_accept(LSock, -1).
--else.
-do_async_accept(LSock) ->
-    esockd_test_lib:async_accept(LSock).
--endif.

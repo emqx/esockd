@@ -154,8 +154,8 @@ t_einval(Config) ->
 %% the Erlang VM healthy (test case may need to write files etc),
 %% so we use meck to simulate one.
 t_sys_limit(Config) ->
-    meck:new(esockd_test_lib, [passthrough, no_history]),
-    meck:expect(esockd_test_lib, async_accept, fun(_) -> {error, emfile} end),
+    meck:new(prim_inet, [passthrough, no_history, unstick]),
+    meck:expect(prim_inet, async_accept, fun(_, _) -> {error, emfile} end),
     Port = ?PORT,
     Server = start(Port, no_limit()),
     try
@@ -163,7 +163,7 @@ t_sys_limit(Config) ->
         %% because async_accept always returns {error, emfile}
         ok = wait_for_counter(Config, ?COUNTER_SYS_LIMIT, {'>', 1}, 2000),
         %% now unload the mock
-        meck:unload(esockd_test_lib),
+        meck:unload(prim_inet),
         %% this one is closed immediately because acceptor is still in suspending state
         {ok, Sock1} = connect(Port),
         ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, 1, 2000),
