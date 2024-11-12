@@ -261,6 +261,8 @@ close(Sock) ->
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock | Args1]).
 
+handle_accept_error(econnreset, _, _) ->
+    ok;
 handle_accept_error(enotconn, _, _) ->
     ok;
 handle_accept_error(einval, _, _) ->
