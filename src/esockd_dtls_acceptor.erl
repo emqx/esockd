@@ -85,7 +85,7 @@ accepting(internal, accept,
     case ssl:transport_accept(LSock) of
         {ok, Sock} ->
             %% Inc accepted stats.
-            esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
+            _ = esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
             _ = case eval_tune_socket_fun(TuneFun, Sock) of
                 {ok, Sock} ->
                     case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of

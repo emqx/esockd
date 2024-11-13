@@ -32,6 +32,9 @@
 %% callbacks
 -export([tune_socket/2]).
 
+%% Test
+-export([tune_socket_fun/2]).
+
 -define(ACCEPTOR_POOL, 16).
 
 %%--------------------------------------------------------------------
@@ -43,7 +46,7 @@
 start_supervised(ListenerRef = {Proto, ListenOn}) ->
     Type = esockd_server:get_listener_prop(ListenerRef, type),
     Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    TuneFun = tune_socket_fun(Opts),
+    TuneFun = tune_socket_fun(Type, Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
     Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
@@ -104,10 +107,20 @@ init({AcceptorMod, AcceptorArgs}) ->
 %% Internal functions
 %% -------------------------------------------------------------------
 
-tune_socket_fun(Opts) ->
-    TuneOpts = [ {tune_buffer, proplists:get_bool(tune_buffer, Opts)}
-                 %% optional callback, returns ok | {error, Reason}
-               , {tune_fun, proplists:get_value(tune_fun, Opts, undefined)}],
+tune_socket_fun(Type, Opts) ->
+    Opts1 = case proplists:get_bool(tune_buffer, Opts) of
+                true ->
+                    [{tune_buffer, true}];
+                false ->
+                    []
+            end,
+    Opts2 = case proplists:get_value(tune_fun, Opts) of
+                undefined ->
+                    [];
+                MFA ->
+                    [{tune_fun, MFA}]
+            end,
+    TuneOpts = Opts1 ++ Opts2,
     {fun ?MODULE:tune_socket/2, [TuneOpts]}.
 
 upgrade_funs(Type, Opts) ->
@@ -139,12 +152,15 @@ tune_socket(Sock, [{tune_buffer, true}|More]) ->
     case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
         {ok, BufSizes} ->
             BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-            _ = esockd_transport:setopts(Sock, [{buffer, BufSz}]),
-            tune_socket(Sock, More);
-        Error -> Error
-   end;
-tune_socket(Sock, [{tune_fun, undefined} | More]) ->
-    tune_socket(Sock, More);
+            case esockd_transport:setopts(Sock, [{buffer, BufSz}]) of
+                ok ->
+                    tune_socket(Sock, More);
+                Error ->
+                    Error
+            end;
+        Error ->
+            Error
+    end;
 tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
     case apply(M, F, A) of
         ok ->
