@@ -68,7 +68,7 @@ start(PortNumber, Limiter, Opts) ->
                 {nodelay, true},
                 {backlog, maps:get(backlog, Opts, 1024)}],
     {ok, ListenSocket} = gen_tcp:listen(PortNumber, SockOpts),
-    TuneFun = maps:get(tune_fun, Opts, esockd_acceptor_sup:tune_socket_fun(tcp, [])),
+    TuneFun = maps:get(tune_fun, Opts, esockd_acceptor_sup:tune_socket_fun([])),
     StartConn = {fun ?MODULE:start_connection/3, [Opts]},
     {ok, AccPid} = esockd_acceptor:start_link(tcp, PortNumber, StartConn, TuneFun, _UpFuns = [], Limiter, ListenSocket),
     #{lsock => ListenSocket, acceptor => AccPid}.
