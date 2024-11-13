@@ -335,7 +335,7 @@ start_connection({F, A}, Sock, UpgradeFuns) when is_function(F) ->
 
 %% To throttle system-limit error logs,
 %% if system limit reached, slow down the state machine by
-%% trunning the immediate return to a delayed async message.
+%% turning the immediate return to a delayed async message.
 %% The first delayed message should cause acceptor to enter suspending state.
 %% Then it should continue to accept 10 more sockets (which are all likely
 %% to result in emfile error anyway) during suspending state.
