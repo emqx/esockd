@@ -47,6 +47,8 @@
         , code_change/3
         ]).
 
+-include("esockd.hrl").
+
 -type(shutdown() :: brutal_kill | infinity | pos_integer()).
 
 -type option() :: {shutdown, shutdown()}
@@ -162,7 +164,7 @@ init(Opts) ->
 handle_call({start_connection, _Sock}, _From,
             State = #state{curr_connections = Conns, max_connections = MaxConns})
     when map_size(Conns) >= MaxConns ->
-    {reply, {error, maxlimit}, State};
+    {reply, {error, ?ERROR_MAXLIMIT}, State};
 
 handle_call({start_connection, Sock}, _From,
             State = #state{curr_connections = Conns, access_rules = Rules, mfargs = MFA}) ->

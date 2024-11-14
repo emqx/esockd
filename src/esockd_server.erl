@@ -46,6 +46,8 @@
         , code_change/3
         ]).
 
+-include("esockd.hrl").
+
 -record(state, {
     listener_props :: #{esockd:listener_ref() => #{_Name => _Value}}
 }).
@@ -97,12 +99,7 @@ del_stats({Protocol, ListenOn}) ->
 
 -spec ensure_stats({atom(), esockd:listen_on()}) -> ok.
 ensure_stats(StatsKey) ->
-    Stats = [accepted,
-             closed_sys_limit,
-             closed_overloaded,
-             closed_rate_limited,
-             closed_other_reasons],
-    ok = ?MODULE:init_stats(StatsKey, Stats),
+    ok = ?MODULE:init_stats(StatsKey, ?ACCEPT_RESULT_GROUPS),
     ok.
 
 -spec get_listener_prop(esockd:listener_ref(), _Name) -> _Value | undefined.
