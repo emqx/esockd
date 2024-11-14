@@ -411,7 +411,22 @@ parse_opt([_|Opts], Acc) ->
 %% @doc System 'ulimit -n'
 -spec(ulimit() -> pos_integer()).
 ulimit() ->
-    proplists:get_value(max_fds, hd(erlang:system_info(check_io))).
+    find_max_fd(erlang:system_info(check_io)).
+
+find_max_fd([]) ->
+    %% Magic!
+    %% Returns a list containing miscellaneous information about the emulators
+    %% internal I/O checking. Notice that the content of the returned list can
+    %% vary between platforms and over time. It is only guaranteed that a list
+    %% is returned.
+    1023;
+find_max_fd([CheckIoResult | More]) ->
+    case lists:keyfind(max_fds, CheckIoResult) of
+        {max_fds, N} when is_integer(N) andalso N > 0 ->
+            N;
+        _ ->
+            find_max_fd(More)
+    end.
 
 -spec(to_string(listen_on()) -> string()).
 to_string(Port) when is_integer(Port) ->
