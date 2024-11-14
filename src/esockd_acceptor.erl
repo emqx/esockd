@@ -320,12 +320,13 @@ inc_stats(#state{proto = Proto, listen_on = ListenOn}, Tag) ->
     _ = esockd_server:inc_stats({Proto, ListenOn}, Counter, 1),
     ok.
 
-counter(accepted) -> accepted;
-counter(emfile) -> closed_sys_limit;
-counter(enfile) -> closed_sys_limit;
-counter(overloaded) -> closed_overloaded;
-counter(rate_limited) -> closed_rate_limited;
-counter(_) -> closed_other_reasons.
+counter(accepted) -> ?ARG_ACCEPTED;
+counter(emfile) -> ?ARG_CLOSED_SYS_LIMIT;
+counter(enfile) -> ?ARG_CLOSED_SYS_LIMIT;
+counter(?ERROR_MAXLIMIT) -> ?ARG_CLOSED_MAX_LIMIT;
+counter(overloaded) -> ?ARG_CLOSED_OVERLOADED;
+counter(rate_limited) -> ?ARG_CLOSED_RATE_LIMITED;
+counter(_) -> ?ARG_CLOSED_OTHER_REASONS.
 
 start_connection(ConnSup, Sock, UpgradeFuns) when is_pid(ConnSup) ->
     esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns);

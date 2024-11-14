@@ -28,11 +28,13 @@
 -define(COUNTER_OVERLOADED, 2).
 -define(COUNTER_RATE_LIMITED, 3).
 -define(COUNTER_SYS_LIMIT, 4).
--define(COUNTER_OTHER_REASONS, 5).
+-define(COUNTER_MAX_LIMIT, 5).
+-define(COUNTER_OTHER_REASONS, 6).
 -define(COUNTER_LAST, 10).
 
 counter_tag_to_index(accepted) -> ?COUNTER_ACCPETED;
 counter_tag_to_index(closed_sys_limit) -> ?COUNTER_SYS_LIMIT;
+counter_tag_to_index(closed_max_limit) -> ?COUNTER_MAX_LIMIT;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
 counter_tag_to_index(closed_rate_limited) -> ?COUNTER_RATE_LIMITED;
 counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
@@ -90,7 +92,7 @@ connect(Port, Timeout, Opts0) ->
 %% This is the very basic test, if this fails, nothing elese matters.
 t_normal(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_limit()),
+    Server = start(Port, no_rate_limit()),
     {ok, ClientSock} = connect(Port),
     try
         ok = wait_for_counter(Config, ?COUNTER_ACCPETED, 1, 2000)
@@ -129,7 +131,7 @@ t_rate_limitted(Config) ->
 %% Failed to spawn new connection process
 t_error_when_spawn(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_limit(), #{start_connection_result => {error, overloaded}}),
+    Server = start(Port, no_rate_limit(), #{start_connection_result => {error, overloaded}}),
     {ok, Sock1} = connect(Port),
     try
         ok = wait_for_counter(Config, ?COUNTER_OVERLOADED, 1, 2000),
@@ -141,7 +143,7 @@ t_error_when_spawn(Config) ->
 %% Failed to tune the socket opts
 t_einval(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_limit(), #{tune_fun => {fun(_) -> {error, einval} end, []}}),
+    Server = start(Port, no_rate_limit(), #{tune_fun => {fun(_) -> {error, einval} end, []}}),
     {ok, Sock1} = connect(Port),
     try
         ok = wait_for_counter(Config, ?COUNTER_OTHER_REASONS, 1, 2000),
@@ -157,7 +159,7 @@ t_sys_limit(Config) ->
     meck:new(prim_inet, [passthrough, no_history, unstick]),
     meck:expect(prim_inet, async_accept, fun(_, _) -> {error, emfile} end),
     Port = ?PORT,
-    Server = start(Port, no_limit()),
+    Server = start(Port, no_rate_limit()),
     try
         %% acceptor to enter suspending state after started
         %% because async_accept always returns {error, emfile}
@@ -178,9 +180,21 @@ t_sys_limit(Config) ->
         stop(Server)
     end.
 
+%% Failed to spawn new connection process
+t_max_limit(Config) ->
+    Port = ?PORT,
+    Server = start(Port, no_rate_limit(), #{start_connection_result => {error, ?ERROR_MAXLIMIT}}),
+    {ok, Sock1} = connect(Port),
+    try
+        ok = wait_for_counter(Config, ?COUNTER_MAX_LIMIT, 1, 2000),
+        disconnect(Sock1)
+    after
+        stop(Server)
+    end.
+
 t_close_listener_socket_cause_acceptor_stop(_Config) ->
     Port = ?PORT,
-    #{acceptor := Acceptor, lsock := LSock} = start(Port, no_limit()),
+    #{acceptor := Acceptor, lsock := LSock} = start(Port, no_rate_limit()),
     Mref = monitor(process, Acceptor),
     unlink(Acceptor),
     unlink(LSock),
@@ -239,8 +253,8 @@ pause_then_allow(Pause) ->
      }.
 
 %% make a no-limit limiter
-no_limit() ->
-    #{module => ?MODULE, name => no_limit}.
+no_rate_limit() ->
+    #{module => ?MODULE, name => no_rate_limit}.
 
 %% limiter callback
 consume(_Token, #{name := pause_then_allow} = Limiter) ->
@@ -250,7 +264,7 @@ consume(_Token, #{name := pause_then_allow} = Limiter) ->
         #{current := allow} ->
             {ok, Limiter}
     end;
-consume(_Token, #{name := no_limit} = Limiter) ->
+consume(_Token, #{name := no_rate_limit} = Limiter) ->
     {ok, Limiter}.
 
 now_ts() -> erlang:system_time(millisecond).

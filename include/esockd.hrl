@@ -71,4 +71,24 @@
 -type ssl_option() :: ssl:ssl_option().
 -endif. % OTP_RELEASE
 
+
+-define(ERROR_MAXLIMIT, maxlimit).
+
+-define(ARG_ACCEPTED, accepted).
+-define(ARG_CLOSED_SYS_LIMIT, closed_sys_limit).
+-define(ARG_CLOSED_MAX_LIMIT, closed_max_limit).
+-define(ARG_CLOSED_OVERLOADED, closed_overloaded).
+-define(ARG_CLOSED_RATE_LIMITED, closed_rate_limited).
+-define(ARG_CLOSED_OTHER_REASONS, closed_other_reasons).
+
+-define(ACCEPT_RESULT_GROUPS,
+        [
+            ?ARG_ACCEPTED,
+            ?ARG_CLOSED_SYS_LIMIT,
+            ?ARG_CLOSED_MAX_LIMIT,
+            ?ARG_CLOSED_OVERLOADED,
+            ?ARG_CLOSED_RATE_LIMITED,
+            ?ARG_CLOSED_OTHER_REASONS
+        ]).
+
 -endif. % ESOCKD_HRL
