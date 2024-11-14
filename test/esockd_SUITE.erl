@@ -222,9 +222,22 @@ t_get_set_max_connections(_) ->
     ?assertEqual(16, esockd:get_max_connections({udp_echo, 7000})),
     ok = esockd:close(udp_echo, 7000).
 
+t_get_set_invalid_max_connections(_) ->
+    MaxFd = esockd:ulimit(),
+    MaxProcs = erlang:system_info(process_limit),
+    Invalid = max(MaxFd, MaxProcs) + 1,
+    {ok, _LSup} = esockd:open(echo, 7000, [{connection_mfargs, echo_server}]),
+    Expected = min(MaxFd, MaxProcs),
+    ?assertEqual(Expected, esockd:get_max_connections({echo, 7000})),
+    esockd:set_max_connections({echo, 7000}, 2),
+    ?assertEqual(2, esockd:get_max_connections({echo, 7000})),
+    esockd:set_max_connections({echo, 7000}, Invalid),
+    ?assertEqual(2, esockd:get_max_connections({echo, 7000})),
+    ok = esockd:close(echo, 7000).
+
 t_get_set_max_conn_rate(_) ->
     LimiterOpt = #{module => esockd_limiter, capacity => 100, interval => 1},
-    {ok, _LSup} = esockd:open(echo, 7000, 
+    {ok, _LSup} = esockd:open(echo, 7000,
                               [{limiter, LimiterOpt}, {connection_mfargs, echo_server}]),
     ?assertEqual({100, 1}, esockd:get_max_conn_rate({echo, 7000})),
     esockd:set_max_conn_rate({echo, 7000}, LimiterOpt#{capacity := 50, interval := 2}),

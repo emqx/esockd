@@ -63,7 +63,6 @@
           mfargs :: esockd:mfargs()
          }).
 
--define(DEFAULT_MAX_CONNS, 1024).
 -define(TRANSPORT, esockd_transport).
 -define(ERROR_MSG(Format, Args),
         error_logger:error_msg("[~s] " ++ Format, [?MODULE | Args])).
@@ -151,7 +150,7 @@ call(Sup, Req) ->
 init(Opts) ->
     process_flag(trap_exit, true),
     Shutdown = get_value(shutdown, Opts, brutal_kill),
-    MaxConns = get_value(max_connections, Opts, ?DEFAULT_MAX_CONNS),
+    MaxConns = resolve_max_connections(get_value(max_connections, Opts)),
     RawRules = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
     MFA = get_value(connection_mfargs, Opts),
@@ -209,7 +208,10 @@ handle_call({add_rule, RawRule}, _From, State = #state{access_rules = Rules}) ->
             end
     catch
         error:Reason ->
-            error_logger:error_msg("Bad access rule: ~p, compile errro: ~p", [RawRule, Reason]),
+            logger:log(error, #{msg => "bad_access_rule",
+                                rule => RawRule,
+                                compile_error => Reason
+                               }),
             {reply, {error, bad_access_rule}, State}
     end;
 
@@ -285,7 +287,12 @@ get_state_option(connection_mfargs, #state{mfargs = MFA}) ->
     MFA.
 
 set_state_option({max_connections, MaxConns}, State) ->
-    State#state{max_connections = MaxConns};
+    case resolve_max_connections(MaxConns) of
+        MaxConns ->
+            State#state{max_connections = MaxConns};
+        _ ->
+            {error, bad_max_connections}
+    end;
 set_state_option({shutdown, Shutdown}, State) ->
     State#state{shutdown = Shutdown};
 set_state_option({access_rules, Rules}, State) ->
@@ -455,3 +462,27 @@ log(Level, Error, Reason, Pid, #state{mfargs = MFA}) ->
 get_module({M, _F, _A}) -> M;
 get_module({M, _F}) -> M;
 get_module(M) -> M.
+
+resolve_max_connections(Desired) ->
+    MaxFds = esockd:ulimit(),
+    MaxProcs = erlang:system_info(process_limit),
+    resolve_max_connections(Desired, MaxFds, MaxProcs).
+
+resolve_max_connections(undefined, MaxFds, MaxProcs) ->
+    %% not configured
+    min(MaxFds, MaxProcs);
+resolve_max_connections(Desired, MaxFds, MaxProcs) when is_integer(Desired) ->
+    Res = lists:min([Desired, MaxFds, MaxProcs]),
+    case Res < Desired of
+        true ->
+            logger:log(error,
+                       #{msg => "max_connections_config_ignored",
+                         max_fds => MaxFds,
+                         max_processes => MaxProcs,
+                         desired => Desired
+                        }
+                      );
+        false ->
+            ok
+    end,
+    Res.

@@ -415,13 +415,14 @@ ulimit() ->
 
 find_max_fd([]) ->
     %% Magic!
+    %% According to Erlang/OTP doc, erlang:system_info(check_io)):
     %% Returns a list containing miscellaneous information about the emulators
     %% internal I/O checking. Notice that the content of the returned list can
     %% vary between platforms and over time. It is only guaranteed that a list
     %% is returned.
     1023;
 find_max_fd([CheckIoResult | More]) ->
-    case lists:keyfind(max_fds, CheckIoResult) of
+    case lists:keyfind(max_fds, 1, CheckIoResult) of
         {max_fds, N} when is_integer(N) andalso N > 0 ->
             N;
         _ ->
