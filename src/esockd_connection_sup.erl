@@ -471,6 +471,9 @@ resolve_max_connections(Desired) ->
 resolve_max_connections(undefined, MaxFds, MaxProcs) ->
     %% not configured
     min(MaxFds, MaxProcs);
+resolve_max_connections(infinity, MaxFds, MaxProcs) ->
+    %% not configured
+    min(MaxFds, MaxProcs);
 resolve_max_connections(Desired, MaxFds, MaxProcs) when is_integer(Desired) ->
     Res = lists:min([Desired, MaxFds, MaxProcs]),
     case Res < Desired of
