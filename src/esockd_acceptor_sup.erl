@@ -24,6 +24,7 @@
 -export([ start_acceptors/2
         , start_acceptor/2
         , count_acceptors/1
+        , check_options/1
         ]).
 
 %% Supervisor callbacks
@@ -46,20 +47,25 @@
 start_supervised(ListenerRef = {Proto, ListenOn}) ->
     Type = esockd_server:get_listener_prop(ListenerRef, type),
     Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    TuneFun = tune_socket_fun(Opts),
-    UpgradeFuns = upgrade_funs(Type, Opts),
-    LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
-    Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
-    AcceptorMod = case Type of
-                         dtls -> esockd_dtls_acceptor;
-                         _ -> esockd_acceptor
-                     end,
-    ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
-    AcceptorArgs = [Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter],
-    case supervisor:start_link(?MODULE, {AcceptorMod, AcceptorArgs}) of
-        {ok, Pid} ->
-            _ = esockd_server:set_listener_prop(ListenerRef, acceptor_sup, Pid),
-            {ok, Pid};
+    case check_options(Opts) of
+        ok ->
+            TuneFun = tune_socket_fun(Opts),
+            UpgradeFuns = upgrade_funs(Type, Opts),
+            LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
+            Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
+            AcceptorMod = case Type of
+                                dtls -> esockd_dtls_acceptor;
+                                _ -> esockd_acceptor
+                            end,
+            ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
+            AcceptorArgs = [Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter],
+            case supervisor:start_link(?MODULE, {AcceptorMod, AcceptorArgs}) of
+                {ok, Pid} ->
+                    _ = esockd_server:set_listener_prop(ListenerRef, acceptor_sup, Pid),
+                    {ok, Pid};
+                {error, _} = Error ->
+                    Error
+            end;
         {error, _} = Error ->
             Error
     end.
@@ -139,11 +145,7 @@ ssl_upgrade_fun(Type, Opts) ->
           end,
     case proplists:get_value(Key, Opts) of
         undefined -> [];
-        SslOpts ->
-            %% validate ssl options and prevent the listener from starting if
-            %% validation failed
-            _ = ssl:handle_options(SslOpts, server, undefined),
-            [esockd_transport:ssl_upgrade_fun(SslOpts)]
+        SslOpts -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
 tune_socket(Sock, []) ->
@@ -169,3 +171,37 @@ tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
     end;
 tune_socket(Sock, [_|More]) ->
     tune_socket(Sock, More).
+
+-spec check_options(list()) -> ok | {error, any()}.
+check_options(Opts) ->
+    try
+        ok = check_ssl_opts(ssl_options, Opts),
+        ok = check_ssl_opts(dtls_options, Opts)
+    catch
+        throw : Reason ->
+            {error, Reason}
+    end.
+
+check_ssl_opts(Key, Opts) ->
+    case proplists:get_value(Key, Opts) of
+        undefined ->
+            ok;
+        SslOpts ->
+            try
+                {ok, _} = ssl:handle_options(SslOpts, server, undefined),
+                ok
+            catch
+                _ : {error, Reason} ->
+                    throw_invalid_ssl_option(Key, Reason);
+                _ : Wat : Stack ->
+                    %% It's a function_clause for OTP 25
+                    %% And, maybe OTP decide to change some day, who knows
+                    throw_invalid_ssl_option(Key, {Wat, Stack})
+            end
+    end.
+
+-spec throw_invalid_ssl_option(_, _) -> no_return().
+throw_invalid_ssl_option(Key, Reason) ->
+    throw(#{error => invalid_ssl_option,
+            reason => Reason,
+            key => Key}).

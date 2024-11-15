@@ -397,6 +397,19 @@ t_update_options_error(_) ->
     {ok, <<"Sock2">>} = gen_tcp:recv(Sock2, 0),
     ok = esockd:close(echo, 6000).
 
+t_bad_tls_options(_Config) ->
+    LPort = 7001,
+    %% must include '{protocol, dtls}',
+    %% otherwise invalid because ssl lib defaults to '{protocol, ssl}'
+    BadOpts = [{versions, ['dtlsv1.2']}],
+    Res = esockd:open(echo_tls, LPort,
+                      [{dtls_options, BadOpts},
+                       {connection_mfargs, echo_server}]),
+    ?assertMatch({error, {{shutdown, {failed_to_start_child, acceptor_sup,
+                                      #{error := invalid_ssl_option,
+                                        key := dtls_options}}}, _}}, Res),
+    ok.
+
 t_update_tls_options(Config) ->
     LPort = 7000,
     SslOpts1 = [ {certfile, esockd_ct:certfile(Config)}
@@ -417,9 +430,9 @@ t_update_tls_options(Config) ->
                               [{ssl_options, SslOpts1}, {connection_mfargs, echo_server}]),
     {ok, Sock1} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
 
-    ?assertError(
-        {badmatch, _},
-        esockd:set_options({echo_tls, LPort}, [{ssl_options, [{verify, verify_peer}]}])
+    ?assertMatch(
+       {error, #{error := invalid_ssl_option}},
+       esockd:set_options({echo_tls, LPort}, [{ssl_options, [{verify, verify_peer}]}])
     ),
 
     ok = esockd:set_options({echo_tls, LPort}, [{ssl_options, SslOpts2}]),
