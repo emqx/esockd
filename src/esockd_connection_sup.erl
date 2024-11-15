@@ -286,12 +286,16 @@ get_state_option(access_rules, #state{access_rules = Rules}) ->
 get_state_option(connection_mfargs, #state{mfargs = MFA}) ->
     MFA.
 
-set_state_option({max_connections, MaxConns}, State) ->
-    case resolve_max_connections(MaxConns) of
-        MaxConns ->
-            State#state{max_connections = MaxConns};
-        _ ->
-            {error, bad_max_connections}
+set_state_option({max_connections, Desired}, State) ->
+    case resolve_max_connections(Desired) of
+        Resolved when is_integer(Desired) andalso Resolved >= Desired ->
+            %% resolved to a smaller value
+            %% means the desired value is not acceptable (over system limit)
+            {error, #{cause => bad_max_connections,
+                      allowed => Resolved,
+                      desired => Desired}};
+        Resolved ->
+            State#state{max_connections = Resolved}
     end;
 set_state_option({shutdown, Shutdown}, State) ->
     State#state{shutdown = Shutdown};
