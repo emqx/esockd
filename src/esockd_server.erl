@@ -112,7 +112,7 @@ list_listener_props(ListenerRef = {_Proto, _ListenOn}) ->
 
 -spec set_listener_prop(esockd:listener_ref(), _Name, _Value) -> _ValueWas.
 set_listener_prop(ListenerRef = {_Proto, _ListenOn}, Name, Value) ->
-    gen_server:call(?SERVER, {set_listener_prop, ListenerRef, Name, Value}, infinity).    
+    gen_server:call(?SERVER, {set_listener_prop, ListenerRef, Name, Value}, infinity).
 
 -spec erase_listener_props(esockd:listener_ref()) -> [{_Name, _ValueWas}].
 erase_listener_props(ListenerRef = {_Proto, _ListenOn}) ->

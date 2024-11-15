@@ -136,6 +136,11 @@ start() ->
 %% Open & Close
 
 %% @doc Open a TCP or SSL listener
+%% @end
+%% TODO: Check if Opts is valid before start_child.
+%% ssl_options check implemented by esockd_acceptor_sup
+%% max_connections check implemented by esockd_connection_sup
+%% access_rules check implemented by esockd_connection_sup
 -spec open(atom(), listen_on(), options()) -> {ok, pid()} | {error, term()}.
 open(Proto, Port, Opts) when is_atom(Proto), is_integer(Port) ->
 	esockd_sup:start_child(child_spec(Proto, Port, Opts));

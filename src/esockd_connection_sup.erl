@@ -147,10 +147,11 @@ call(Sup, Req) ->
 %% gen_server callbacks
 %%--------------------------------------------------------------------
 
-init(Opts) ->
+init(Opts0) ->
     process_flag(trap_exit, true),
+    Opts = resolve_max_connections(Opts0),
     Shutdown = get_value(shutdown, Opts, brutal_kill),
-    MaxConns = resolve_max_connections(get_value(max_connections, Opts)),
+    MaxConns = get_value(max_connections, Opts),
     RawRules = get_value(access_rules, Opts, [{allow, all}]),
     AccessRules = [esockd_access:compile(Rule) || Rule <- RawRules],
     MFA = get_value(connection_mfargs, Opts),
@@ -287,16 +288,8 @@ get_state_option(connection_mfargs, #state{mfargs = MFA}) ->
     MFA.
 
 set_state_option({max_connections, Desired}, State) ->
-    case resolve_max_connections(Desired) of
-        Resolved when is_integer(Desired) andalso Resolved < Desired ->
-            %% resolved to a smaller value
-            %% means the desired value is not acceptable (over system limit)
-            {error, #{cause => bad_max_connections,
-                      allowed => Resolved,
-                      desired => Desired}};
-        Resolved ->
-            State#state{max_connections = Resolved}
-    end;
+    [{max_connections, Max}] = resolve_max_connections([{max_connections, Desired}]),
+    State#state{max_connections = Max};
 set_state_option({shutdown, Shutdown}, State) ->
     State#state{shutdown = Shutdown};
 set_state_option({access_rules, Rules}, State) ->
@@ -467,29 +460,40 @@ get_module({M, _F, _A}) -> M;
 get_module({M, _F}) -> M;
 get_module(M) -> M.
 
-resolve_max_connections(Desired) ->
+%% For now, invalid max_connections is allowed for backward compatibility.
+%% TODO: Validate opts by esocd:open/3, and then can remove this error log.
+resolve_max_connections(Opts) ->
+    Desired = proplists:get_value(max_connections, Opts),
+    Max = case do_resolve_max_connections(Desired) of
+        {ok, V} ->
+            V;
+        {error, Limit} ->
+            logger:log(error,
+                       #{msg => "max_connections_clamped_by_system_limit",
+                         system_limit => Limit,
+                         applied => Limit,
+                         ignored => Desired
+                        }),
+            Limit
+    end,
+    [{max_connections, Max} | proplists:delete(max_connections, Opts)].
+
+do_resolve_max_connections(Desired) ->
     MaxFds = esockd:ulimit(),
     MaxProcs = erlang:system_info(process_limit),
-    resolve_max_connections(Desired, MaxFds, MaxProcs).
+    do_resolve_max_connections(Desired, MaxFds, MaxProcs).
 
-resolve_max_connections(undefined, MaxFds, MaxProcs) ->
+do_resolve_max_connections(undefined, MaxFds, MaxProcs) ->
     %% not configured
-    min(MaxFds, MaxProcs);
-resolve_max_connections(infinity, MaxFds, MaxProcs) ->
+    {ok, min(MaxFds, MaxProcs)};
+do_resolve_max_connections(infinity, MaxFds, MaxProcs) ->
     %% not configured
-    min(MaxFds, MaxProcs);
-resolve_max_connections(Desired, MaxFds, MaxProcs) when is_integer(Desired) ->
-    Res = lists:min([Desired, MaxFds, MaxProcs]),
-    case Res < Desired of
+    {ok, min(MaxFds, MaxProcs)};
+do_resolve_max_connections(Desired, MaxFds, MaxProcs) when is_integer(Desired) ->
+    Limit = min(MaxFds, MaxProcs),
+    case Desired > Limit of
         true ->
-            logger:log(error,
-                       #{msg => "max_connections_config_ignored",
-                         max_fds => MaxFds,
-                         max_processes => MaxProcs,
-                         desired => Desired
-                        }
-                      );
+            {error, Limit};
         false ->
-            ok
-    end,
-    Res.
+            {ok, Desired}
+    end.
