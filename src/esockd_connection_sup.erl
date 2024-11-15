@@ -288,7 +288,7 @@ get_state_option(connection_mfargs, #state{mfargs = MFA}) ->
 
 set_state_option({max_connections, Desired}, State) ->
     case resolve_max_connections(Desired) of
-        Resolved when is_integer(Desired) andalso Resolved >= Desired ->
+        Resolved when is_integer(Desired) andalso Resolved < Desired ->
             %% resolved to a smaller value
             %% means the desired value is not acceptable (over system limit)
             {error, #{cause => bad_max_connections,

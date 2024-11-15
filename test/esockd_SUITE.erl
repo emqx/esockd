@@ -225,14 +225,20 @@ t_get_set_max_connections(_) ->
 t_get_set_invalid_max_connections(_) ->
     MaxFd = esockd:ulimit(),
     MaxProcs = erlang:system_info(process_limit),
-    Invalid = max(MaxFd, MaxProcs) + 1,
+    Max = min(MaxFd, MaxProcs),
+    Invalid = Max + 1,
     {ok, _LSup} = esockd:open(echo, 7000, [{connection_mfargs, echo_server}]),
-    Expected = min(MaxFd, MaxProcs),
-    ?assertEqual(Expected, esockd:get_max_connections({echo, 7000})),
-    esockd:set_max_connections({echo, 7000}, 2),
+    ?assertEqual(Max, esockd:get_max_connections({echo, 7000})),
+    ?assertEqual(ok, esockd:set_max_connections({echo, 7000}, 2)),
     ?assertEqual(2, esockd:get_max_connections({echo, 7000})),
-    esockd:set_max_connections({echo, 7000}, Invalid),
+    ?assertMatch({error, _}, esockd:set_max_connections({echo, 7000}, Invalid)),
     ?assertEqual(2, esockd:get_max_connections({echo, 7000})),
+    ?assertEqual(ok, esockd:set_max_connections({echo, 7000}, Max)),
+    ?assertEqual(Max, esockd:get_max_connections({echo, 7000})),
+    ?assertEqual(ok, esockd:set_max_connections({echo, 7000}, 3)),
+    ?assertEqual(3, esockd:get_max_connections({echo, 7000})),
+    ?assertEqual(ok, esockd:set_max_connections({echo, 7000}, infinity)),
+    ?assertEqual(Max, esockd:get_max_connections({echo, 7000})),
     ok = esockd:close(echo, 7000).
 
 t_get_set_max_conn_rate(_) ->
