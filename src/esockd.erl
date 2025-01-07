@@ -413,25 +413,27 @@ parse_opt([{dtls_options, L}|Opts], Acc) when is_list(L) ->
 parse_opt([_|Opts], Acc) ->
     parse_opt(Opts, Acc).
 
+-define(MAGIC_MAX_FDS, 1023).
+%% Magic!
+%% According to Erlang/OTP doc, erlang:system_info(check_io)):
+%% Returns a list containing miscellaneous information about the emulators
+%% internal I/O checking. Notice that the content of the returned list can
+%% vary between platforms and over time. It is only guaranteed that a list
+%% is returned.
+
 %% @doc System 'ulimit -n'
 -spec(ulimit() -> pos_integer()).
 ulimit() ->
-    find_max_fd(erlang:system_info(check_io)).
+    find_max_fd(erlang:system_info(check_io), ?MAGIC_MAX_FDS).
 
-find_max_fd([]) ->
-    %% Magic!
-    %% According to Erlang/OTP doc, erlang:system_info(check_io)):
-    %% Returns a list containing miscellaneous information about the emulators
-    %% internal I/O checking. Notice that the content of the returned list can
-    %% vary between platforms and over time. It is only guaranteed that a list
-    %% is returned.
-    1023;
-find_max_fd([CheckIoResult | More]) ->
+find_max_fd([], Acc) when is_integer(Acc) andalso Acc >= 0 ->
+    Acc;
+find_max_fd([CheckIoResult | More], Acc) ->
     case lists:keyfind(max_fds, 1, CheckIoResult) of
         {max_fds, N} when is_integer(N) andalso N > 0 ->
-            N;
+            find_max_fd(More, max(Acc, N));
         _ ->
-            find_max_fd(More)
+            find_max_fd(More, Acc)
     end.
 
 -spec(to_string(listen_on()) -> string()).
