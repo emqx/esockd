@@ -398,11 +398,18 @@ t_update_options_udp(_) ->
     ok = gen_udp:send(Sock2, {127,0,0,1}, Port, <<"test2">>),
     {ok, {_, Port, <<"HEY">>}} = gen_udp:recv(Sock2, 0, 1000),
 
+    NewUdpOpts = [{udp_options, [{recbuf, 1024}]}],
+    ok = esockd:set_options({echo_udp, Port}, NewUdpOpts),
+
     %% Sockets should still be alive
     ok = gen_udp:send(Sock1, {127,0,0,1}, Port, <<"test3">>),
     {ok, {_, Port, <<"test3">>}} = gen_udp:recv(Sock1, 0, 1000),
 
     ?assertEqual(8, esockd:get_max_connections({echo_udp, Port})),
+    ?assertEqual(
+        1024,
+        proplists:get_value(recbuf, proplists:get_value(udp_options, esockd:get_options({echo_udp, Port})))
+    ),
 
     ok = gen_udp:close(Sock1),
     ok = gen_udp:close(Sock2),
@@ -447,6 +454,9 @@ t_update_udp_options_error(_) ->
     ?assertEqual({error, bad_health_check},
                 esockd:set_options({echo_udp, Port},
                                  [{health_check, [{request, <<"INVALID_REQUEST">>}]}])),
+
+    NewUdpOpts = [{udp_options, [{backlog, 1}]}],
+    ?assertEqual({error, einval}, esockd:set_options({echo_udp, Port}, NewUdpOpts)),
 
     {ok, Sock2} = gen_udp:open(0, [binary, {active, false}]),
     ok = gen_udp:send(Sock2, {127,0,0,1}, Port, <<"test2">>),
