@@ -14,31 +14,23 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(const_server).
+-module(const_udp_server).
 
 -export([start_link/3]).
 
-%% Callbacks
 -export([init/3, loop/3]).
 
-start_link(Transport, RawSock, Resp) ->
-	{ok, spawn_link(?MODULE, init, [Transport, RawSock, Resp])}.
+start_link(Transport, Peer, Resp) ->
+	{ok, spawn_link(?MODULE, init, [Transport, Peer, Resp])}.
 
-init(Transport, RawSock, Resp) ->
-    case Transport:wait(RawSock) of
-        {ok, Sock} ->
-            loop(Transport, Sock, Resp);
-        {error, Reason} ->
-            {error, Reason}
+init(Transport, Peer, Resp) ->
+    loop(Transport, Peer, Resp).
+
+loop(Transport, Peer, Resp) ->
+    receive
+        {datagram, _From, <<"stop">>} ->
+            exit(normal);
+        {datagram, From, _Packet} ->
+            From ! {datagram, Peer, Resp},
+            loop(Transport, Peer, Resp)
     end.
-
-loop(Transport, Sock, Resp) ->
-	case Transport:recv(Sock, 0) of
-        {ok, _Data} ->
-            Transport:send(Sock, Resp),
-            loop(Transport, Sock, Resp);
-        {shutdown, Reason} ->
-            exit({shutdown, Reason});
-        {error, Reason} ->
-            exit({shutdown, Reason})
-	end.

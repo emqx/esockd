@@ -139,8 +139,8 @@ get_current_connections(Pid) ->
 get_shutdown_count(_Pid) ->
     [].
 
-set_options(_ListenerRef, _Pid, _Opts) ->
-    {error, not_supported}.
+set_options(_ListenerRef = {Proto, ListenOn}, Pid, Opts) ->
+    gen_server:call(Pid, {options, Proto, ListenOn, Opts}).
 
 set_max_connections(_ListenerRef, Pid, MaxLimit) when is_integer(MaxLimit) ->
     gen_server:call(Pid, {max_peers, MaxLimit}).
@@ -215,6 +215,14 @@ handle_call({max_conn_rate, Proto, ListenOn, Opts}, _From, State) ->
 
 handle_call(options, _From, State = #state{options = Opts}) ->
     {reply, Opts, State};
+
+handle_call({options, _Proto, ListenOn, Opts}, _From, State) ->
+    case apply_opts(Opts, ListenOn, State) of
+        {ok, NState} ->
+            {reply, ok, NState#state{options = Opts}};
+        {error, Error} ->
+            {reply, {error, Error}, State}
+    end;
 
 handle_call(access_rules, _From, State = #state{access_rules = Rules}) ->
     {reply, [raw(Rule) || Rule <- Rules], State};
@@ -404,3 +412,46 @@ init_health_check(State, Opts) ->
         Any ->
             {error, {invalid_health_check_data, Any}}
     end.
+
+apply_opts([], _ListenOn, State) ->
+    {ok, State};
+apply_opts([{max_connections, MaxLimit} | Rest], _ListenOn, State) ->
+    apply_opts(Rest, _ListenOn, State#state{max_peers = MaxLimit});
+apply_opts(
+    [{max_conn_rate, Opts} | Rest],
+    ListenOn,
+    State = #state{proto = Proto}
+) ->
+    Limiter = conn_rate_limiter(conn_limiter_opt(Opts, {listener, Proto, ListenOn})),
+    apply_opts(Rest, ListenOn, State#state{conn_limiter = Limiter});
+apply_opts([{health_check, Opts} | Rest], _ListenOn, State) ->
+    case Opts of
+        #{request := Request, reply := Reply} when is_binary(Request), is_binary(Reply) ->
+            apply_opts(Rest, _ListenOn, State#state{health_check_request = Request, health_check_reply = Reply});
+        _ ->
+            {error, bad_health_check}
+    end;
+apply_opts([{connection_mfargs, MFA} | Rest], _ListenOn, State) ->
+    apply_opts(Rest, _ListenOn, State#state{mfa = MFA});
+apply_opts(
+    [{udp_options, Opts} | Rest],
+    _ListenOn,
+    State = #state{sock = Sock}
+) ->
+    SockOpts = sockopts([{udp_options, Opts}]),
+    case inet:setopts(Sock, SockOpts) of
+        ok ->
+            apply_opts(Rest, _ListenOn, State);
+        {error, Error} ->
+            {error, Error}
+    end;
+apply_opts([{access_rules, Rules} | Rest], _ListenOn, State) ->
+    try
+        AccessRules = [esockd_access:compile(Rule) || Rule <- Rules],
+        apply_opts(Rest, _ListenOn, State#state{access_rules = AccessRules})
+    catch
+        error:_Reason ->
+            {error, bad_access_rules}
+    end;
+apply_opts([{Unknown, _} | _], _ListenOn, _State) ->
+    {error, {unknown_option, Unknown}}.
