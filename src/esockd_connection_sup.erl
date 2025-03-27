@@ -63,7 +63,6 @@
           mfargs :: esockd:mfargs()
          }).
 
--define(TRANSPORT, esockd_transport).
 -define(ERROR_MSG(Format, Args),
         error_logger:error_msg("[~s] " ++ Format, [?MODULE | Args])).
 
@@ -105,8 +104,8 @@ start_connection(Sup, Sock, UpgradeFuns) ->
     case call(Sup, {start_connection, Sock}) of
         {ok, ConnPid} ->
             %% Transfer controlling from acceptor to connection
-            _ = ?TRANSPORT:controlling_process(Sock, ConnPid),
-            _ = ?TRANSPORT:ready(ConnPid, Sock, UpgradeFuns),
+            _ = esockd_transport:controlling_process(Sock, ConnPid),
+            _ = esockd_transport:ready(ConnPid, Sock, UpgradeFuns),
             {ok, ConnPid};
         ignore -> ignore;
         {error, Reason} ->
@@ -117,7 +116,7 @@ start_connection(Sup, Sock, UpgradeFuns) ->
 -spec start_connection_proc(esockd:mfargs(), esockd_transport:socket())
       -> {ok, pid()} | ignore | {error, term()}.
 start_connection_proc(MFA, Sock) ->
-    esockd:start_mfargs(MFA, ?TRANSPORT, Sock).
+    esockd:start_mfargs(MFA, esockd_transport, Sock).
 
 -spec(count_connections(pid()) -> integer()).
 count_connections(Sup) ->
