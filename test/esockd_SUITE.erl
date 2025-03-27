@@ -551,6 +551,8 @@ t_update_tls_options(Config) ->
 
     ok = esockd:close(echo_tls, LPort).
 
+%% Verify that updating / resetting dTLS-related listener options is correctly
+%% reported as unsupported (due to lack of consistent support in Erlang/OTP).
 t_update_dtls_options(Config) ->
     UdpOpts = [{read_packets, 16}],
     DtlsOpts = [{protocol, dtls},
@@ -586,6 +588,7 @@ t_update_dtls_options(Config) ->
 
     {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 1000),
 
+    %% Both new and existing connections should still work.
     ok = ssl:send(DtlsSock1, <<"DtlsSock1">>),
     ok = ssl:send(DtlsSock2, <<"DtlsSock2">>),
     {ok, <<"DtlsSock1">>} = ssl:recv(DtlsSock1, 0),

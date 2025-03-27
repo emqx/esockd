@@ -270,7 +270,7 @@ get_stats({Proto, ListenOn}) when is_atom(Proto) ->
 get_options({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, []).
 
-%% @doc Set applicable options
+%% @doc Set applicable listener options, without affecting existing connections.
 %% If some options could not be set, either because they are not applicable or
 %% because they require a listener restart, function returns an error.
 -spec set_options({atom(), listen_on()}, options()) ->
@@ -280,8 +280,10 @@ set_options({Proto, _ListenOn} = ListenerRef, Options) when is_atom(Proto) ->
     OptionsMerged = merge_opts(OptionsWas, Options),
     with_listener_ref(ListenerRef, ?FUNCTION_NAME, [OptionsMerged]).
 
-%% @doc Replace set of applicable options
-%% See `set_options/2`.
+%% @doc Replace set of applicable listener options, without affecting existing
+%% connections. In contrast to `set_options/2` existing options are not preserved,
+%% and will be reset back to defaults if not present in `Options`.
+%% See also: `set_options/2`.
 -spec reset_options({atom(), listen_on()}, options()) ->
     ok | {error, not_supported | _UpdateErrorReason}.
 reset_options({Proto, _ListenOn} = ListenerRef, Options) when is_atom(Proto) ->
