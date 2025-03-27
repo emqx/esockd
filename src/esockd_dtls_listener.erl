@@ -45,15 +45,18 @@
           lsock     :: ssl:sslsocket(),
           laddr     :: inet:ip_address(),
           lport     :: inet:port_number(),
-          sockopts  :: [ssl:tls_server_option()]
+          sockopts  :: [gen_udp:option()],
+          dtlsopts  :: [ssl:tls_server_option()]
          }).
 
 -type option() :: {dtls_options, [gen_udp:option()]}.
 
--define(DEFAULT_DTLS_OPTIONS,
-        [{protocol, dtls},
-         {mode, binary},
+-define(DEFAULT_SOCK_OPTIONS,
+        [{mode, binary},
          {reuseaddr, true}]).
+
+-define(DEFAULT_DTLS_OPTIONS,
+        [{protocol, dtls}]).
 
 -spec start_link(atom(), esockd:listen_on(), [esockd:option()])
       -> {ok, pid()} | ignore | {error, term()}.
@@ -96,37 +99,41 @@ init({Proto, ListenOn, Opts}) ->
     Port = port(ListenOn),
     process_flag(trap_exit, true),
     esockd_server:ensure_stats({Proto, ListenOn}),
-    SockOpts = merge_defaults(merge_addr(ListenOn, dltsopts(Opts))),
+    SockOpts = merge_sock_defaults(merge_addr(ListenOn, sockopts(Opts))),
+    DTLSOpts = merge_dtls_defaults(dtlsopts(Opts)),
     %% Don't active the socket...
-    case ssl:listen(Port, SockOpts) of
+    case ssl:listen(Port, SockOpts ++ DTLSOpts) of
     %%case ssl:listen(Port, [{active, false} | proplists:delete(active, SockOpts)]) of
         {ok, LSock} ->
             {ok, {LAddr, LPort}} = ssl:sockname(LSock),
-            %%error_logger:info_msg("~s listen on ~s:~p with ~p acceptors.~n",
-            %%                      [Proto, inet:ntoa(LAddr), LPort, AcceptorNum]),
-            {ok, #state{proto = Proto, listen_on = ListenOn, lsock = LSock,
-                        laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+            {ok, #state{proto = Proto, listen_on = ListenOn,
+                        lsock = LSock, laddr = LAddr, lport = LPort,
+                        sockopts = SockOpts, dtlsopts = DTLSOpts}};
         {error, Reason} ->
             error_logger:error_msg("~s failed to listen on ~p - ~p (~s)",
                                    [Proto, Port, Reason, inet:format_error(Reason)]),
             {stop, Reason}
     end.
 
-dltsopts(Opts) ->
+dtlsopts(Opts) ->
     %% Filter out `esockd:ssl_custom_option()`, otherwise DTLS listener will
     %% fail to start.
-    DTLSOpts = lists:foldl(
+    lists:foldl(
         fun proplists:delete/2,
         proplists:get_value(dtls_options, Opts, []),
         [handshake_timeout, gc_after_handshake]
-    ),
-    SockOpts = proplists:get_value(udp_options, Opts, []),
-    SockOpts ++ DTLSOpts.
+    ).
+
+sockopts(Opts) ->
+    proplists:get_value(udp_options, Opts, []).
 
 port(Port) when is_integer(Port) -> Port;
 port({_Addr, Port}) -> Port.
 
-merge_defaults(SockOpts) ->
+merge_sock_defaults(SockOpts) ->
+    esockd:merge_opts(?DEFAULT_SOCK_OPTIONS, SockOpts).
+
+merge_dtls_defaults(SockOpts) ->
     esockd:merge_opts(?DEFAULT_DTLS_OPTIONS, SockOpts).
 
 merge_addr(Port, SockOpts) when is_integer(Port) ->
@@ -143,17 +150,26 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
             ],
     {reply, Reply, State};
 
-handle_call({set_options, Opts}, _From, State = #state{lsock = LSock, sockopts = SockOpts}) ->
-    SockOptsIn = dltsopts(Opts),
-    SockOptsChanged = esockd:changed_opts(SockOptsIn, SockOpts),
-    case ssl:setopts(LSock, SockOptsChanged) of
-        ok ->
-            SockOptsMerged = esockd:merge_opts(SockOpts, SockOptsChanged),
-            {reply, ok, State#state{sockopts = SockOptsMerged}};
-        Error = {error, _} ->
+handle_call({set_options, Opts}
+           , _From
+           , State = #state{lsock = LSock, sockopts = SockOpts, dtlsopts = DTLSOpts}
+           ) ->
+    SockOptsIn = sockopts(Opts),
+    DTLSOptsIn = dtlsopts(Opts),
+    case esockd:changed_opts(DTLSOptsIn, DTLSOpts) of
+        [] ->
+            SockOptsChanged = esockd:changed_opts(SockOptsIn, SockOpts),
+            case ssl:setopts(LSock, SockOptsChanged) of
+                ok ->
+                    {reply, ok, State#state{sockopts = SockOptsIn}};
+                Error = {error, _} ->
+                    {reply, Error, State}
+            end;
+        [_ | _] ->
+            %% If the dTLS option set is different, bail out.
             %% Setting dTLS options on listening socket always succeeds,
             %% even if the options are invalid.
-            {reply, Error, State}
+            {reply, {error, not_supported}, State}
     end;
 
 handle_call(Req, _From, State) ->

@@ -551,6 +551,57 @@ t_update_tls_options(Config) ->
 
     ok = esockd:close(echo_tls, LPort).
 
+t_update_dtls_options(Config) ->
+    UdpOpts = [{read_packets, 16}],
+    DtlsOpts = [{protocol, dtls},
+                {certfile, esockd_ct:certfile(Config)},
+                {keyfile, esockd_ct:keyfile(Config)},
+                {verify, verify_none}
+               ],
+    DtlsOpts1 = [{versions, ['dtlsv1.2']},
+                 {client_renegotiation, false}
+                 | DtlsOpts],
+    DtlsOpts2 = [{versions, ['dtlsv1']},
+                 {beast_mitigation, disabled}
+                 | DtlsOpts],
+    ClientOpts = [binary,
+                  {active, false},
+                  {protocol, dtls},
+                  {verify, verify_none}],
+    {ok, _LSup1} = esockd:open_dtls(dtls_echo, 7000,
+                                    [{dtls_options, DtlsOpts1},
+                                     {connection_mfargs, dtls_echo_server}]),
+    {ok, DtlsSock1} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 1000),
+
+    ?assertMatch(
+        {error, not_supported},
+        esockd:set_options({dtls_echo, 7000},
+                           [{udp_options, UdpOpts}, {dtls_options, DtlsOpts2}])
+    ),
+    ?assertMatch(
+        {error, not_supported},
+        esockd:reset_options({dtls_echo, 7000},
+                             [{udp_options, UdpOpts}, {dtls_options, DtlsOpts2}])
+    ),
+
+    {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 1000),
+
+    ok = ssl:send(DtlsSock1, <<"DtlsSock1">>),
+    ok = ssl:send(DtlsSock2, <<"DtlsSock2">>),
+    {ok, <<"DtlsSock1">>} = ssl:recv(DtlsSock1, 0),
+    {ok, <<"DtlsSock2">>} = ssl:recv(DtlsSock2, 0),
+
+    %% NOTE
+    %% Changing options involve restarting of acceptors, and this currently exposes
+    %% `esockd` to what seems as an Erlang/OTP bug. Process acting as dTLS listener
+    %% does not track acceptors liveness, and thus is happy to hand out connections
+    %% to dead listeners.
+    %% ok = esockd:set_options({dtls_echo, 7000},
+    %%                         [{udp_options, UdpOpts}]),
+    %% {ok, DtlsSock3} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 1000),
+
+    ok = esockd:close(dtls_echo, 7000).
+
 t_allow_deny(_) ->
     AccessRules = [{allow, "192.168.1.0/24"}],
     {ok, _LSup} = esockd:open(echo, 7000, [{access_rules, AccessRules}]),
