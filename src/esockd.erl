@@ -53,6 +53,7 @@
 -export([ get_stats/1
         , get_options/1
         , set_options/2
+        , reset_options/2
         , get_acceptors/1
         ]).
 
@@ -274,8 +275,17 @@ get_options({Proto, ListenOn}) when is_atom(Proto) ->
 %% because they require a listener restart, function returns an error.
 -spec set_options({atom(), listen_on()}, options()) ->
     ok | {error, not_supported | _UpdateErrorReason}.
-set_options({Proto, ListenOn}, Options) when is_atom(Proto) ->
-    with_listener_ref({Proto, ListenOn}, ?FUNCTION_NAME, [Options]).
+set_options({Proto, _ListenOn} = ListenerRef, Options) when is_atom(Proto) ->
+    OptionsWas = get_options(ListenerRef),
+    OptionsMerged = merge_opts(OptionsWas, Options),
+    with_listener_ref(ListenerRef, ?FUNCTION_NAME, [OptionsMerged]).
+
+%% @doc Replace set of applicable options
+%% See `set_options/2`.
+-spec reset_options({atom(), listen_on()}, options()) ->
+    ok | {error, not_supported | _UpdateErrorReason}.
+reset_options({Proto, _ListenOn} = ListenerRef, Options) when is_atom(Proto) ->
+    with_listener_ref(ListenerRef, set_options, [Options]).
 
 %% @doc Get acceptors number
 -spec(get_acceptors({atom(), listen_on()}) -> pos_integer()).

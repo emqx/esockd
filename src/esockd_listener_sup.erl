@@ -105,9 +105,7 @@ set_options(ListenerRef, Sup, Opts) ->
     end.
 
 do_set_options(ListenerRef, Sup, Opts) ->
-    OptsWas = esockd_server:get_listener_prop(ListenerRef, options),
-    OptsWas = esockd_server:set_listener_prop(ListenerRef, options,
-                                              esockd:merge_opts(OptsWas, Opts)),
+    OptsWas = esockd_server:set_listener_prop(ListenerRef, options, Opts),
     ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
     {Listener, ListenerPid} = esockd_server:get_listener_prop(ListenerRef, listener),
     Result = try

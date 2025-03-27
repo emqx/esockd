@@ -494,6 +494,8 @@ t_update_tls_options(Config) ->
     SslOpts2 = [ {certfile, esockd_ct:certfile(Config, "change.crt")}
                , {keyfile, esockd_ct:keyfile(Config, "change.key")}
                , {verify, verify_none}
+               , {versions, ['tlsv1.2']}
+               , {reuse_sessions, true}
                ],
     ClientSslOpts = [ binary
                     , {active, false}
@@ -523,6 +525,29 @@ t_update_tls_options(Config) ->
 
     ?assertEqual(<<"Server">>, esockd_peercert:common_name(Cert1)),
     ?assertEqual(<<"Changed">>, esockd_peercert:common_name(Cert2)),
+
+    %% Changing _just_ TLS version is error-prone:
+    %% Existing TLS options might be incompatible with changed version.
+    ?assertMatch(
+       {error, #{ error := invalid_ssl_option
+                , reason := {options, incompatible, _}
+                }},
+        esockd:set_options({echo_tls, LPort},
+                           [{ssl_options, [{versions, ['tlsv1.3']}]}])
+    ),
+
+    %% ...And need to be explicitly reset.
+    SslOpts3 = esockd:merge_opts(SslOpts1, [{versions, ['tlsv1.3']}]),
+    ok = esockd:reset_options({echo_tls, LPort}, [{ssl_options, SslOpts3}]),
+
+    {ok, Sock3} = ssl:connect("localhost", LPort, ClientSslOpts, 1000),
+
+    ok = ssl:send(Sock1, <<"Sock1">>),
+    {ok, <<"Sock1">>} = ssl:recv(Sock1, 0, 1000),
+    ok = ssl:send(Sock2, <<"Sock2">>),
+    {ok, <<"Sock2">>} = ssl:recv(Sock2, 0, 1000),
+    ok = ssl:send(Sock3, <<"Sock3">>),
+    {ok, <<"Sock3">>} = ssl:recv(Sock3, 0, 1000),
 
     ok = esockd:close(echo_tls, LPort).
 
