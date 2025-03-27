@@ -530,7 +530,7 @@ t_update_tls_options(Config) ->
     %% Existing TLS options might be incompatible with changed version.
     ?assertMatch(
        {error, #{ error := invalid_ssl_option
-                , reason := {options, incompatible, _}
+                , reason := {options, _Incompatible, _}
                 }},
         esockd:set_options({echo_tls, LPort},
                            [{ssl_options, [{versions, ['tlsv1.3']}]}])
