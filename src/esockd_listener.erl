@@ -145,8 +145,7 @@ handle_call({set_options, Opts}, _From, State = #state{lsock = LSock, sockopts =
     SockOptsChanged = esockd:changed_opts(SockOptsIn, SockOpts),
     case inet:setopts(LSock, SockOptsChanged) of
         ok ->
-            SockOptsMerged = esockd:merge_opts(SockOpts, SockOptsChanged),
-            {reply, ok, State#state{sockopts = SockOptsMerged}};
+            {reply, ok, State#state{sockopts = SockOptsIn}};
         Error = {error, _} ->
             {reply, Error, State}
     end;
