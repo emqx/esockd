@@ -55,7 +55,7 @@
                               | {pp2_ssl,       list(pp2_additional_ssl_field())}).
 
 -record(proxy_socket, {inet     :: inet4 | inet6 | 'unix' | 'unspec',
-                       socket   :: inet:socket() | #ssl_socket{},
+                       socket   :: inet:socket() | #ssl_socket{} | socket:socket(),
                        src_addr :: inet:ip_address() | undefined,
                        dst_addr :: inet:ip_address() | undefined,
                        src_port :: inet:port_number() | undefined,
