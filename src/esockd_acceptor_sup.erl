@@ -24,17 +24,11 @@
 -export([ start_acceptors/2
         , start_acceptor/2
         , count_acceptors/1
-        , check_options/1
+        , check_options/2
         ]).
 
 %% Supervisor callbacks
 -export([init/1]).
-
-%% callbacks
--export([tune_socket/2]).
-
-%% Test
--export([tune_socket_fun/1]).
 
 -define(ACCEPTOR_POOL, 16).
 
@@ -47,19 +41,29 @@
 start_supervised(ListenerRef = {Proto, ListenOn}) ->
     Type = esockd_server:get_listener_prop(ListenerRef, type),
     Opts = esockd_server:get_listener_prop(ListenerRef, options),
-    case check_options(Opts) of
+    ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
+    case check_options(Type, Opts) of
         ok ->
-            TuneFun = tune_socket_fun(Opts),
             UpgradeFuns = upgrade_funs(Type, Opts),
             LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
             Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
-            AcceptorMod = case Type of
-                                dtls -> esockd_dtls_acceptor;
-                                _ -> esockd_acceptor_fsm
-                            end,
-            ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
-            AcceptorArgs = [Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter],
-            case supervisor:start_link(?MODULE, {AcceptorMod, AcceptorArgs}) of
+            case Type of
+                T when T =:= tcp; T =:= ssl ->
+                    TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
+                    AcceptCb = {esockd_accept_inet, TuneFun},
+                    Mod = esockd_acceptor_fsm,
+                    Args = [ListenerRef, esockd_transport, ConnSup, AcceptCb, UpgradeFuns, Limiter];
+                tcpsocket ->
+                    TuneFun = esockd_accept_socket:mk_tune_socket_fun(Opts),
+                    AcceptCb = {esockd_accept_socket, TuneFun},
+                    Mod = esockd_acceptor_fsm,
+                    Args = [ListenerRef, esockd_socket, ConnSup, AcceptCb, UpgradeFuns, Limiter];
+                dtls ->
+                    TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
+                    Mod = esockd_dtls_acceptor,
+                    Args = [ListenerRef, ConnSup, TuneFun, UpgradeFuns, Limiter]
+            end,
+            case supervisor:start_link(?MODULE, {Mod, Args}) of
                 {ok, Pid} ->
                     _ = esockd_server:set_listener_prop(ListenerRef, acceptor_sup, Pid),
                     {ok, Pid};
@@ -113,29 +117,17 @@ init({AcceptorMod, AcceptorArgs}) ->
 %% Internal functions
 %% -------------------------------------------------------------------
 
-tune_socket_fun(Opts) ->
-    Opts1 = case proplists:get_bool(tune_buffer, Opts) of
-                true ->
-                    [{tune_buffer, true}];
-                false ->
-                    []
-            end,
-    Opts2 = case proplists:get_value(tune_fun, Opts) of
-                undefined ->
-                    [];
-                MFA ->
-                    [{tune_fun, MFA}]
-            end,
-    TuneOpts = Opts1 ++ Opts2,
-    {fun ?MODULE:tune_socket/2, [TuneOpts]}.
-
 upgrade_funs(Type, Opts) ->
-    lists:append([proxy_upgrade_fun(Opts), ssl_upgrade_fun(Type, Opts)]).
+    proxy_upgrade_fun(Type, Opts) ++ ssl_upgrade_fun(Type, Opts).
 
-proxy_upgrade_fun(Opts) ->
+proxy_upgrade_fun(Type, Opts) ->
     case proplists:get_bool(proxy_protocol, Opts) of
-        false -> [];
-        true  -> [esockd_transport:proxy_upgrade_fun(Opts)]
+        false ->
+            [];
+        true when Type =:= tcpsocket ->
+            [esockd_socket:proxy_upgrade_fun(Opts)];
+        true ->
+            [esockd_transport:proxy_upgrade_fun(Opts)]
     end.
 
 ssl_upgrade_fun(Type, Opts) ->
@@ -148,32 +140,13 @@ ssl_upgrade_fun(Type, Opts) ->
         SslOpts -> [esockd_transport:ssl_upgrade_fun(SslOpts)]
     end.
 
-tune_socket(Sock, []) ->
-    {ok, Sock};
-tune_socket(Sock, [{tune_buffer, true}|More]) ->
-    case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
-        {ok, BufSizes} ->
-            BufSz = lists:max([Sz || {_Opt, Sz} <- BufSizes]),
-            case esockd_transport:setopts(Sock, [{buffer, BufSz}]) of
-                ok ->
-                    tune_socket(Sock, More);
-                Error ->
-                    Error
-            end;
-        Error ->
-            Error
+-spec check_options(atom(), list()) -> ok | {error, any()}.
+check_options(tcpsocket, Opts) ->
+    case proplists:get_value(ssl_options, Opts) of
+        undefined -> ok;
+        _SslOpts -> {error, ssl_not_supported}
     end;
-tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
-    case apply(M, F, A) of
-        ok ->
-            tune_socket(Sock, More);
-        Error -> Error
-    end;
-tune_socket(Sock, [_|More]) ->
-    tune_socket(Sock, More).
-
--spec check_options(list()) -> ok | {error, any()}.
-check_options(Opts) ->
+check_options(_Type, Opts) ->
     try
         ok = check_ssl_opts(ssl_options, Opts),
         ok = check_ssl_opts(dtls_options, Opts)

@@ -50,187 +50,151 @@
     code_change/4
 ]).
 
--define(NOREF, noref).
-
 %% time to suspend if system-limit reached (emfile/enfile)
 -define(SYS_LIMIT_SUSPEND_MS, 1000).
 
--record(state, {
-    proto :: atom(),
-    listen_on :: esockd:listen_on(),
-    lsock :: inet:socket(),
-    sockmod :: module(),
-    sockname :: {inet:ip_address(), inet:port_number()},
-    tune_fun :: esockd:sock_fun(),
+-record(d, {
+    listener_ref :: esockd:listener_ref(),
+    lsock :: _ListenerSocket,
+    transport :: module(),
+    modopts :: {module(), _Ctx},
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
-    conn_sup :: pid() | {function(), list()},
-    accept_ref = ?NOREF :: term()
+    conn_sup :: pid()
 }).
 
 %% @doc Start an acceptor
 -spec start_link(
-    atom(),
-    esockd:listen_on(),
+    esockd:listener_ref(),
+    module(),
     pid(),
-    esockd:sock_fun(),
+    {module(), _Options},
     [esockd:sock_fun()],
     esockd_generic_limiter:limiter(),
-    inet:socket()
+    _ListenerSocket
 ) ->
     {ok, pid()} | {error, term()}.
-start_link(
-    Proto,
-    ListenOn,
-    ConnSup,
-    TuneFun,
-    UpgradeFuns,
-    Limiter,
-    LSock
-) ->
+start_link(ListenerRef, Transport, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock) ->
     gen_statem:start_link(
         ?MODULE,
-        [
-            Proto,
-            ListenOn,
-            ConnSup,
-            TuneFun,
-            UpgradeFuns,
-            Limiter,
-            LSock
-        ],
+        [ListenerRef, Transport, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock],
         []
     ).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
-callback_mode() -> handle_event_function.
 
-init([Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter, LSock]) ->
+callback_mode() ->
+    handle_event_function.
+
+init([ListenerRef, Transport, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, LSock]) ->
     _ = erlang:process_flag(trap_exit, true),
-    _ = rand:seed(exsplus, erlang:timestamp()),
-    {ok, Sockname} = inet:sockname(LSock),
-    {ok, SockMod} = inet_db:lookup_socket(LSock),
-    {ok, waiting,
-        #state{
-            proto = Proto,
-            listen_on = ListenOn,
-            lsock = LSock,
-            sockmod = SockMod,
-            sockname = Sockname,
-            tune_fun = TuneFun,
-            upgrade_funs = UpgradeFuns,
-            conn_limiter = Limiter,
-            conn_sup = ConnSup
-        },
-        {next_event, internal, begin_waiting}}.
+    Ctx = Mod:init(LSock, Opts),
+    D = #d{
+        listener_ref = ListenerRef,
+        lsock = LSock,
+        transport = Transport,
+        modopts = {Mod, Ctx},
+        upgrade_funs = UpgradeFuns,
+        conn_limiter = Limiter,
+        conn_sup = ConnSup
+    },
+    {ok, waiting, D, {next_event, internal, accept}}.
 
-handle_event(internal, begin_waiting, waiting, #state{accept_ref = Ref}) when Ref =/= ?NOREF ->
-    %% started waiting in suspending state
-    keep_state_and_data;
-handle_event(internal, begin_waiting, waiting, State = #state{lsock = LSock, accept_ref = ?NOREF}) ->
-    case async_accept(waiting, LSock) of
-        {ok, Ref} ->
-            {keep_state, State#state{accept_ref = Ref}};
+handle_event(internal, accept, State, D) when State =:= waiting orelse
+                                              State =:= suspending ->
+    case async_accept(State, D) of
+        {ok, Sock} ->
+            handle_accepted(Sock, State, D);
+        {async, Ref} ->
+            {next_state, {accepting, Ref, State}, D};
         {error, econnaborted} ->
-            inc_stats(State, econnaborted),
-            {next_state, waiting, State, {next_event, internal, begin_waiting}};
+            inc_stats(D, econnaborted),
+            {keep_state, D, {next_event, internal, accept}};
         {error, closed} ->
-            {stop, normal, State};
+            {stop, normal, D};
         {error, Reason} ->
-            {stop, Reason, State}
+            {stop, Reason, D}
     end;
-handle_event(internal, accept_and_close, suspending, State = #state{lsock = LSock}) ->
-    case async_accept(suspending, LSock) of
-        {ok, Ref} ->
-            {keep_state, State#state{accept_ref = Ref}};
-        {error, econnaborted} ->
-            inc_stats(State, econnaborted),
-            {keep_state_and_data, {next_event, internal, accept_and_close}};
-        {error, closed} ->
-            {stop, normal, State};
+handle_event(info, Message, State = {accepting, Ref, InState}, D) ->
+    case unwrap_accept_result(Message, Ref, D) of
+        {ok, Sock} ->
+            handle_accepted(Sock, InState, D);
         {error, Reason} ->
-            {stop, Reason, State}
+            inc_stats(D, Reason),
+            handle_socket_error(Reason, InState, D);
+        {async, NRef} ->
+            {next_state, {accepting, NRef, InState}, D};
+        Info ->
+            handle_info(info, Info, State, D)
     end;
-handle_event(
-    info,
-    {inet_async, LSock, Ref, {ok, Sock}},
-    waiting,
-    State = #state{lsock = LSock, accept_ref = Ref}
-) ->
-    NextEvent = {next_event, internal, {token_request, Sock}},
-    {next_state, token_request, State#state{accept_ref = ?NOREF}, NextEvent};
-handle_event(
-    info,
-    {inet_async, LSock, Ref, {ok, Sock}},
-    suspending,
-    State = #state{lsock = LSock, accept_ref = Ref}
-) ->
-    _ = close(Sock),
-    inc_stats(State, rate_limited),
-    NextEvent = {next_event, internal, accept_and_close},
-    {keep_state, State#state{accept_ref = ?NOREF}, NextEvent};
-handle_event(
-    internal, {token_request, Sock}, token_request, State = #state{conn_limiter = Limiter}
-) ->
+handle_event({timeout, cooldown}, begin_waiting, {accepting, Ref, suspending}, D) ->
+    {next_state, {accepting, Ref, waiting}, D};
+handle_event({timeout, cooldown}, begin_waiting, suspending, D) ->
+    enter_waiting(D);
+handle_event(Type, Content, State, D) ->
+    handle_info(Type, Content, State, D).
+
+handle_info(Type, Content, State, _D) ->
+    logger:log(warning, #{msg => "esockd_acceptor_unhandled_event",
+                          state => State,
+                          event_type => Type,
+                          event_content => Content}),
+    keep_state_and_data.
+
+handle_accepted(Sock, waiting, D = #d{conn_limiter = Limiter}) ->
     case esockd_generic_limiter:consume(1, Limiter) of
-        {ok, Limiter2} ->
-            {next_state, accepting, State#state{conn_limiter = Limiter2},
-                {next_event, internal, {accept, Sock}}};
-        {pause, PauseTime, Limiter2} ->
-            _ = close(Sock),
-            inc_stats(State, rate_limited),
-            enter_suspending(State#state{conn_limiter = Limiter2}, PauseTime)
+        {ok, NLimiter} ->
+            ND = D#d{conn_limiter = NLimiter},
+            _ = handle_socket(Sock, ND),
+            enter_waiting(ND);
+        {pause, PauseTime, NLimiter} ->
+            _ = close(D, Sock),
+            _ = inc_stats(D, rate_limited),
+            ND = D#d{conn_limiter = NLimiter},
+            enter_suspending(ND, PauseTime)
     end;
-handle_event(
-    internal,
-    {accept, Sock},
-    accepting,
-    State = #state{
-        sockmod = SockMod,
-        tune_fun = TuneFun,
+handle_accepted(Sock, suspending, D) ->
+    _ = close(D, Sock),
+    _ = inc_stats(D, rate_limited),
+    {next_state, suspending, D, {next_event, internal, accept}}.
+
+enter_waiting(D) ->
+    Action = {next_event, internal, accept},
+    {next_state, waiting, D, Action}.
+
+enter_suspending(D, Timeout) ->
+    Actions = [{next_event, internal, accept},
+               {{timeout, cooldown}, Timeout, begin_waiting}],
+    {next_state, suspending, D, Actions}.
+
+handle_socket(
+    Sock,
+    D = #d{
+        transport = Transport,
+        modopts = {Mod, Opts},
         upgrade_funs = UpgradeFuns,
         conn_sup = ConnSup
     }
 ) ->
-    %% make it look like gen_tcp:accept
-    inet_db:register_socket(Sock, SockMod),
-    case eval_tune_socket_fun(TuneFun, Sock) of
-        {ok, NewSock} ->
-            case start_connection(ConnSup, NewSock, UpgradeFuns) of
+    case Mod:post_accept(Sock, Opts) of
+        {ok, NSock} ->
+            case start_connection(ConnSup, Transport, NSock, UpgradeFuns) of
                 {ok, _Pid} ->
                     %% Inc accepted stats.
-                    inc_stats(State, accepted),
-                    ok;
+                    inc_stats(D, accepted);
                 {error, Reason} ->
-                    handle_accept_error(Reason, "failed_to_start_connection_process", State),
-                    close(NewSock),
-                    inc_stats(State, Reason)
+                    handle_start_error(Reason, D),
+                    close(D, NSock),
+                    inc_stats(D, Reason)
             end;
         {error, Reason} ->
             %% the socket became invalid before
             %% starting the owner process
-            close(Sock),
-            inc_stats(State, Reason)
-    end,
-    {next_state, waiting, State, {next_event, internal, begin_waiting}};
-handle_event(state_timeout, begin_waiting, suspending, State) ->
-    {next_state, waiting, State, {next_event, internal, begin_waiting}};
-handle_event(
-    info,
-    {inet_async, LSock, Ref, {error, Reason}},
-    StateName,
-    State = #state{lsock = LSock, accept_ref = Ref}
-) ->
-    inc_stats(State, Reason),
-    handle_socket_error(Reason, State#state{accept_ref = ?NOREF}, StateName);
-handle_event(Type, Content, StateName, _) ->
-    logger:log(warning, #{msg => "esockd_acceptor_unhandled_event",
-                          state_name => StateName,
-                          event_type => Type,
-                          event_content => Content}),
-    keep_state_and_data.
+            close(D, Sock),
+            inc_stats(D, Reason)
+    end.
 
 terminate(normal, _StateName, _) ->
     ok;
@@ -238,86 +202,68 @@ terminate(shutdown, _StateName, _) ->
     ok;
 terminate({shutdown, _}, _StateName, _) ->
     ok;
-terminate(Reason, _StateName, #state{}) ->
+terminate(Reason, _StateName, _D) ->
     logger:log(error, #{msg => "esockd_acceptor_terminating", reason => Reason}),
     ok.
 
-code_change(_OldVsn, StateName, State, _Extra) ->
-    {ok, StateName, State}.
+code_change(_OldVsn, State, D, _Extra) ->
+    {ok, State, D}.
 
 %%--------------------------------------------------------------------
 %% Internal funcs
 %%--------------------------------------------------------------------
 
-close(Sock) ->
-    try
-        %% port-close leads to a TCP reset which cuts out the tcp graceful close overheads
-        _ = port_close(Sock),
-        receive {'EXIT', Sock, _} -> ok after 1 -> ok end
-    catch
-        error:_ -> ok
-    end.
+close(#d{modopts = {Mod, _}}, Sock) ->
+    Mod:fast_close(Sock).
 
-eval_tune_socket_fun({Fun, Args1}, Sock) ->
-    apply(Fun, [Sock | Args1]).
-
-handle_accept_error(econnreset, _, _) ->
+handle_start_error(econnreset, _) ->
     ok;
-handle_accept_error(enotconn, _, _) ->
+handle_start_error(enotconn, _) ->
     ok;
-handle_accept_error(einval, _, _) ->
+handle_start_error(einval, _) ->
     ok;
-handle_accept_error(overloaded, _, _) ->
+handle_start_error(overloaded, _) ->
     ok;
-handle_accept_error(Reason, Msg, #state{sockname = Sockname}) ->
-    logger:log(error, #{msg => Msg,
-                        listener => esockd:format(Sockname),
+handle_start_error(Reason, D) ->
+    logger:log(error, #{msg => "failed_to_start_connection_process",
+                        listener => format_sockname(D),
                         cause => Reason}).
 
-handle_socket_error(closed, State, _StateName) ->
-    {stop, normal, State};
+handle_socket_error(closed, _State, D) ->
+    {stop, normal, D};
 %% {error, econnaborted} -> accept
-handle_socket_error(Reason, State, suspending) when Reason =:= econnaborted ->
-    {keep_state, State, {next_event, internal, accept_and_close}};
-handle_socket_error(Reason, State, _StateName) when Reason =:= econnaborted ->
-    {next_state, waiting, State, {next_event, internal, begin_waiting}};
-handle_socket_error(Reason, State, suspending) when Reason =:= emfile; Reason =:= enfile ->
-    log_system_limit(State, Reason),
-    {keep_state, State, {next_event, internal, accept_and_close}};
-handle_socket_error(Reason, State, _StateName) when Reason =:= emfile; Reason =:= enfile ->
-    log_system_limit(State, Reason),
-    enter_suspending(State, ?SYS_LIMIT_SUSPEND_MS);
-handle_socket_error(Reason, State, _StateName) ->
-    {stop, Reason, State}.
+handle_socket_error(econnaborted, State, D) ->
+    {next_state, State, D, {next_event, internal, accept}};
+handle_socket_error(Reason, suspending, D) when Reason =:= emfile; Reason =:= enfile ->
+    log_system_limit(Reason, D),
+    {next_state, suspending, D, {next_event, internal, accept}};
+handle_socket_error(Reason, _State, D) when Reason =:= emfile; Reason =:= enfile ->
+    log_system_limit(Reason, D),
+    enter_suspending(D, ?SYS_LIMIT_SUSPEND_MS);
+handle_socket_error(Reason, _State, D) ->
+    {stop, Reason, D}.
 
 explain_posix(emfile) ->
     "EMFILE (Too many open files)";
 explain_posix(enfile) ->
     "ENFILE (File table overflow)".
 
-log_system_limit(State, Reason) ->
+log_system_limit(Reason, D) ->
     logger:log(critical,
                #{msg => "cannot_accept_more_connections",
-                 listener => esockd:format(State#state.sockname),
+                 listener => format_sockname(D),
                  cause => explain_posix(Reason)}).
 
-enter_suspending(State, Timeout) ->
-    Actions = [{next_event, internal, accept_and_close},
-               {state_timeout, Timeout, begin_waiting}],
-    {next_state, suspending, State, Actions}.
+format_sockname(#d{lsock = LSock, transport = Transport}) ->
+    case Transport:sockname(LSock) of
+        {ok, SockName} ->
+            esockd:format(SockName);
+        {error, Reason} ->
+            Reason
+    end.
 
-inc_stats(#state{proto = Proto, listen_on = ListenOn}, Tag) ->
-    Counter = counter(Tag),
-    case Counter of
-        closed_sys_limit ->
-            %% slow down when system limit reached
-            %% to aovid flooding the error logs
-            %% also, it makes no sense to drain backlog in such condition
-            timer:sleep(100);
-        _ ->
-            ok
-    end,
-    _ = esockd_server:inc_stats({Proto, ListenOn}, Counter, 1),
+inc_stats(#d{listener_ref = ListenerRef}, Tag) ->
+    _ = esockd_server:inc_stats(ListenerRef, counter(Tag), 1),
     ok.
 
 counter(accepted) -> ?ARG_ACCEPTED;
@@ -328,9 +274,9 @@ counter(overloaded) -> ?ARG_CLOSED_OVERLOADED;
 counter(rate_limited) -> ?ARG_CLOSED_RATE_LIMITED;
 counter(_) -> ?ARG_CLOSED_OTHER_REASONS.
 
-start_connection(ConnSup, Sock, UpgradeFuns) when is_pid(ConnSup) ->
-    esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns);
-start_connection({F, A}, Sock, UpgradeFuns) when is_function(F) ->
+start_connection(ConnSup, Transport, Sock, UpgradeFuns) when is_pid(ConnSup) ->
+    esockd_connection_sup:start_connection(ConnSup, Transport, Sock, UpgradeFuns);
+start_connection({F, A}, _Transport, Sock, UpgradeFuns) when is_function(F) ->
     %% only in tests so far
     apply(F, A ++ [Sock, UpgradeFuns]).
 
@@ -340,19 +286,22 @@ start_connection({F, A}, Sock, UpgradeFuns) when is_function(F) ->
 %% The first delayed message should cause acceptor to enter suspending state.
 %% Then it should continue to accept 10 more sockets (which are all likely
 %% to result in emfile error anyway) during suspending state.
-async_accept(Currentstate, LSock) ->
-    case prim_inet:async_accept(LSock, -1) of
+async_accept(CurrentState, #d{lsock = LSock, modopts = {Mod, Opts}}) ->
+    case Mod:async_accept(LSock, Opts) of
         {error, Reason} when Reason =:= emfile orelse Reason =:= enfile ->
-            Delay = case Currentstate of
-                        suspending ->
-                            ?SYS_LIMIT_SUSPEND_MS div 10;
-                        _Waiting ->
-                            0
+            Delay = case CurrentState of
+                        suspending -> ?SYS_LIMIT_SUSPEND_MS div 10;
+                        _Waiting -> 0
                     end,
-            Ref = make_ref(),
-            Msg = {inet_async, LSock, Ref, {error, Reason}},
+            Ref = Reason,
+            Msg = {?MODULE, Ref, {error, Reason}},
             _ = erlang:send_after(Delay, self(), Msg),
-            {ok, Ref};
+            {async, Ref};
         Other ->
             Other
     end.
+
+unwrap_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
+    {error, Reason};
+unwrap_accept_result(Message, Ref, #d{modopts = {Mod, Opts}}) ->
+    Mod:async_accept_result(Message, Ref, Opts).
