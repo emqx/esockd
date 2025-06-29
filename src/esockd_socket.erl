@@ -20,6 +20,7 @@
 
 -export([controlling_process/2]).
 -export([ready/3, wait/1]).
+-export([fast_close/1]).
 -export([sockname/1, peername/1]).
 -export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1, peersni/1]).
 
@@ -40,6 +41,12 @@ ready(Pid, Sock, UpgradeFuns) ->
 -spec(wait(socket()) -> {ok, socket()} | {error, term()}).
 wait(Sock) ->
     esockd_transport:wait(Sock).
+
+-spec fast_close(socket()) -> ok.
+fast_close(Sock) ->
+    %% TODO: Research better alternatives.
+    _Pid = erlang:spawn(socket, close, [Sock]),
+    ok.
 
 %% @doc Sockname
 -spec sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()}}

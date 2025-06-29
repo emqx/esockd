@@ -146,6 +146,4 @@ setopts(_Sock, []) ->
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->
-    %% TODO: Research better alternatives.
-    _Pid = erlang:spawn(socket, close, [Sock]),
-    ok.
+    esockd_socket:fast_close(Sock).

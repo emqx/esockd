@@ -24,6 +24,7 @@
 -export([ open/3
         , open_udp/3
         , open_dtls/3
+        , open_tcpsocket/3
         , close/2
         , close/1
         %% Legacy API
@@ -37,6 +38,7 @@
         ]).
 
 -export([ child_spec/3
+        , tcpsocket_child_spec/3
         , udp_child_spec/3
         , dtls_child_spec/3
         %% Legacy API
@@ -163,6 +165,12 @@ tcp_options(Opts) ->
 open(Proto, Port, Opts, MFA) ->
 	open(Proto, Port, merge_mfargs(Opts, MFA)).
 
+%% @doc Open a Socket API based TCP listener
+-spec open_tcpsocket(atom(), listen_on(), options())
+      -> {ok, pid()} | {error, term()}.
+open_tcpsocket(Proto, ListenOn, Opts) ->
+    esockd_sup:start_child(tcpsocket_child_spec(Proto, ListenOn, Opts)).
+
 %% @doc Open a UDP listener
 -spec open_udp(atom(), listen_on(), [option()])
       -> {ok, pid()} | {error, term()}.
@@ -220,6 +228,12 @@ child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
       -> supervisor:child_spec().
 child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
     child_spec(Proto, ListenOn, merge_mfargs(Opts, MFA)).
+
+%% @doc Create a Child spec for a Socket API based TCP listener.
+-spec tcpsocket_child_spec(atom(), listen_on(), options())
+      -> supervisor:child_spec().
+tcpsocket_child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
+    esockd_sup:tcpsocket_child_spec(Proto, ListenOn, Opts).
 
 %% @doc Create a Child spec for a UDP Listener.
 -spec udp_child_spec(atom(), listen_on(), options())
