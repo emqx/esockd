@@ -61,6 +61,8 @@
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
     conn_sup :: pid()
+                %% NOTE: Only for tests
+                | {function(), [term()]}
 }).
 
 %% @doc Start an acceptor
