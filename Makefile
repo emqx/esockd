@@ -19,7 +19,7 @@ xref:
 
 .PHONY: eunit
 eunit: compile
-	$(REBAR) eunit verbose=truen
+	$(REBAR) eunit --verbose
 
 .PHONY: ct
 ct: compile
