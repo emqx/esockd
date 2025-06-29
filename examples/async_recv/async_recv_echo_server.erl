@@ -62,7 +62,7 @@ start_link(Transport, Sock) ->
 init([Transport, Sock]) ->
     case Transport:wait(Sock) of
         {ok, NewSock} ->
-            Transport:async_recv(Sock, 0, infinity),
+            Transport:async_recv(NewSock, 0, infinity),
             State = #state{transport = Transport, socket = NewSock},
             gen_server:enter_loop(?MODULE, [], State);
         Error -> Error
