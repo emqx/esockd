@@ -73,6 +73,14 @@ t_reopen_fail(_) ->
     {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
     ok = esockd:close(echo, LPort).
 
+t_open_tcpsocket(_) ->
+    {ok, _LSup} = esockd:open_tcpsocket(echo, 6000,
+                                        [{connection_mfargs, {echo_server, start_link}}]),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
+    ok = esockd:close(echo, 6000).
+
 t_open_udp(_) ->
     {ok, _} = esockd:open_udp(echo, 5678,
                               [{connection_mfargs, {udp_echo_server, start_link}}]),
@@ -200,7 +208,7 @@ t_get_set_max_connections(_) ->
     ?assertEqual(4, esockd:get_max_connections({echo, 7000})),
     {ok, _Sock1} = gen_tcp:connect("localhost", 7000, [{active, false}]),
     {ok, _Sock2} = gen_tcp:connect("localhost", 7000, [{active, false}]),
-    esockd:set_max_connections({echo, 7000}, 2),
+    ok = esockd:set_max_connections({echo, 7000}, 2),
     ?assertEqual(2, esockd:get_max_connections({echo, 7000})),
     {ok, Sock3} = gen_tcp:connect("localhost", 7000, [{active, false}]),
     ?assertEqual({error, closed}, gen_tcp:recv(Sock3, 0)),

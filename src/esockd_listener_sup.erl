@@ -179,6 +179,7 @@ init(ListenerRef) ->
                 modules => [esockd_connection_sup]},
     ListenerMod = case esockd_server:get_listener_prop(ListenerRef, type) of
                     dtls -> esockd_dtls_listener;
+                    tcpsocket -> esockd_socket_listener;
                     _ -> esockd_listener
                 end,
     Listener = #{id => listener,
