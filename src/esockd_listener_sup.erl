@@ -51,9 +51,7 @@
 -export([init/1]).
 
 %% callbacks
--export([ tune_socket/2
-        , start_acceptors/1
-        ]).
+-export([start_acceptors/1]).
 
 %%--------------------------------------------------------------------
 %% APIs
@@ -97,7 +95,8 @@ get_options(ListenerRef, _Sup) ->
     esockd_server:get_listener_prop(ListenerRef, options).
 
 set_options(ListenerRef, Sup, Opts) ->
-    case esockd_acceptor_sup:check_options(Opts) of
+    Type = esockd_server:get_listener_prop(ListenerRef, type),
+    case esockd_acceptor_sup:check_options(Type, Opts) of
         ok ->
             do_set_options(ListenerRef, Sup, Opts);
         {error, Reason} ->
@@ -215,9 +214,6 @@ start_acceptors(ListenerRef) ->
 %%--------------------------------------------------------------------
 %% Sock tune/upgrade functions
 %%--------------------------------------------------------------------
-
-tune_socket(Sock, Tunings) ->
-    esockd_acceptor_sup:tune_socket(Sock, Tunings).
 
 conn_limiter_opts(Opts, DefName) ->
     Opt =  proplists:get_value(limiter, Opts, undefined),
