@@ -34,11 +34,13 @@
 controlling_process(Sock, NewOwner) ->
     socket:setopt(Sock, {otp, controlling_process}, NewOwner).
 
--spec(ready(pid(), socket(), [esockd:sock_fun()]) -> any()).
+-spec ready(pid(), socket(), [esockd:sock_fun()]) -> any().
+-dialyzer({nowarn_function, [ready/3]}).
 ready(Pid, Sock, UpgradeFuns) ->
     esockd_transport:ready(Pid, Sock, UpgradeFuns).
 
--spec(wait(socket()) -> {ok, socket()} | {error, term()}).
+-spec wait(socket()) -> {ok, socket()} | {error, term()}.
+-dialyzer({nowarn_function, [wait/1]}).
 wait(Sock) ->
     esockd_transport:wait(Sock).
 
