@@ -18,6 +18,7 @@
 
 -include("esockd.hrl").
 
+-export([type/1]).
 -export([controlling_process/2]).
 -export([ready/3, wait/1]).
 -export([fast_close/1]).
@@ -28,6 +29,14 @@
 -export([proxy_upgrade_fun/1, proxy_upgrade/2]).
 
 -type socket() :: socket:socket().
+
+-spec type(socket()) -> tcp | proxy | {error, closed}.
+type(Sock) ->
+    case socket:getopt(Sock, {otp, meta}) of
+        {ok, #{proxy_protocol := _}} -> proxy;
+        {ok, _} -> tcp;
+        Error -> Error
+    end.
 
 -spec controlling_process(socket(), pid()) -> ok | {error, Reason} when
       Reason :: closed | badarg | inet:posix().
