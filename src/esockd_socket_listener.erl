@@ -20,6 +20,8 @@
 
 -include("esockd.hrl").
 
+-define(DEFAULT_DOMAIN, inet).
+
 -export([ start_link/3
         , start_supervised/1
         ]).
@@ -93,35 +95,44 @@ init({Proto, ListenOn, Opts}) ->
     Port = port(ListenOn),
     esockd_server:ensure_stats(ListenerRef),
     TcpOpts = merge_defaults(proplists:get_value(tcp_options, Opts, [])),
-    SockOpts = lists:flatten([sock_listen_opt(O) || O <- TcpOpts]),
-    Backlog = proplists:get_value(backlog, TcpOpts, 128),
-    case listen(ListenOn, SockOpts, Backlog) of
-        {ok, LSock} ->
+    case listen(ListenOn, TcpOpts) of
+        {ok, LSock, SockOpts} ->
             _MRef = socket:monitor(LSock),
             {ok, #{addr := LAddr, port := LPort}} = socket:sockname(LSock),
             {ok, #state{listener_ref = ListenerRef, lsock = LSock,
                         laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+        {error, Reason = {invalid, What}} ->
+            error_logger:error_msg("~s failed to listen on ~p - invalid option: ~0p",
+                                   [Proto, Port, What]),
+            {stop, Reason};
         {error, Reason} ->
             error_logger:error_msg("~s failed to listen on ~p - ~p (~s)",
                                    [Proto, Port, Reason, inet:format_error(Reason)]),
             {stop, Reason}
     end.
 
-listen(ListenOn, SockOpts, Backlog) ->
+listen(ListenOn, TcpOpts) ->
+    SockAddr = sock_addr(ListenOn),
+    SockDomain = case [O || O <- TcpOpts, O == inet orelse O == inet6] of
+        [_ | _] = Families -> lists:last(Families);
+        [] -> maps:get(family, SockAddr, ?DEFAULT_DOMAIN)
+    end,
+    SockOpts = lists:flatten([sock_listen_opt(O) || O <- TcpOpts]),
+    Backlog = proplists:get_value(backlog, TcpOpts, 128),
     try
-        LSock = ensure(socket:open(inet, stream, tcp)),
+        LSock = ensure(socket:open(SockDomain, stream, tcp)),
         ok = ensure(sock_setopts(LSock, SockOpts)),
-        ok = ensure(socket:bind(LSock, sock_addr(ListenOn))),
+        ok = ensure(socket:bind(LSock, SockAddr#{family => SockDomain})),
         ok = ensure(socket:listen(LSock, Backlog)),
-        {ok, LSock}
+        {ok, LSock, SockOpts}
     catch
         Error -> Error
     end.
 
 sock_addr(0) ->
-    any;
+    #{addr => any, port => 0};
 sock_addr(Port) when is_integer(Port) ->
-    #{family => inet, addr => any, port => Port};
+    #{addr => any, port => Port};
 sock_addr({Host, Port}) when tuple_size(Host) =:= 4 ->
     #{family => inet, addr => Host, port => Port};
 sock_addr({Host, Port}) when tuple_size(Host) =:= 8 ->

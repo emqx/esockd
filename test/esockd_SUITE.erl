@@ -74,12 +74,37 @@ t_reopen_fail(_) ->
     ok = esockd:close(echo, LPort).
 
 t_open_tcpsocket(_) ->
-    {ok, _LSup} = esockd:open_tcpsocket(echo, 6000,
-                                        [{connection_mfargs, {echo_server, start_link}}]),
-    {ok, Sock} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
-    ok = gen_tcp:send(Sock, <<"Hello">>),
-    {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0),
-    ok = esockd:close(echo, 6000).
+    {ok, _LSup1} = esockd:open_tcpsocket(echo, 6000,
+                                         [{connection_mfargs, {echo_server, start_link}}]),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock1, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock1, 0),
+    ok = esockd:close(echo, 6000),
+
+    {ok, _LSup2} = esockd:open_tcpsocket(echo, 6000,
+                                         [{connection_mfargs, {echo_server, start_link}},
+                                          {tcp_options, [inet6,
+                                                         {backlog, 1},
+                                                         {reuseaddr, true},
+                                                         {linger, {true, 0}},
+                                                         {nodelay, true},
+                                                         {buffer, 10240}]}
+                                         ]),
+    {ok, Sock2} = gen_tcp:connect("::1", 6000, [binary, {active, false}, inet6]),
+    ok = gen_tcp:send(Sock2, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock2, 0),
+    ok = esockd:close(echo, 6000),
+
+    {ok, _LSup3} = esockd:open_tcpsocket(echo, {"::", 6000},
+                                         [{connection_mfargs, {echo_server, start_link}}]),
+    {ok, Sock3} = gen_tcp:connect("::1", 6000, [binary, {active, false}, inet6]),
+    ok = gen_tcp:send(Sock3, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock3, 0),
+    ok = esockd:close(echo, 6000),
+
+    {error, {{shutdown, {failed_to_start_child, listener, {invalid, {sockaddr, _}}}},
+             _Child}} =
+        esockd:open_tcpsocket(echo, {"0.0.0.0", 6000}, [{tcp_options, [inet6]}]).
 
 t_open_udp(_) ->
     {ok, _} = esockd:open_udp(echo, 5678,

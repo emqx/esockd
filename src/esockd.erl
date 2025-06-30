@@ -233,7 +233,7 @@ child_spec(Proto, ListenOn, Opts, MFA) when is_atom(Proto) ->
 -spec tcpsocket_child_spec(atom(), listen_on(), options())
       -> supervisor:child_spec().
 tcpsocket_child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
-    esockd_sup:tcpsocket_child_spec(Proto, ListenOn, Opts).
+    esockd_sup:tcpsocket_child_spec(Proto, fixaddr(ListenOn), Opts).
 
 %% @doc Create a Child spec for a UDP Listener.
 -spec udp_child_spec(atom(), listen_on(), options())
