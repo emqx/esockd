@@ -94,6 +94,7 @@ tune_socket(Sock, [{tune_buffer, true}|More]) ->
             Error
     end;
 tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
+    %% NOTE: Socket is not part of the argument list, backward compatibility.
     case apply(M, F, A) of
         ok ->
             tune_socket(Sock, More);

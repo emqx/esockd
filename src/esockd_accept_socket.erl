@@ -83,7 +83,9 @@ eval_tune_socket_fun(Sock, {Fun, Opts}) ->
 mk_tune_socket_fun(Opts) ->
     TcpOpts = proplists:get_value(tcp_options, Opts, []),
     SockOpts = lists:flatten([sock_opt(O) || O <- merge_sock_defaults(TcpOpts)]),
-    TuneOpts = [{Name, Val} || {Name, Val} <- Opts, Name =:= tune_buffer],
+    TuneOpts = [{Name, Val} || {Name, Val} <- Opts,
+                               Name =:= tune_buffer orelse
+                               Name =:= tune_fun],
     {fun ?MODULE:tune_socket/2, [{setopts, SockOpts} | TuneOpts]}.
 
 tune_socket(Sock, [{setopts, SockOpts} | Rest]) ->
@@ -93,15 +95,23 @@ tune_socket(Sock, [{setopts, SockOpts} | Rest]) ->
         Error ->
             Error
     end;
-tune_socket(Sock, [{tune_buffer, true} | _]) ->
+tune_socket(Sock, [{tune_buffer, true} | Rest]) ->
     try
         BufRecv = ensure(socket:getopt(Sock, {socket, rcvbuf})),
         Buffer = ensure(socket:getopt(Sock, {otp, rcvbuf})),
         Max = max(Buffer, BufRecv),
         ok = ensure(socket:setopt(Sock, {otp, rcvbuf}, Max)),
-        {ok, Sock}
+        tune_socket(Sock, Rest)
     catch
         Error -> Error
+    end;
+tune_socket(Sock, [{tune_fun, {M, F, A}} | Rest]) ->
+    %% NOTE: Socket is not part of the argument list, backward compatibility.
+    case apply(M, F, A) of
+        ok ->
+            tune_socket(Sock, Rest);
+        Error ->
+            Error
     end;
 tune_socket(Sock, _) ->
     {ok, Sock}.
