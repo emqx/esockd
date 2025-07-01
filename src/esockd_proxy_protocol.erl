@@ -63,10 +63,10 @@
 -type maybe_proxy_socket() :: #proxy_socket{} | inet:socket() | #ssl_socket{}.
 
 -spec recv
-    (module(), inet:socket() | #ssl_socket{}, timeout()) ->
-        {ok, maybe_proxy_socket()} | {error, term()};
     (esockd_socket, socket:socket(), timeout()) ->
-        {ok, socket:socket()} | {error, term()}.
+        {ok, socket:socket()} | {error, term()};
+    (module(), inet:socket() | #ssl_socket{}, timeout()) ->
+        {ok, maybe_proxy_socket()} | {error, term()}.
 recv(esockd_socket, Sock, Timeout) ->
     recv_esockd_socket(Sock, Timeout);
 recv(Transport, Sock, Timeout) ->
@@ -129,6 +129,8 @@ recv_v1_esockd_socket(Sock, Deadline) ->
             {ok, Sock};
         {ok, <<"OXY UNKNOWN", _ProxyInfo/binary>>} ->
             {ok, Sock};
+        {ok, Header} ->
+            {error, {invalid_proxy_info, <<"PR", Header/binary>>}};
         {error, Reason} ->
             map_tcpsocket_error(Reason)
     end.
