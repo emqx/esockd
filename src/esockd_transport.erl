@@ -71,7 +71,6 @@ wait(Sock) ->
             upgrade(Sock, UpgradeFuns)
     end.
 
--spec(upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}).
 upgrade(Sock, []) ->
     {ok, Sock};
 upgrade(Sock, [{Fun, Args}|More]) ->
