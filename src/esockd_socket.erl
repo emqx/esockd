@@ -44,14 +44,25 @@ controlling_process(Sock, NewOwner) ->
     socket:setopt(Sock, {otp, controlling_process}, NewOwner).
 
 -spec ready(pid(), socket(), [esockd:sock_fun()]) -> any().
--dialyzer({nowarn_function, [ready/3]}).
 ready(Pid, Sock, UpgradeFuns) ->
-    esockd_transport:ready(Pid, Sock, UpgradeFuns).
+    %% NOTE: See `esockd_transport:ready/3'.
+    Pid ! {sock_ready, Sock, UpgradeFuns}.
 
 -spec wait(socket()) -> {ok, socket()} | {error, term()}.
--dialyzer({nowarn_function, [wait/1]}).
 wait(Sock) ->
-    esockd_transport:wait(Sock).
+    %% NOTE: See `esockd_transport:wait/1'.
+    receive
+        {sock_ready, Sock, UpgradeFuns} ->
+            upgrade(Sock, UpgradeFuns)
+    end.
+
+upgrade(Sock, []) ->
+    {ok, Sock};
+upgrade(Sock, [{Fun, Args} | More]) ->
+    case apply(Fun, [Sock | Args]) of
+        {ok, NSock} -> upgrade(NSock, More);
+        Error       -> fast_close(Sock), Error
+    end.
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->
