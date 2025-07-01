@@ -32,6 +32,7 @@ groups() ->
                  t_recv_ppv1_unknown,
                  t_recv_ppv2,
                  t_recv_pp_invalid,
+                 t_recv_pp_partial,
                  t_recv_socket_error],
     [{gen_tcp, [sequence], SocketTCs},
      {socket, [sequence], SocketTCs},
@@ -129,6 +130,15 @@ t_recv_pp_invalid(Config) ->
         ok = gen_tcp:send(ClientSide, <<"Hello">>),
         
         {error, {invalid_proxy_info, <<"In", _/binary>>}} =
+            esockd_proxy_protocol:recv(Backend, ServerSide, 1000)
+    end).
+
+t_recv_pp_partial(Config) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, <<"PROXY DUMMY\r\n">>),
+        ok = gen_tcp:send(ClientSide, <<"Hello">>),
+        
+        {error, {invalid_proxy_info, <<"PROXY DUMMY", _/binary>>}} =
             esockd_proxy_protocol:recv(Backend, ServerSide, 1000)
     end).
 
