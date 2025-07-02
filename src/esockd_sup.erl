@@ -33,6 +33,7 @@
         ]).
 
 -export([ child_spec/3
+        , tcpsocket_child_spec/3
         , udp_child_spec/3
         , dtls_child_spec/3
         ]).
@@ -53,6 +54,19 @@ start_link() ->
 child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
     ListenerRef = {Proto, ListenOn},
     _ = esockd_server:set_listener_prop(ListenerRef, type, tcp),
+    _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),
+    #{id => child_id(Proto, ListenOn),
+      start => {esockd_listener_sup, start_link, [Proto, ListenOn]},
+      restart => transient,
+      shutdown => infinity,
+      type => supervisor,
+      modules => [esockd_listener_sup]}.
+
+-spec tcpsocket_child_spec(atom(), esockd:listen_on(), [esockd:option()])
+      -> supervisor:child_spec().
+tcpsocket_child_spec(Proto, ListenOn, Opts) when is_atom(Proto) ->
+    ListenerRef = {Proto, ListenOn},
+    _ = esockd_server:set_listener_prop(ListenerRef, type, tcpsocket),
     _ = esockd_server:set_listener_prop(ListenerRef, options, Opts),
     #{id => child_id(Proto, ListenOn),
       start => {esockd_listener_sup, start_link, [Proto, ListenOn]},
