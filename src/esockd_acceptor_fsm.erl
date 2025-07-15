@@ -184,13 +184,13 @@ handle_socket(
                     inc_stats(D, accepted);
                 {error, Reason} ->
                     handle_start_error(Reason, D),
-                    close(D, NSock),
+                    maybe_close(D, NSock, Reason),
                     inc_stats(D, Reason)
             end;
         {error, Reason} ->
             %% the socket became invalid before
             %% starting the owner process
-            close(D, Sock),
+            maybe_close(D, Sock, Reason),
             inc_stats(D, Reason)
     end.
 
@@ -210,6 +210,11 @@ code_change(_OldVsn, State, D, _Extra) ->
 %%--------------------------------------------------------------------
 %% Internal funcs
 %%--------------------------------------------------------------------
+
+maybe_close(_D, _Sock, closed) ->
+    ok;
+maybe_close(D, Sock, _Reason) ->
+    close(D, Sock).
 
 close(#d{modctx = {Mod, _}}, Sock) ->
     Mod:fast_close(Sock).
