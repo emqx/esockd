@@ -52,12 +52,12 @@ start_supervised(ListenerRef = {Proto, ListenOn}) ->
                     TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
                     AcceptCb = {esockd_accept_inet, TuneFun},
                     Mod = esockd_acceptor_fsm,
-                    Args = [ListenerRef, esockd_transport, ConnSup, AcceptCb, UpgradeFuns, Limiter];
+                    Args = [ListenerRef, ConnSup, AcceptCb, UpgradeFuns, Limiter];
                 tcpsocket ->
                     TuneFun = esockd_accept_socket:mk_tune_socket_fun(Opts),
                     AcceptCb = {esockd_accept_socket, TuneFun},
                     Mod = esockd_acceptor_fsm,
-                    Args = [ListenerRef, esockd_socket, ConnSup, AcceptCb, UpgradeFuns, Limiter];
+                    Args = [ListenerRef, ConnSup, AcceptCb, UpgradeFuns, Limiter];
                 dtls ->
                     TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
                     Mod = esockd_dtls_acceptor,
