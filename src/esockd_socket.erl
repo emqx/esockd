@@ -14,12 +14,22 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
+%% @doc This module deals with sockets coming from `esockd:open_tcpsocket/3`
+%% listeners, where each socket is essentially `socket:socket()`.
+%%
+%% Compared to `esockd_transport`, this module *doesn't* provide adapters for
+%% sending and receiving TCP stream data, closing, shutting down sockets.
+%% This is done on purpose, users are expected to use `socket` APIs directly,
+%% largely because `socket`-based connection loop is significantly different
+%% from `esockd_transport`-based one, and not worth the effort to adapt due
+%% to inevitable performance penalty.
 -module(esockd_socket).
 
 -include("esockd.hrl").
 
 -export([type/1]).
 -export([controlling_process/2]).
+-export([getopts/2, setopts/2]).
 -export([ready/3, wait/1]).
 -export([fast_close/1]).
 -export([sockname/1, peername/1]).
@@ -44,6 +54,40 @@ type(Sock) ->
       Reason :: closed | badarg | inet:posix().
 controlling_process(Sock, NewOwner) ->
     socket:setopt(Sock, {otp, controlling_process}, NewOwner).
+
+%% @doc Get socket options.
+-spec getopts(socket(), [socket:socket_option()]) ->
+    {ok, [{socket:socket_option(), any()}]} | {error, inet:posix() | {invalid, _} | closed}.
+getopts(Sock, Opts) ->
+    getopts(Sock, Opts, []).
+
+getopts(_Sock, [Opt = {otp, meta} | _], _Acc) ->
+    {error, {invalid, Opt}};
+getopts(Sock, [Opt | Rest], Acc) ->
+    case socket:getopt(Sock, Opt) of
+        {ok, Value} ->
+            getopts(Sock, Rest, [{Opt, Value} | Acc]);
+        Error ->
+            Error
+    end;
+getopts(_Sock, [], Acc) ->
+    {ok, lists:reverse(Acc)}.
+
+%% @doc Set socket options.
+%% Note this operation is not atomic, and may fail mid-way.
+-spec setopts(socket(), [{socket:socket_option(), any()}]) ->
+    ok | {error, inet:posix() | {invalid, _} | closed}.
+setopts(_Sock, [{Opt = {otp, OptName}, _Value} | _]) when OptName =:= meta;
+                                                          OptName =:= controlling_process ->
+    %% Disallow changing those options explicitly, to avoid conflicts.
+    {error, {invalid, Opt}};
+setopts(Sock, [{Opt, Value} | Rest]) ->
+    case socket:setopt(Sock, Opt, Value) of
+        ok -> setopts(Sock, Rest);
+        Error -> Error
+    end;
+setopts(_Sock, []) ->
+    ok.
 
 -spec ready(pid(), socket(), [esockd:sock_fun()]) -> any().
 ready(Pid, Sock, UpgradeFuns) ->

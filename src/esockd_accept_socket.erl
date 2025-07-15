@@ -102,7 +102,7 @@ mk_tune_socket_fun(Opts) ->
     {fun ?MODULE:tune_socket/2, [{setopts, SockOpts} | TuneOpts]}.
 
 tune_socket(Sock, [{setopts, SockOpts} | Rest]) ->
-    case setopts(Sock, SockOpts) of
+    case esockd_socket:setopts(Sock, SockOpts) of
         ok ->
             tune_socket(Sock, Rest);
         Error ->
@@ -158,14 +158,6 @@ sock_opt({backlog, _}) ->
 sock_opt(_Opt) ->
     %% TODO: Ignored, need to notify user.
     [].
-
-setopts(Sock, [{Opt, Value} | Rest]) ->
-    case socket:setopt(Sock, Opt, Value) of
-        ok -> setopts(Sock, Rest);
-        Error -> Error
-    end;
-setopts(_Sock, []) ->
-    ok.
 
 -spec sockname(ctx()) ->
     {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix() | closed}.
