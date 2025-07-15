@@ -18,9 +18,10 @@
 
 -export([
     init/2,
-    async_accept/2,
+    async_accept/1,
     async_accept_result/3,
     post_accept/2,
+    sockname/1,
     fast_close/1
 ]).
 
@@ -29,23 +30,34 @@
     tune_socket/2
 ]).
 
--type ctx() :: {module(), tune_socket_fun()}.
--type socket() :: inet:socket().
+-type socket() :: esockd_transport:listen_socket().
 -type async_ref() :: reference().
 
 -type tune_socket_fun() ::
     {fun((socket(), Opts) -> {ok, socket()} | {error, any()}), Opts}.
+
+-record(ctx, {
+    lsock :: socket(),
+    sock_mod :: module(),
+    tune_fun :: tune_socket_fun()
+}).
+
+-type ctx() :: #ctx{}.
 
 %%
 
 -spec init(socket(), _Opts) -> ctx().
 init(LSock, TuneFun) ->
     {ok, SockMod} = inet_db:lookup_socket(LSock),
-    {SockMod, TuneFun}.
+    #ctx{
+        lsock = LSock,
+        sock_mod = SockMod,
+        tune_fun = TuneFun
+    }.
 
--spec async_accept(socket(), ctx()) ->
+-spec async_accept(ctx()) ->
     {async, async_ref()} | {error, atom()}.
-async_accept(LSock, _Ctx) ->
+async_accept(#ctx{lsock = LSock}) ->
     case prim_inet:async_accept(LSock, -1) of
         {ok, Ref} ->
             {async, Ref};
@@ -62,11 +74,14 @@ async_accept_result({inet_async, _LSock, Ref, {error, Reason}}, Ref, _Ctx) ->
 async_accept_result(Info, _Ref, _Ctx) ->
     Info.
 
--spec post_accept(socket(), ctx()) -> {ok, socket()} | {error, atom()}.
-post_accept(Sock, {SockMod, TuneFun}) ->
+-spec post_accept(socket(), ctx()) -> {ok, esockd_transport, socket()} | {error, atom()}.
+post_accept(Sock, #ctx{sock_mod = SockMod, tune_fun = TuneFun}) ->
     %% make it look like gen_tcp:accept
     inet_db:register_socket(Sock, SockMod),
     eval_tune_socket_fun(TuneFun, Sock).
+
+return_socket(Sock) ->
+    {ok, esockd_transport, Sock}.
 
 eval_tune_socket_fun({Fun, Opts}, Sock) ->
     Fun(Sock, Opts).
@@ -79,7 +94,7 @@ mk_tune_socket_fun(Opts) ->
     {fun ?MODULE:tune_socket/2, TuneOpts}.
 
 tune_socket(Sock, []) ->
-    {ok, Sock};
+    return_socket(Sock);
 tune_socket(Sock, [{tune_buffer, true}|More]) ->
     case esockd_transport:getopts(Sock, [sndbuf, recbuf, buffer]) of
         {ok, BufSizes} ->
@@ -101,6 +116,11 @@ tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
         Error ->
             Error
     end.
+
+-spec sockname(ctx()) ->
+    {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix()}.
+sockname(#ctx{lsock = LSock}) ->
+    esockd_transport:sockname(LSock).
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->

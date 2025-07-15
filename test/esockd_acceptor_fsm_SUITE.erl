@@ -86,7 +86,6 @@ start(PortNumber, Limiter, Opts, Config) ->
     AcceptMod = proplists:get_value(accept_mod, Config),
     case AcceptMod of
         esockd_accept_inet ->
-            Transport = esockd_transport,
             SockOpts = [binary,
                         {active, false},
                         {reuseaddr, true},
@@ -94,7 +93,6 @@ start(PortNumber, Limiter, Opts, Config) ->
                         {backlog, maps:get(backlog, Opts, 1024)}],
             {ok, LSock} = gen_tcp:listen(PortNumber, SockOpts);
         esockd_accept_socket -> 
-            Transport = esockd_socket,
             Backlog = maps:get(backlog, Opts, 1024),
             {ok, LSock} = socket:open(inet, stream, tcp),
             ok = socket:setopt(LSock, {socket, reuseaddr}, true),
@@ -109,7 +107,6 @@ start(PortNumber, Limiter, Opts, Config) ->
     AcceptCb = {AcceptMod, TuneFun},
     {ok, AccPid} = esockd_acceptor_fsm:start_link(
         ListenerRef,
-        Transport,
         StartConn,
         AcceptCb,
         _UpgradeFuns = [],
@@ -206,7 +203,7 @@ t_einval(Config) ->
 t_sys_limit(Config) ->
     AcceptMod = proplists:get_value(accept_mod, Config),
     meck:new(AcceptMod, [passthrough, no_history]),
-    meck:expect(AcceptMod, async_accept, fun(_, _) -> {error, emfile} end),
+    meck:expect(AcceptMod, async_accept, fun(_) -> {error, emfile} end),
     Port = ?PORT,
     Server = start(Port, no_rate_limit(), #{}, Config),
     try
