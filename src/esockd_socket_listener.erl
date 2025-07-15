@@ -98,9 +98,15 @@ init({Proto, ListenOn, Opts}) ->
     case listen(ListenOn, TcpOpts) of
         {ok, LSock, SockOpts} ->
             _MRef = socket:monitor(LSock),
-            {ok, #{addr := LAddr, port := LPort}} = socket:sockname(LSock),
-            {ok, #state{listener_ref = ListenerRef, lsock = LSock,
-                        laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+            case esockd_socket:sockname(LSock) of
+                {ok, {LAddr, LPort}} ->
+                    {ok, #state{listener_ref = ListenerRef, lsock = LSock,
+                                laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+                {error, Reason} ->
+                    error_logger:error_msg("~s failed to get sockname: ~p (~s)",
+                                           [Proto, Reason, inet:format_error(Reason)]),
+                    {stop, Reason}
+            end;
         {error, Reason = {invalid, What}} ->
             error_logger:error_msg("~s failed to listen on ~p - invalid option: ~0p",
                                    [Proto, Port, What]),
