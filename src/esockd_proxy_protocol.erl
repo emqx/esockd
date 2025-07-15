@@ -20,9 +20,9 @@
 -include("esockd.hrl").
 
 -export([recv/3]).
--export([get_proxy_attrs/1]).
 
 -ifdef(TEST).
+-export([get_proxy_attrs/1]).
 -export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2, parse_pp2_ssl/1]).
 -endif.
 
@@ -174,7 +174,7 @@ map_tcpsocket_error(Reason) ->
     {error, {recv_proxy_info_error, Reason}}.
 
 set_socket_meta(ProxySocket = #proxy_socket{socket = Sock}) ->
-    socket:setopt(Sock, {otp, meta}, get_proxy_attrs(ProxySocket)).
+    socket:setopt(Sock, {otp, meta}, mk_proxy_attrs(ProxySocket)).
 
 recv_v2(Transport, Sock, Deadline) ->
     with_remaining_timeout(Deadline, fun(HeaderTimeout) ->
@@ -208,6 +208,8 @@ mk_proxy_attrs(#proxy_socket{inet = Protocol,
       proxy_src_port => SrcPort, proxy_dst_port => DstPort,
       proxy_pp2_info => PP2Info}.
 
+-ifdef(TEST).
+
 -spec get_proxy_attrs(maybe_proxy_socket() | socket:socket()) -> map().
 get_proxy_attrs(ProxySocket = #proxy_socket{}) ->
     mk_proxy_attrs(ProxySocket);
@@ -220,6 +222,8 @@ get_proxy_attrs(Socket) when element(1, Socket) =:= '$socket' ->
     end;
 get_proxy_attrs(_Socket) ->
     #{}.
+
+-endif.
 
 parse_v1(ProxyInfo, ProxySock) ->
     [SrcAddrBin, DstAddrBin, SrcPortBin, DstPortBin]
