@@ -74,6 +74,8 @@ fast_close(Sock) ->
     ok.
 
 %% @doc Sockname
+%% Returns original destination address and port if proxy protocol is enabled.
+%% Otherwise, returns the local address and port.
 -spec sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()}}
                             | {error, inet:posix() | closed}.
 sockname(Sock) ->
@@ -92,6 +94,8 @@ sockname(Sock) ->
     end.
 
 %% @doc Peername
+%% Returns original source address and port if proxy protocol is enabled.
+%% Otherwise, returns the local address and port.
 -spec peername(socket()) -> {ok, {inet:ip_address(), inet:port_number()}}
                             | {error, inet:posix() | closed}.
 peername(Sock) ->
@@ -110,6 +114,9 @@ peername(Sock) ->
     end.
 
 %% @doc Socket peercert
+%% Returns the peer certificate if proxy protocol is enabled, and the proxy
+%% middleware passed it as part of PPv2 exchange.
+%% See also `esockd_transport:peercert/1'.
 -spec peercert(socket()) -> nossl
                             | list(pp2_additional_ssl_field())
                             | {error, term()}.
@@ -124,12 +131,18 @@ peercert(Sock) ->
     end.
 
 %% @doc Peercert subject
+%% Returns the common name of the peer certificate if proxy protocol is enabled,
+%% and the proxy middleware passed it as part of PPv2 exchange.
+%% See also `esockd_transport:peer_cert_subject/1'.
 -spec peer_cert_subject(socket()) -> undefined | binary().
 peer_cert_subject(Sock) ->
     %% Common Name? Haproxy PP2 will not pass subject.
     peer_cert_common_name(Sock).
 
 %% @doc Peercert common name
+%% Returns the common name of the peer certificate if proxy protocol is enabled,
+%% and the proxy middleware passed it as part of PPv2 exchange.
+%% See also `esockd_transport:peer_cert_common_name/1'.
 -spec peer_cert_common_name(socket()) -> undefined | binary().
 peer_cert_common_name(Sock) ->
     case socket:getopt(Sock, {otp, meta}) of
@@ -142,6 +155,10 @@ peer_cert_common_name(Sock) ->
             Error
     end.
 
+%% @doc Peersni
+%% Returns the SNI of the peer TLS connection if proxy protocol is enabled,
+%% and the proxy middleware passed it as part of PPv2 exchange.
+%% See also `esockd_transport:peersni/1'.
 -spec peersni(socket()) -> undefined | binary().
 peersni(Sock) ->
     case socket:getopt(Sock, {otp, meta}) of

@@ -124,7 +124,7 @@ handle_event(internal, accept, State, D) when State =:= waiting orelse
             {stop, Reason, D}
     end;
 handle_event(info, Message, State = {accepting, Ref, InState}, D) ->
-    case unwrap_accept_result(Message, Ref, D) of
+    case async_accept_result(Message, Ref, D) of
         {ok, Sock} ->
             handle_accepted(Sock, InState, D);
         {error, Reason} ->
@@ -307,7 +307,7 @@ async_accept(CurrentState, #d{lsock = LSock, modopts = {Mod, Opts}}) ->
             Other
     end.
 
-unwrap_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
+async_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
     {error, Reason};
-unwrap_accept_result(Message, Ref, #d{modopts = {Mod, Opts}}) ->
+async_accept_result(Message, Ref, #d{modopts = {Mod, Opts}}) ->
     Mod:async_accept_result(Message, Ref, Opts).
