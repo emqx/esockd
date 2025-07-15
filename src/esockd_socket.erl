@@ -28,6 +28,8 @@
 %% Internal callbacks
 -export([proxy_upgrade_fun/1, proxy_upgrade/2]).
 
+-export_type([socket/0]).
+
 -type socket() :: socket:socket().
 
 -spec type(socket()) -> tcp | proxy | {error, closed}.
@@ -56,6 +58,7 @@ wait(Sock) ->
             upgrade(Sock, UpgradeFuns)
     end.
 
+-spec upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}.
 upgrade(Sock, []) ->
     {ok, Sock};
 upgrade(Sock, [{Fun, Args} | More]) ->
@@ -72,7 +75,7 @@ fast_close(Sock) ->
 
 %% @doc Sockname
 -spec sockname(socket()) -> {ok, {inet:ip_address(), inet:port_number()}}
-                            | {error, inet:posix()}.
+                            | {error, inet:posix() | closed}.
 sockname(Sock) ->
     case socket:getopt(Sock, {otp, meta}) of
         {ok, #{proxy_dst_addr := DstAddr, proxy_dst_port := DstPort}} ->
@@ -90,7 +93,7 @@ sockname(Sock) ->
 
 %% @doc Peername
 -spec peername(socket()) -> {ok, {inet:ip_address(), inet:port_number()}}
-                            | {error, inet:posix()}.
+                            | {error, inet:posix() | closed}.
 peername(Sock) ->
     case socket:getopt(Sock, {otp, meta}) of
         {ok, #{proxy_src_addr := SrcAddr, proxy_src_port := SrcPort}} ->
