@@ -186,7 +186,7 @@ handle_socket(
                     close(D, NSock),
                     inc_stats(D, ignore);
                 {error, Reason} ->
-                    handle_start_error(Reason, D),
+                    maybe_log_start_error(Reason, D),
                     maybe_close(D, NSock, Reason),
                     inc_stats(D, Reason)
             end;
@@ -222,15 +222,15 @@ maybe_close(D, Sock, _Reason) ->
 close(#d{modctx = {Mod, _}}, Sock) ->
     Mod:fast_close(Sock).
 
-handle_start_error(econnreset, _) ->
+maybe_log_start_error(econnreset, _) ->
     ok;
-handle_start_error(enotconn, _) ->
+maybe_log_start_error(enotconn, _) ->
     ok;
-handle_start_error(einval, _) ->
+maybe_log_start_error(einval, _) ->
     ok;
-handle_start_error(overloaded, _) ->
+maybe_log_start_error(overloaded, _) ->
     ok;
-handle_start_error(Reason, D) ->
+maybe_log_start_error(Reason, D) ->
     logger:log(error, #{msg => "failed_to_start_connection_process",
                         listener => format_sockname(D),
                         cause => Reason}).
