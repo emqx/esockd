@@ -182,6 +182,9 @@ handle_socket(
                 {ok, _Pid} ->
                     %% Inc accepted stats.
                     inc_stats(D, accepted);
+                ignore ->
+                    close(D, NSock),
+                    inc_stats(D, ignore);
                 {error, Reason} ->
                     handle_start_error(Reason, D),
                     maybe_close(D, NSock, Reason),
