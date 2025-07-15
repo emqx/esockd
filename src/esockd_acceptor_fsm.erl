@@ -26,10 +26,10 @@
 -export([handle_event/4]).
 
 %% The state diagram:
-%%
-%%         +---------------------+
-%%         |                     |
-%%   +-----v-----+      +--------+----------+
+%%   init
+%%     |   +---------------------+
+%%     |   |                     |
+%%   +-V---v-----+      +--------+----------+
 %%   |  waiting  +----->+ accepting-waiting |
 %%   +-+----^----+      +--------+----------+
 %%     |    |                    |
@@ -136,7 +136,7 @@ handle_event(Type, Content, State, D) ->
     handle_info(Type, Content, State, D).
 
 handle_info(Type, Content, State, _D) ->
-    logger:log(warning, #{msg => "esockd_acceptor_unhandled_event",
+    logger:log(warning, #{msg => "esockd_acceptor_fsm_unhandled_event",
                           state => State,
                           event_type => Type,
                           event_content => Content}),
