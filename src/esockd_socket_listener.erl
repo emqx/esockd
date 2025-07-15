@@ -127,7 +127,7 @@ listen(ListenOn, TcpOpts) ->
     Backlog = proplists:get_value(backlog, TcpOpts, 128),
     try
         LSock = ensure(socket:open(SockDomain, stream, tcp)),
-        ok = ensure(sock_setopts(LSock, SockOpts)),
+        ok = ensure(esockd_socket:setopts(LSock, SockOpts)),
         ok = ensure(socket:bind(LSock, SockAddr#{family => SockDomain})),
         ok = ensure(socket:listen(LSock, Backlog)),
         {ok, LSock, SockOpts}
@@ -143,14 +143,6 @@ sock_addr({Host, Port}) when tuple_size(Host) =:= 4 ->
     #{family => inet, addr => Host, port => Port};
 sock_addr({Host, Port}) when tuple_size(Host) =:= 8 ->
     #{family => inet6, addr => Host, port => Port}.
-
-sock_setopts(LSock, [{Opt, Value} | Rest]) ->
-    case socket:setopt(LSock, Opt, Value) of
-        ok -> sock_setopts(LSock, Rest);
-        Error -> Error
-    end;
-sock_setopts(_LSock, []) ->
-    ok.
 
 sock_listen_opt({reuseaddr, Flag}) ->
     {{socket, reuseaddr}, Flag};
