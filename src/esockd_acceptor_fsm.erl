@@ -28,10 +28,10 @@
 -export([handle_event/4]).
 
 %% The state diagram:
-%%
-%%         +---------------------+
-%%         |                     |
-%%   +-----v-----+      +--------+----------+
+%%   init
+%%     |   +---------------------+
+%%     |   |                     |
+%%   +-V---v-----+      +--------+----------+
 %%   |  waiting  +----->+ accepting-waiting |
 %%   +-+----^----+      +--------+----------+
 %%     |    |                    |
@@ -124,7 +124,7 @@ handle_event(internal, accept, State, D) when State =:= waiting orelse
             {stop, Reason, D}
     end;
 handle_event(info, Message, State = {accepting, Ref, InState}, D) ->
-    case unwrap_accept_result(Message, Ref, D) of
+    case async_accept_result(Message, Ref, D) of
         {ok, Sock} ->
             handle_accepted(Sock, InState, D);
         {error, Reason} ->
@@ -143,7 +143,7 @@ handle_event(Type, Content, State, D) ->
     handle_info(Type, Content, State, D).
 
 handle_info(Type, Content, State, _D) ->
-    logger:log(warning, #{msg => "esockd_acceptor_unhandled_event",
+    logger:log(warning, #{msg => "esockd_acceptor_fsm_unhandled_event",
                           state => State,
                           event_type => Type,
                           event_content => Content}),
@@ -191,7 +191,7 @@ handle_socket(
                     %% Inc accepted stats.
                     inc_stats(D, accepted);
                 {error, Reason} ->
-                    handle_start_error(Reason, D),
+                    maybe_log_start_error(Reason, D),
                     close(D, NSock),
                     inc_stats(D, Reason)
             end;
@@ -222,15 +222,15 @@ code_change(_OldVsn, State, D, _Extra) ->
 close(#d{modopts = {Mod, _}}, Sock) ->
     Mod:fast_close(Sock).
 
-handle_start_error(econnreset, _) ->
+maybe_log_start_error(econnreset, _) ->
     ok;
-handle_start_error(enotconn, _) ->
+maybe_log_start_error(enotconn, _) ->
     ok;
-handle_start_error(einval, _) ->
+maybe_log_start_error(einval, _) ->
     ok;
-handle_start_error(overloaded, _) ->
+maybe_log_start_error(overloaded, _) ->
     ok;
-handle_start_error(Reason, D) ->
+maybe_log_start_error(Reason, D) ->
     logger:log(error, #{msg => "failed_to_start_connection_process",
                         listener => format_sockname(D),
                         cause => Reason}).
@@ -307,7 +307,7 @@ async_accept(CurrentState, #d{lsock = LSock, modopts = {Mod, Opts}}) ->
             Other
     end.
 
-unwrap_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
+async_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
     {error, Reason};
-unwrap_accept_result(Message, Ref, #d{modopts = {Mod, Opts}}) ->
+async_accept_result(Message, Ref, #d{modopts = {Mod, Opts}}) ->
     Mod:async_accept_result(Message, Ref, Opts).
