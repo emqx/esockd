@@ -84,9 +84,8 @@ accepting(internal, accept,
             %% Inc accepted stats.
             _ = esockd_server:inc_stats(ListenerRef, accepted, 1),
             _ = case eval_tune_socket_fun(TuneFun, Sock) of
-                {ok, Sock} ->
-                    Transport = esockd_transport,
-                    case esockd_connection_sup:start_connection(ConnSup, Transport, Sock, UpgradeFuns) of
+                {ok, TransportMod, Sock} ->
+                    case esockd_connection_sup:start_connection(ConnSup, TransportMod, Sock, UpgradeFuns) of
                         {ok, _Pid} -> ok;
                         {error, enotconn} ->
                             close(Sock); %% quiet...issue #10

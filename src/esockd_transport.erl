@@ -38,10 +38,11 @@
         , proxy_upgrade/2
         ]).
 
--export_type([socket/0]).
+-export_type([socket/0, listen_socket/0]).
 
 -type(ssl_socket() :: #ssl_socket{}).
 -type(proxy_socket() :: #proxy_socket{}).
+-type(listen_socket() :: inet:socket()).
 -type(socket() :: inet:socket() | ssl_socket() | proxy_socket() | #sslsocket{}).
 
 -spec(type(socket()) -> tcp | ssl | proxy).
@@ -71,6 +72,7 @@ wait(Sock) ->
             upgrade(Sock, UpgradeFuns)
     end.
 
+-spec(upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}).
 upgrade(Sock, []) ->
     {ok, Sock};
 upgrade(Sock, [{Fun, Args}|More]) ->
@@ -80,7 +82,7 @@ upgrade(Sock, [{Fun, Args}|More]) ->
     end.
 
 -spec(listen(inet:port_number(), [gen_tcp:listen_option()])
-      -> {ok, inet:socket()} | {error, system_limit | inet:posix()}).
+      -> {ok, listen_socket()} | {error, system_limit | inet:posix()}).
 listen(Port, Opts) ->
     gen_tcp:listen(Port, Opts).
 

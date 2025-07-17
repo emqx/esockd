@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2025 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -98,9 +98,15 @@ init({Proto, ListenOn, Opts}) ->
     case listen(ListenOn, TcpOpts) of
         {ok, LSock, SockOpts} ->
             _MRef = socket:monitor(LSock),
-            {ok, #{addr := LAddr, port := LPort}} = socket:sockname(LSock),
-            {ok, #state{listener_ref = ListenerRef, lsock = LSock,
-                        laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+            case esockd_socket:sockname(LSock) of
+                {ok, {LAddr, LPort}} ->
+                    {ok, #state{listener_ref = ListenerRef, lsock = LSock,
+                                laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+                {error, Reason} ->
+                    error_logger:error_msg("~s failed to get sockname: ~p (~s)",
+                                           [Proto, Reason, inet:format_error(Reason)]),
+                    {stop, Reason}
+            end;
         {error, Reason = {invalid, What}} ->
             error_logger:error_msg("~s failed to listen on ~p - invalid option: ~0p",
                                    [Proto, Port, What]),
@@ -121,7 +127,7 @@ listen(ListenOn, TcpOpts) ->
     Backlog = proplists:get_value(backlog, TcpOpts, 128),
     try
         LSock = ensure(socket:open(SockDomain, stream, tcp)),
-        ok = ensure(sock_setopts(LSock, SockOpts)),
+        ok = ensure(esockd_socket:setopts(LSock, SockOpts)),
         ok = ensure(socket:bind(LSock, SockAddr#{family => SockDomain})),
         ok = ensure(socket:listen(LSock, Backlog)),
         {ok, LSock, SockOpts}
@@ -137,14 +143,6 @@ sock_addr({Host, Port}) when tuple_size(Host) =:= 4 ->
     #{family => inet, addr => Host, port => Port};
 sock_addr({Host, Port}) when tuple_size(Host) =:= 8 ->
     #{family => inet6, addr => Host, port => Port}.
-
-sock_setopts(LSock, [{Opt, Value} | Rest]) ->
-    case socket:setopt(LSock, Opt, Value) of
-        ok -> sock_setopts(LSock, Rest);
-        Error -> Error
-    end;
-sock_setopts(_LSock, []) ->
-    ok.
 
 sock_listen_opt({reuseaddr, Flag}) ->
     {{socket, reuseaddr}, Flag};

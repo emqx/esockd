@@ -1,5 +1,5 @@
 %%--------------------------------------------------------------------
-%% Copyright (c) 2020-2024 EMQ Technologies Co., Ltd. All Rights Reserved.
+%% Copyright (c) 2020-2025 EMQ Technologies Co., Ltd. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -20,18 +20,16 @@
 
 -include("esockd.hrl").
 
--export([
-    start_link/7
-]).
+-export([start_link/6]).
 
 %% state callbacks
 -export([handle_event/4]).
 
 %% The state diagram:
-%%
-%%         +---------------------+
-%%         |                     |
-%%   +-----v-----+      +--------+----------+
+%%   init
+%%     |   +---------------------+
+%%     |   |                     |
+%%   +-V---v-----+      +--------+----------+
 %%   |  waiting  +----->+ accepting-waiting |
 %%   +-+----^----+      +--------+----------+
 %%     |    |                    |
@@ -59,9 +57,7 @@
 
 -record(d, {
     listener_ref :: esockd:listener_ref(),
-    lsock :: _ListenerSocket,
-    transport :: module(),
-    modopts :: {module(), _Ctx},
+    modctx :: {module(), _Ctx},
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
     conn_sup :: pid()
@@ -72,18 +68,17 @@
 %% @doc Start an acceptor
 -spec start_link(
     esockd:listener_ref(),
-    module(),
     pid(),
     {module(), _Options},
     [esockd:sock_fun()],
     esockd_generic_limiter:limiter(),
-    _ListenerSocket
+    _ListenSocket
 ) ->
     {ok, pid()} | {error, term()}.
-start_link(ListenerRef, Transport, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock) ->
+start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock) ->
     gen_statem:start_link(
         ?MODULE,
-        [ListenerRef, Transport, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock],
+        [ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock],
         []
     ).
 
@@ -94,14 +89,12 @@ start_link(ListenerRef, Transport, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock
 callback_mode() ->
     handle_event_function.
 
-init([ListenerRef, Transport, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, LSock]) ->
+init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, LSock]) ->
     _ = erlang:process_flag(trap_exit, true),
     Ctx = Mod:init(LSock, Opts),
     D = #d{
         listener_ref = ListenerRef,
-        lsock = LSock,
-        transport = Transport,
-        modopts = {Mod, Ctx},
+        modctx = {Mod, Ctx},
         upgrade_funs = UpgradeFuns,
         conn_limiter = Limiter,
         conn_sup = ConnSup
@@ -124,7 +117,7 @@ handle_event(internal, accept, State, D) when State =:= waiting orelse
             {stop, Reason, D}
     end;
 handle_event(info, Message, State = {accepting, Ref, InState}, D) ->
-    case unwrap_accept_result(Message, Ref, D) of
+    case async_accept_result(Message, Ref, D) of
         {ok, Sock} ->
             handle_accepted(Sock, InState, D);
         {error, Reason} ->
@@ -143,7 +136,7 @@ handle_event(Type, Content, State, D) ->
     handle_info(Type, Content, State, D).
 
 handle_info(Type, Content, State, _D) ->
-    logger:log(warning, #{msg => "esockd_acceptor_unhandled_event",
+    logger:log(warning, #{msg => "esockd_acceptor_fsm_unhandled_event",
                           state => State,
                           event_type => Type,
                           event_content => Content}),
@@ -178,27 +171,29 @@ enter_suspending(D, Timeout) ->
 handle_socket(
     Sock,
     D = #d{
-        transport = Transport,
-        modopts = {Mod, Opts},
+        modctx = {Mod, Ctx},
         upgrade_funs = UpgradeFuns,
         conn_sup = ConnSup
     }
 ) ->
-    case Mod:post_accept(Sock, Opts) of
-        {ok, NSock} ->
-            case start_connection(ConnSup, Transport, NSock, UpgradeFuns) of
+    case Mod:post_accept(Sock, Ctx) of
+        {ok, TransportMod, NSock} ->
+            case start_connection(ConnSup, TransportMod, NSock, UpgradeFuns) of
                 {ok, _Pid} ->
                     %% Inc accepted stats.
                     inc_stats(D, accepted);
-                {error, Reason} ->
-                    handle_start_error(Reason, D),
+                ignore ->
                     close(D, NSock),
+                    inc_stats(D, ignore);
+                {error, Reason} ->
+                    maybe_log_start_error(Reason, D),
+                    maybe_close(D, NSock, Reason),
                     inc_stats(D, Reason)
             end;
         {error, Reason} ->
             %% the socket became invalid before
             %% starting the owner process
-            close(D, Sock),
+            maybe_close(D, Sock, Reason),
             inc_stats(D, Reason)
     end.
 
@@ -219,18 +214,23 @@ code_change(_OldVsn, State, D, _Extra) ->
 %% Internal funcs
 %%--------------------------------------------------------------------
 
-close(#d{modopts = {Mod, _}}, Sock) ->
+maybe_close(_D, _Sock, closed) ->
+    ok;
+maybe_close(D, Sock, _Reason) ->
+    close(D, Sock).
+
+close(#d{modctx = {Mod, _}}, Sock) ->
     Mod:fast_close(Sock).
 
-handle_start_error(econnreset, _) ->
+maybe_log_start_error(econnreset, _) ->
     ok;
-handle_start_error(enotconn, _) ->
+maybe_log_start_error(enotconn, _) ->
     ok;
-handle_start_error(einval, _) ->
+maybe_log_start_error(einval, _) ->
     ok;
-handle_start_error(overloaded, _) ->
+maybe_log_start_error(overloaded, _) ->
     ok;
-handle_start_error(Reason, D) ->
+maybe_log_start_error(Reason, D) ->
     logger:log(error, #{msg => "failed_to_start_connection_process",
                         listener => format_sockname(D),
                         cause => Reason}).
@@ -260,8 +260,8 @@ log_system_limit(Reason, D) ->
                  listener => format_sockname(D),
                  cause => explain_posix(Reason)}).
 
-format_sockname(#d{lsock = LSock, transport = Transport}) ->
-    case Transport:sockname(LSock) of
+format_sockname(#d{modctx = {Mod, Ctx}}) ->
+    case Mod:sockname(Ctx) of
         {ok, SockName} ->
             esockd:format(SockName);
         {error, Reason} ->
@@ -292,14 +292,14 @@ start_connection({F, A}, _Transport, Sock, UpgradeFuns) when is_function(F) ->
 %% The first delayed message should cause acceptor to enter suspending state.
 %% Then it should continue to accept 10 more sockets (which are all likely
 %% to result in emfile error anyway) during suspending state.
-async_accept(CurrentState, #d{lsock = LSock, modopts = {Mod, Opts}}) ->
-    case Mod:async_accept(LSock, Opts) of
+async_accept(CurrentState, #d{modctx = {Mod, Ctx}}) ->
+    case Mod:async_accept(Ctx) of
         {error, Reason} when Reason =:= emfile orelse Reason =:= enfile ->
             Delay = case CurrentState of
                         suspending -> ?SYS_LIMIT_SUSPEND_MS div 10;
                         _Waiting -> 0
                     end,
-            Ref = Reason,
+            Ref = make_ref(),
             Msg = {?MODULE, Ref, {error, Reason}},
             _ = erlang:send_after(Delay, self(), Msg),
             {async, Ref};
@@ -307,7 +307,7 @@ async_accept(CurrentState, #d{lsock = LSock, modopts = {Mod, Opts}}) ->
             Other
     end.
 
-unwrap_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
+async_accept_result({?MODULE, Ref, {error, Reason}}, Ref, _) ->
     {error, Reason};
-unwrap_accept_result(Message, Ref, #d{modopts = {Mod, Opts}}) ->
-    Mod:async_accept_result(Message, Ref, Opts).
+async_accept_result(Message, Ref, #d{modctx = {Mod, Ctx}}) ->
+    Mod:async_accept_result(Message, Ref, Ctx).
