@@ -413,6 +413,47 @@ t_update_options(_) ->
     {ok, <<"HEY">>} = gen_tcp:recv(Sock2, 0),
     ok = esockd:close(echo, 6000).
 
+t_update_options_tcpsocket(_) ->
+    {ok, _LSup} = esockd:open_tcpsocket(echo, 6001,
+                                        [{acceptors, 4},
+                                         {tcp_options, [{reuseaddr, true},
+                                                        {backlog, 128}]},
+                                         {connection_mfargs, echo_server}]),
+    ?assertEqual(4, esockd:get_acceptors({echo, 6001})),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6001, [binary, {active, false}]),
+    %% Listener-related options can not be changed
+    ?assertEqual(
+        {error, unsupported},
+        esockd:set_options({echo, 6001},
+                            [{acceptors, 8},
+                             {tcp_options, [{backlog, 256}]}])
+    ),
+    ?assertEqual(
+        {error, unsupported},
+        esockd:set_options({echo, 6001},
+                            [{tcp_options, [{reuseaddr, false}]}])
+    ),
+    %% Number of acceptors haven't changed
+    ?assertEqual(4, esockd:get_acceptors({echo, 6001})),
+    %% Other TCP options are changeable
+    ?assertEqual(
+        ok,
+        esockd:set_options({echo, 6001},
+                           [{acceptors, 16},
+                            tune_buffer,
+                            {tcp_options, [{buffer, 16 * 1024},
+                                           {linger, {true, 0}}]},
+                            {connection_mfargs, {const_server, start_link, [<<"HEY">>]}}])
+    ),
+    {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6001, [binary, {active, false}]),
+    ?assertEqual(16, esockd:get_acceptors({echo, 6001})),
+    %% Sockets should still be alive
+    ok = gen_tcp:send(Sock1, <<"Sock1">>),
+    {ok, <<"Sock1">>} = gen_tcp:recv(Sock1, 0),
+    ok = gen_tcp:send(Sock2, <<"Sock2">>),
+    {ok, <<"HEY">>} = gen_tcp:recv(Sock2, 0),
+    ok = esockd:close(echo, 6001).
+
 t_update_options_udp(_) ->
     Port = 7000,
     InitOpts = [{max_connections, 4},

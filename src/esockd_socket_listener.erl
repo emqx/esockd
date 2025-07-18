@@ -45,7 +45,9 @@
           lsock        :: socket:socket(),
           laddr        :: inet:ip_address(),
           lport        :: inet:port_number(),
-          sockopts     :: [socket:socket_option()]
+          sockparams   :: {_Addr :: socket:sockaddr_in() | socket:sockaddr_in6(),
+                           _Opts :: [socket:socket_option()],
+                           _Backlog :: pos_integer()}
          }).
 
 -define(DEFAULT_SOCK_OPTIONS, [{reuseaddr, true}]).
@@ -82,8 +84,8 @@ get_state(Listener) ->
     gen_server:call(Listener, get_state).
 
 -spec set_options(pid(), [option()])  -> ok.
-set_options(_Listener, _Opts) ->
-    ok.
+set_options(Listener, Opts) ->
+    gen_server:call(Listener, {set_options, Opts}).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -96,12 +98,13 @@ init({Proto, ListenOn, Opts}) ->
     esockd_server:ensure_stats(ListenerRef),
     TcpOpts = merge_defaults(proplists:get_value(tcp_options, Opts, [])),
     case listen(ListenOn, TcpOpts) of
-        {ok, LSock, SockOpts} ->
+        {ok, LSock, SockParams} ->
             _MRef = socket:monitor(LSock),
             case esockd_socket:sockname(LSock) of
                 {ok, {LAddr, LPort}} ->
                     {ok, #state{listener_ref = ListenerRef, lsock = LSock,
-                                laddr = LAddr, lport = LPort, sockopts = SockOpts}};
+                                laddr = LAddr, lport = LPort,
+                                sockparams = SockParams}};
                 {error, Reason} ->
                     error_logger:error_msg("~s failed to get sockname: ~p (~s)",
                                            [Proto, Reason, inet:format_error(Reason)]),
@@ -118,22 +121,28 @@ init({Proto, ListenOn, Opts}) ->
     end.
 
 listen(ListenOn, TcpOpts) ->
-    SockAddr = sock_addr(ListenOn),
-    SockDomain = case [O || O <- TcpOpts, O == inet orelse O == inet6] of
-        [_ | _] = Families -> lists:last(Families);
-        [] -> maps:get(family, SockAddr, ?DEFAULT_DOMAIN)
-    end,
-    SockOpts = lists:flatten([sock_listen_opt(O) || O <- TcpOpts]),
-    Backlog = proplists:get_value(backlog, TcpOpts, 128),
+    SockParams = {SockAddr = #{family := SockDomain}, SockOpts, Backlog}
+               = get_sock_params(ListenOn, TcpOpts),
     try
         LSock = ensure(socket:open(SockDomain, stream, tcp)),
         ok = ensure(esockd_socket:setopts(LSock, SockOpts)),
-        ok = ensure(socket:bind(LSock, SockAddr#{family => SockDomain})),
+        ok = ensure(socket:bind(LSock, SockAddr)),
         ok = ensure(socket:listen(LSock, Backlog)),
-        {ok, LSock, SockOpts}
+        {ok, LSock, SockParams}
     catch
         Error -> Error
     end.
+
+get_sock_params(ListenOn, TcpOpts) ->
+    SockAddrIn = sock_addr(ListenOn),
+    SockDomain = case [O || O <- TcpOpts, O == inet orelse O == inet6] of
+        [_ | _] = Families -> lists:last(Families);
+        [] -> maps:get(family, SockAddrIn, ?DEFAULT_DOMAIN)
+    end,
+    SockAddr = SockAddrIn#{family => SockDomain},
+    SockOpts = lists:flatten([sock_listen_opt(O) || O <- TcpOpts]),
+    Backlog = proplists:get_value(backlog, TcpOpts, 128),
+    {SockAddr, SockOpts, Backlog}.
 
 sock_addr(0) ->
     #{addr => any, port => 0};
@@ -172,6 +181,19 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
             , {listen_port, LPort}
             ],
     {reply, Reply, State};
+
+handle_call({set_options, Opts}, _From,
+            State = #state{listener_ref = {_Proto, ListenOn},
+                           sockparams = SockParams}) ->
+    TcpOpts = merge_defaults(proplists:get_value(tcp_options, Opts, [])),
+    case get_sock_params(ListenOn, TcpOpts) of
+        SockParams ->
+            %% Listening socket parameters did not change:
+            {reply, ok, State};
+        _Different ->
+            %% Listening socket parameters changed, needs restart:
+            {reply, {error, unsupported}, State}
+    end;
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),

@@ -24,6 +24,13 @@
 start_link(Transport, RawSock, Resp) ->
 	{ok, spawn_link(?MODULE, init, [Transport, RawSock, Resp])}.
 
+init(esockd_socket, RawSock, Resp) ->
+    case esockd_socket:wait(RawSock) of
+        {ok, Sock} ->
+            loop(socket, Sock, Resp);
+        {error, Reason} ->
+            {error, Reason}
+    end;
 init(Transport, RawSock, Resp) ->
     case Transport:wait(RawSock) of
         {ok, Sock} ->
