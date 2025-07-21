@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_acceptor_SUITE).
+-module(esockd_acceptor_fsm_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -72,7 +72,7 @@ start(PortNumber, Limiter, Opts) ->
     {ok, ListenSocket} = gen_tcp:listen(PortNumber, SockOpts),
     TuneFun = maps:get(tune_fun, Opts, esockd_acceptor_sup:tune_socket_fun([])),
     StartConn = {fun ?MODULE:start_connection/3, [Opts]},
-    {ok, AccPid} = esockd_acceptor:start_link(tcp, PortNumber, StartConn, TuneFun, _UpFuns = [], Limiter, ListenSocket),
+    {ok, AccPid} = esockd_acceptor_fsm:start_link(tcp, PortNumber, StartConn, TuneFun, _UpFuns = [], Limiter, ListenSocket),
     #{lsock => ListenSocket, acceptor => AccPid}.
 
 stop(#{lsock := ListenSocket, acceptor := AccPid}) ->

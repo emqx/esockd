@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_acceptor).
+-module(esockd_acceptor_fsm).
 
 -behaviour(gen_statem).
 

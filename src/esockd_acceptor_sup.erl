@@ -55,7 +55,7 @@ start_supervised(ListenerRef = {Proto, ListenOn}) ->
             Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
             AcceptorMod = case Type of
                                 dtls -> esockd_dtls_acceptor;
-                                _ -> esockd_acceptor
+                                _ -> esockd_acceptor_fsm
                             end,
             ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
             AcceptorArgs = [Proto, ListenOn, ConnSup, TuneFun, UpgradeFuns, Limiter],
