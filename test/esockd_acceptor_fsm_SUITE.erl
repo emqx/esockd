@@ -14,7 +14,7 @@
 %% limitations under the License.
 %%--------------------------------------------------------------------
 
--module(esockd_acceptor_SUITE).
+-module(esockd_acceptor_fsm_SUITE).
 
 -compile(export_all).
 -compile(nowarn_export_all).
@@ -24,7 +24,7 @@
 -include_lib("common_test/include/ct.hrl").
 
 -define(PORT, 30000 + ?LINE).
--define(COUNTER_ACCPETED, 1).
+-define(COUNTER_ACCEPTED, 1).
 -define(COUNTER_OVERLOADED, 2).
 -define(COUNTER_RATE_LIMITED, 3).
 -define(COUNTER_SYS_LIMIT, 4).
@@ -32,19 +32,35 @@
 -define(COUNTER_OTHER_REASONS, 6).
 -define(COUNTER_LAST, 10).
 
-counter_tag_to_index(accepted) -> ?COUNTER_ACCPETED;
+counter_tag_to_index(accepted) -> ?COUNTER_ACCEPTED;
 counter_tag_to_index(closed_sys_limit) -> ?COUNTER_SYS_LIMIT;
 counter_tag_to_index(closed_max_limit) -> ?COUNTER_MAX_LIMIT;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
 counter_tag_to_index(closed_rate_limited) -> ?COUNTER_RATE_LIMITED;
 counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
 
-all() -> esockd_ct:all(?MODULE).
+all() -> 
+    [{group, inet}, {group, tcpsocket}].
+
+groups() ->
+    [{inet, [sequence], test_cases()},
+     {tcpsocket, [sequence], test_cases()}].
+
+test_cases() ->
+    esockd_ct:all(?MODULE).
 
 init_per_suite(Config) ->
     Config.
 
 end_per_suite(_Config) ->
+    ok.
+
+init_per_group(inet, Config) ->
+    [{accept_mod, esockd_accept_inet} | Config];
+init_per_group(tcpsocket, Config) ->
+    [{accept_mod, esockd_accept_socket} | Config].
+
+end_per_group(_Group, _Config) ->
     ok.
 
 init_per_testcase(_Case, Config) ->
@@ -64,20 +80,47 @@ start(PortNumber, Limiter) ->
     start(PortNumber, Limiter, #{}).
 
 start(PortNumber, Limiter, Opts) ->
-    SockOpts = [binary,
-                {active, false},
-                {reuseaddr, true},
-                {nodelay, true},
-                {backlog, maps:get(backlog, Opts, 1024)}],
-    {ok, ListenSocket} = gen_tcp:listen(PortNumber, SockOpts),
-    TuneFun = maps:get(tune_fun, Opts, esockd_acceptor_sup:tune_socket_fun([])),
-    StartConn = {fun ?MODULE:start_connection/3, [Opts]},
-    {ok, AccPid} = esockd_acceptor:start_link(tcp, PortNumber, StartConn, TuneFun, _UpFuns = [], Limiter, ListenSocket),
-    #{lsock => ListenSocket, acceptor => AccPid}.
+    start(PortNumber, Limiter, Opts, [{accept_mod, esockd_accept_inet}]).
 
-stop(#{lsock := ListenSocket, acceptor := AccPid}) ->
+start(PortNumber, Limiter, Opts, Config) ->
+    AcceptMod = proplists:get_value(accept_mod, Config),
+    case AcceptMod of
+        esockd_accept_inet ->
+            SockOpts = [binary,
+                        {active, false},
+                        {reuseaddr, true},
+                        {nodelay, true},
+                        {backlog, maps:get(backlog, Opts, 1024)}],
+            {ok, LSock} = gen_tcp:listen(PortNumber, SockOpts);
+        esockd_accept_socket -> 
+            Backlog = maps:get(backlog, Opts, 1024),
+            {ok, LSock} = socket:open(inet, stream, tcp),
+            ok = socket:setopt(LSock, {socket, reuseaddr}, true),
+            ok = socket:bind(LSock, #{family => inet,
+                                    addr => any,
+                                    port => PortNumber}),
+            ok = socket:listen(LSock, Backlog)
+    end,
+    ListenerRef = {tcp, PortNumber},
+    StartConn = {fun ?MODULE:start_connection/3, [Opts]},
+    TuneFun = maps:get(tune_fun, Opts, AcceptMod:mk_tune_socket_fun([])),
+    AcceptCb = {AcceptMod, TuneFun},
+    {ok, AccPid} = esockd_acceptor_fsm:start_link(
+        ListenerRef,
+        StartConn,
+        AcceptCb,
+        _UpgradeFuns = [],
+        Limiter,
+        LSock
+    ),
+    #{lsock => LSock, acceptor => AccPid}.
+
+stop(#{lsock := LSock, acceptor := AccPid}) ->
     ok = gen_statem:stop(AccPid),
-    gen_tcp:close(ListenSocket),
+    case is_port(LSock) of
+        true -> gen_tcp:close(LSock);
+        false -> socket:close(LSock)
+    end,
     ok.
 
 connect(Port) ->
@@ -92,10 +135,10 @@ connect(Port, Timeout, Opts0) ->
 %% This is the very basic test, if this fails, nothing elese matters.
 t_normal(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_rate_limit()),
+    Server = start(Port, no_rate_limit(), #{}, Config),
     {ok, ClientSock} = connect(Port),
     try
-        ok = wait_for_counter(Config, ?COUNTER_ACCPETED, 1, 2000)
+        ok = wait_for_counter(Config, ?COUNTER_ACCEPTED, 1, 2000)
     after
         disconnect(ClientSock),
         stop(Server)
@@ -104,7 +147,7 @@ t_normal(Config) ->
 t_rate_limitted(Config) ->
     Port = ?PORT,
     Pause = 200,
-    Server = start(Port, pause_then_allow(Pause)),
+    Server = start(Port, pause_then_allow(Pause), #{}, Config),
     try
         Count = 10,
         Socks = lists:map(fun(_) ->
@@ -122,7 +165,7 @@ t_rate_limitted(Config) ->
         ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, Count, 2000),
         timer:sleep(Pause),
         {ok, Sock2} = connect(Port),
-        ok = wait_for_counter(Config, ?COUNTER_ACCPETED, 1, 2000),
+        ok = wait_for_counter(Config, ?COUNTER_ACCEPTED, 1, 2000),
         disconnect(Sock2)
     after
         stop(Server)
@@ -131,7 +174,8 @@ t_rate_limitted(Config) ->
 %% Failed to spawn new connection process
 t_error_when_spawn(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_rate_limit(), #{start_connection_result => {error, overloaded}}),
+    Opts = #{start_connection_result => {error, overloaded}},
+    Server = start(Port, no_rate_limit(), Opts, Config),
     {ok, Sock1} = connect(Port),
     try
         ok = wait_for_counter(Config, ?COUNTER_OVERLOADED, 1, 2000),
@@ -143,7 +187,8 @@ t_error_when_spawn(Config) ->
 %% Failed to tune the socket opts
 t_einval(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_rate_limit(), #{tune_fun => {fun(_) -> {error, einval} end, []}}),
+    Opts = #{tune_fun => {fun(_, _) -> {error, einval} end, []}},
+    Server = start(Port, no_rate_limit(), Opts, Config),
     {ok, Sock1} = connect(Port),
     try
         ok = wait_for_counter(Config, ?COUNTER_OTHER_REASONS, 1, 2000),
@@ -156,16 +201,17 @@ t_einval(Config) ->
 %% the Erlang VM healthy (test case may need to write files etc),
 %% so we use meck to simulate one.
 t_sys_limit(Config) ->
-    meck:new(prim_inet, [passthrough, no_history, unstick]),
-    meck:expect(prim_inet, async_accept, fun(_, _) -> {error, emfile} end),
+    AcceptMod = proplists:get_value(accept_mod, Config),
+    meck:new(AcceptMod, [passthrough, no_history]),
+    meck:expect(AcceptMod, async_accept, fun(_) -> {error, emfile} end),
     Port = ?PORT,
-    Server = start(Port, no_rate_limit()),
+    Server = start(Port, no_rate_limit(), #{}, Config),
     try
         %% acceptor to enter suspending state after started
         %% because async_accept always returns {error, emfile}
         ok = wait_for_counter(Config, ?COUNTER_SYS_LIMIT, {'>', 1}, 2000),
         %% now unload the mock
-        meck:unload(prim_inet),
+        meck:unload(AcceptMod),
         %% this one is closed immediately because acceptor is still in suspending state
         {ok, Sock1} = connect(Port),
         ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, 1, 2000),
@@ -173,7 +219,7 @@ t_sys_limit(Config) ->
         %% allow acceptor to exit from suspending state
         timer:sleep(1000),
         {ok, Sock2} = connect(Port),
-        ok = wait_for_counter(Config, ?COUNTER_ACCPETED, 1, 2000),
+        ok = wait_for_counter(Config, ?COUNTER_ACCEPTED, 1, 2000),
         ok = assert_socket_connected(Sock2),
         disconnect(Sock2)
     after
@@ -183,7 +229,8 @@ t_sys_limit(Config) ->
 %% Failed to spawn new connection process
 t_max_limit(Config) ->
     Port = ?PORT,
-    Server = start(Port, no_rate_limit(), #{start_connection_result => {error, ?ERROR_MAXLIMIT}}),
+    Opts = #{start_connection_result => {error, ?ERROR_MAXLIMIT}},
+    Server = start(Port, no_rate_limit(), Opts, Config),
     {ok, Sock1} = connect(Port),
     try
         ok = wait_for_counter(Config, ?COUNTER_MAX_LIMIT, 1, 2000),
@@ -192,15 +239,15 @@ t_max_limit(Config) ->
         stop(Server)
     end.
 
-t_close_listener_socket_cause_acceptor_stop(_Config) ->
+t_close_listener_socket_cause_acceptor_stop(Config) ->
     Port = ?PORT,
-    #{acceptor := Acceptor, lsock := LSock} = start(Port, no_rate_limit()),
+    AcceptMod = proplists:get_value(accept_mod, Config),
+    #{acceptor := Acceptor, lsock := LSock} = start(Port, no_rate_limit(), #{}, Config),
     Mref = monitor(process, Acceptor),
     unlink(Acceptor),
-    unlink(LSock),
     {ok, Sock1} = connect(Port),
     ok = assert_socket_connected(Sock1),
-    exit(LSock, kill),
+    AcceptMod:fast_close(LSock),
     receive
         {'DOWN', Mref, process, Acceptor, Reason} ->
             ?assertEqual(normal, Reason)

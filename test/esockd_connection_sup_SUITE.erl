@@ -24,28 +24,16 @@
 all() -> esockd_ct:all(?MODULE).
 
 t_start_connection(_) ->
-    ok = meck_esockd_transport(fun(_, _) ->
-                                       timer:sleep(100),
-                                       {ok, <<"Hi">>}
-                               end),
     with_conn_sup([{max_connections, 1024}],
                   fun(ConnSup) ->
-                          {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                          {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, ?MODULE, sock, []),
                           ?assert(is_process_alive(ConnPid))
-                  end),
-    ok = meck:unload(esockd_transport).
+                  end).
 
 t_shutdown_connection_count(_) ->
-    RecvFn = fun(_, _) ->
-                     receive
-                         {shutdown, Reason} ->
-                             {shutdown, Reason}
-                     end
-             end,
-    ok = meck_esockd_transport(RecvFn),
     StartThenShutdown =
         fun(ConnSup, Reason) ->
-                {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, ?MODULE, sock, []),
                 ?assert(is_process_alive(ConnPid)),
                 _ = monitor(process, ConnPid),
                 ConnPid ! {shutdown, Reason},
@@ -71,8 +59,7 @@ t_shutdown_connection_count(_) ->
                           WaitDown(Pid2, Reason2),
                           Counts = esockd_connection_sup:get_shutdown_count(ConnSup),
                           ?assertEqual([{foo, 1}, {ssl_error, 1}], lists:sort(Counts))
-                  end),
-    ok = meck:unload(esockd_transport).
+                  end).
 
 t_allow_deny(_) ->
     AccessRules = [{allow, "192.168.1.0/24"}],
@@ -118,13 +105,21 @@ with_conn_sup(Opts, Fun) ->
     Fun(ConnSup),
     ok = esockd_connection_sup:stop(ConnSup).
 
-meck_esockd_transport(RecvFn) ->
-    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
-    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
-    ok = meck:expect(esockd_transport, wait, fun(Sock) -> {ok, Sock} end),
-    ok = meck:expect(esockd_transport, recv, RecvFn),
-    ok = meck:expect(esockd_transport, send, fun(_Sock, _Data) -> ok end),
-    ok = meck:expect(esockd_transport, controlling_process, fun(_Sock, _ConnPid) -> ok end),
-    ok = meck:expect(esockd_transport, ready, fun(_ConnPid, _Sock, []) -> ok end),
-    ok.
+%% Transport
 
+peername(_Sock) -> {ok, {{127,0,0,1}, 3456}}.
+
+recv(_Sock, _Len) ->
+    receive
+        {shutdown, Reason} -> {shutdown, Reason}
+    after 100 ->
+        {ok, <<"Hi">>}
+    end.
+
+send(_Sock, _Data) -> ok.
+
+ready(_ConnPid, _Sock, []) -> ok.
+
+wait(_Sock) -> {ok, _Sock}.
+
+controlling_process(_Sock, _ConnPid) -> ok.

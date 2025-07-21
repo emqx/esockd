@@ -20,7 +20,7 @@
 
 -include("esockd.hrl").
 
--export([start_link/7]).
+-export([start_link/6]).
 
 -export([ accepting/3
         , suspending/3
@@ -34,8 +34,7 @@
         ]).
 
 -record(state, {
-          proto        :: atom(),
-          listen_on    :: esockd:listen_on(),
+          listener_ref :: esockd:listener_ref(),
           lsock        :: ssl:sslsocket(),
           sockname     :: {inet:ip_address(), inet:port_number()},
           tune_fun     :: esockd:sock_fun(),
@@ -45,25 +44,24 @@
          }).
 
 %% @doc Start an acceptor
--spec(start_link(atom(), esockd:listen_on(), pid(),
+-spec(start_link(esockd:listener_ref(), pid(),
                  esockd:sock_fun(), [esockd:sock_fun()],
                  esockd_generic_limiter:limiter(), inet:socket())
       -> {ok, pid()} | {error, term()}).
-start_link(Proto, ListenOn, ConnSup,
+start_link(ListenerRef, ConnSup,
            TuneFun, UpgradeFuns, Limiter, LSock) ->
-    gen_statem:start_link(?MODULE, [Proto, ListenOn, ConnSup,
+    gen_statem:start_link(?MODULE, [ListenerRef, ConnSup,
                                     TuneFun, UpgradeFuns, Limiter, LSock], []).
 
 %%--------------------------------------------------------------------
 %% gen_statem callbacks
 %%--------------------------------------------------------------------
 
-init([Proto, ListenOn, ConnSup,
+init([ListenerRef, ConnSup,
       TuneFun, UpgradeFuns, Limiter, LSock]) ->
     _ = rand:seed(exsplus, erlang:timestamp()),
     {ok, Sockname} = ssl:sockname(LSock),
-    {ok, accepting, #state{proto        = Proto,
-                           listen_on    = ListenOn,
+    {ok, accepting, #state{listener_ref = ListenerRef,
                            lsock        = LSock,
                            sockname     = Sockname,
                            tune_fun     = TuneFun,
@@ -75,8 +73,7 @@ init([Proto, ListenOn, ConnSup,
 callback_mode() -> state_functions.
 
 accepting(internal, accept,
-          State = #state{proto        = Proto,
-                         listen_on    = ListenOn,
+          State = #state{listener_ref = ListenerRef,
                          lsock        = LSock,
                          sockname     = Sockname,
                          tune_fun     = TuneFun,
@@ -85,10 +82,10 @@ accepting(internal, accept,
     case ssl:transport_accept(LSock) of
         {ok, Sock} ->
             %% Inc accepted stats.
-            _ = esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
+            _ = esockd_server:inc_stats(ListenerRef, accepted, 1),
             _ = case eval_tune_socket_fun(TuneFun, Sock) of
-                {ok, Sock} ->
-                    case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
+                {ok, TransportMod, Sock} ->
+                    case esockd_connection_sup:start_connection(ConnSup, TransportMod, Sock, UpgradeFuns) of
                         {ok, _Pid} -> ok;
                         {error, enotconn} ->
                             close(Sock); %% quiet...issue #10
@@ -148,5 +145,5 @@ rate_limit(State = #state{conn_limiter = Limiter}) ->
             {next_state, suspending, State#state{conn_limiter = Limiter2}, PauseTime}
     end.
 
-eval_tune_socket_fun({Fun, Args1}, Sock) ->
-    apply(Fun, [Sock|Args1]).
+eval_tune_socket_fun({Fun, Args}, Sock) ->
+    Fun(Sock, Args).

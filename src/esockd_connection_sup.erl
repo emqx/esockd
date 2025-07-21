@@ -22,7 +22,7 @@
 
 -export([start_link/1, start_supervised/1, stop/1]).
 
--export([ start_connection/3
+-export([ start_connection/4
         , count_connections/1
         ]).
 
@@ -49,7 +49,7 @@
 
 -include("esockd.hrl").
 
--type(shutdown() :: brutal_kill | infinity | pos_integer()).
+-type shutdown() :: brutal_kill | infinity | pos_integer().
 
 -type option() :: {shutdown, shutdown()}
                 | {max_connections, pos_integer()}
@@ -100,23 +100,32 @@ set_options(Pid, Opts) ->
 %%--------------------------------------------------------------------
 
 %% @doc Start connection.
-start_connection(Sup, Sock, UpgradeFuns) ->
-    case call(Sup, {start_connection, Sock}) of
+-spec start_connection
+    (pid(), esockd_transport, esockd_transport:socket(), [esockd:sock_fun()]) ->
+        {ok, Connection :: pid()} | ignore | {error, term()};
+    (pid(), esockd_socket, esockd_socket:socket(), [esockd:sock_fun()]) ->
+        {ok, Connection :: pid()} | ignore | {error, term()}.
+start_connection(Sup, TransportMod, Sock, UpgradeFuns) ->
+    case call(Sup, {start_connection, TransportMod, Sock}) of
         {ok, ConnPid} ->
             %% Transfer controlling from acceptor to connection
-            _ = esockd_transport:controlling_process(Sock, ConnPid),
-            _ = esockd_transport:ready(ConnPid, Sock, UpgradeFuns),
+            _ = TransportMod:controlling_process(Sock, ConnPid),
+            _ = TransportMod:ready(ConnPid, Sock, UpgradeFuns),
             {ok, ConnPid};
-        ignore -> ignore;
+        ignore ->
+            ignore;
         {error, Reason} ->
             {error, Reason}
     end.
 
 %% @doc Start the connection process.
--spec start_connection_proc(esockd:mfargs(), esockd_transport:socket())
-      -> {ok, pid()} | ignore | {error, term()}.
-start_connection_proc(MFA, Sock) ->
-    esockd:start_mfargs(MFA, esockd_transport, Sock).
+-spec start_connection_proc
+    (esockd:mfargs(), esockd_transport, esockd_transport:socket()) ->
+        {ok, pid()} | ignore | {error, term()};
+    (esockd:mfargs(), esockd_socket, esockd_socket:socket()) ->
+        {ok, pid()} | ignore | {error, term()}.
+start_connection_proc(MFA, TransportMod, Sock) ->
+    esockd:start_mfargs(MFA, TransportMod, Sock).
 
 -spec(count_connections(pid()) -> integer()).
 count_connections(Sup) ->
@@ -160,18 +169,18 @@ init(Opts0) ->
                 shutdown         = Shutdown,
                 mfargs           = MFA}}.
 
-handle_call({start_connection, _Sock}, _From,
+handle_call({start_connection, _TransportMod, _Sock}, _From,
             State = #state{curr_connections = Conns, max_connections = MaxConns})
     when map_size(Conns) >= MaxConns ->
     {reply, {error, ?ERROR_MAXLIMIT}, State};
 
-handle_call({start_connection, Sock}, _From,
+handle_call({start_connection, TransportMod, Sock}, _From,
             State = #state{curr_connections = Conns, access_rules = Rules, mfargs = MFA}) ->
-    case esockd_transport:peername(Sock) of
+    case TransportMod:peername(Sock) of
         {ok, {Addr, _Port}} ->
             case allowed(Addr, Rules) of
                 true ->
-                    try start_connection_proc(MFA, Sock) of
+                    try start_connection_proc(MFA, TransportMod, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
                             NState = State#state{curr_connections = maps:put(Pid, true, Conns)},
                             {reply, {ok, Pid}, NState};
