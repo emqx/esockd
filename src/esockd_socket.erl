@@ -113,9 +113,9 @@ upgrade(Sock, [{Fun, Args} | More]) ->
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->
-    %% TODO: Research better alternatives.
-    _Pid = erlang:spawn(socket, close, [Sock]),
-    ok.
+    %% NOTE: Unexpected to fail on active socket.
+    _ = socket:setopt(Sock, {socket, linger}, #{onoff => true, linger => 0}),
+    socket:close(Sock).
 
 %% @doc Sockname
 %% Returns original destination address and port if proxy protocol is enabled.
