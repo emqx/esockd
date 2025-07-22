@@ -25,6 +25,18 @@ eunit: compile
 ct: compile
 	$(REBAR) as test ct -v
 
+COMPOSE := docker compose -f test/docker-compose.yml
+COMPOSE_CT_SUITES := test/esockd_socket_SUITE.erl
+
+.PHONY: ct-compose
+ct-compose:
+	$(COMPOSE) up --build --quiet-pull -d
+	sleep 5
+	$(COMPOSE) exec esockd rebar3 ct -v --suite $(COMPOSE_CT_SUITES) || $(COMPOSE) logs
+	$(COMPOSE) logs tcptest
+	$(COMPOSE) logs tc
+	$(COMPOSE) down -t1
+
 cover:
 	$(REBAR) cover
 

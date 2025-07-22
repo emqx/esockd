@@ -1,0 +1,11 @@
+ARG ESOCKD_IMAGE_ERLANG=erlang:27
+FROM ${ESOCKD_IMAGE_ERLANG}
+
+COPY . /esockd
+WORKDIR /esockd
+RUN rebar3 compile
+RUN rebar3 as test compile
+
+CMD ["sh", "-c", "erl -pa _build/default/lib/*/ebin _build/test/lib/esockd/test -s esockd_tcptest start 8080"]
+
+EXPOSE 8080
