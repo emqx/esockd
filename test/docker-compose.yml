@@ -1,0 +1,53 @@
+services:
+  tcptest:
+    build:
+      context: ..
+      dockerfile: test/Dockerfile.tcptest
+      args:
+        ESOCKD_IMAGE_ERLANG: ${ESOCKD_IMAGE_ERLANG:-erlang:27}
+    ports:
+      - 8080
+    tty: true
+    networks:
+      - esockd-bridge
+
+  tc:
+    image: docker.io/lukaszlach/docker-tc
+    cap_add:
+      - NET_ADMIN
+    ports:
+      - 4080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /var/docker-tc:/var/docker-tc
+    environment:
+      HTTP_BIND: "${HTTP_BIND:-0.0.0.0}"
+      HTTP_PORT: "${HTTP_PORT:-4080}"
+    # network_mode: host
+    networks:
+      - esockd-bridge
+
+  esockd:
+    image: ${ESOCKD_IMAGE_ERLANG:-erlang:27}
+    volumes:
+      - ${PWD}:/esockd
+    working_dir: /esockd
+    environment:
+      ESOCKD_CT_TCPTEST_HOST: tcptest
+      ESOCKD_CT_TCPTEST_PORT: 8080
+      ESOCKD_CT_TC_ID_TCPTEST: tcptest-1
+      ESOCKD_CT_TC_URL: http://tc:4080
+    command:
+      - epmd
+    networks:
+      - esockd-bridge
+
+networks:
+  esockd-bridge:
+    driver: bridge
+    name: esockd-bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.10.100.0/24
+          gateway: 172.10.100.1
