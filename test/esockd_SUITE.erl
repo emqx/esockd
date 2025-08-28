@@ -413,6 +413,26 @@ t_update_options(_) ->
     {ok, <<"HEY">>} = gen_tcp:recv(Sock2, 0),
     ok = esockd:close(echo, 6000).
 
+t_update_options_limiter(_) ->
+    {ok, _LSup} = esockd:open(echo, 6000,
+                              [{limiter, #{module => esockd_limiter, capacity => 100, interval => 1}},
+                               {connection_mfargs, echo_server}]),
+    ?assertEqual({100, 1}, esockd:get_max_conn_rate({echo, 6000})),
+
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, [binary, {active, false}]),
+
+    ok = esockd:set_options({echo, 6000}, [{limiter, #{module => trace_limiter, report_to => self()}}]),    
+    receive
+        {trace_limiter, create, [_]} -> ok
+    after
+        1000 -> ct:fail({timeout, "Updating limiter options should recreate the limiter"})
+    end,
+
+    ok = gen_tcp:send(Sock1, <<"Sock1">>),
+    {ok, <<"Sock1">>} = gen_tcp:recv(Sock1, 0),
+
+    ok = esockd:close(echo, 6000).
+
 t_update_options_tcpsocket(_) ->
     {ok, _LSup} = esockd:open_tcpsocket(echo, 6001,
                                         [{acceptors, 4},
