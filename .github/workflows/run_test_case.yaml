@@ -20,7 +20,7 @@ jobs:
             image: ${{ matrix.otp }}
 
         steps:
-        - uses: actions/checkout@v2
+        - uses: actions/checkout@v4
         - name: Code dialyzer
           run: |
             make xref
@@ -31,3 +31,19 @@ jobs:
             make ct
             make cover
 
+    run_compose_tests:
+
+        runs-on: ubuntu-latest
+
+        strategy:
+          fail-fast: false
+          matrix:
+            otp:
+              - erlang:27
+              - erlang:26
+              - erlang:25
+
+        steps:
+        - uses: actions/checkout@v4
+        - name: Run compose-based tests
+          run: make ESOCKD_IMAGE_ERLANG=${{ matrix.otp }} ct-compose
