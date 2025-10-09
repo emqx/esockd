@@ -12,6 +12,7 @@ jobs:
           fail-fast: false
           matrix:
             otp:
+              - erlang:28
               - erlang:27
               - erlang:26
               - erlang:25
@@ -20,7 +21,9 @@ jobs:
             image: ${{ matrix.otp }}
 
         steps:
-        - uses: actions/checkout@v2
+        - uses: actions/checkout@v5
+          with:
+            fetch-depth: 0
         - name: Code dialyzer
           run: |
             make xref
