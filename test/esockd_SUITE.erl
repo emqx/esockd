@@ -645,6 +645,11 @@ t_update_tls_options(Config) ->
 
     ok = esockd:close(echo_tls, LPort).
 
+-if(?OTP_RELEASE >= 28).
+-define(invalid_ssl_option, #{error := invalid_ssl_option}).
+-else.
+-define(invalid_ssl_option, not_supported).
+-endif.
 %% Verify that updating / resetting dTLS-related listener options is correctly
 %% reported as unsupported (due to lack of consistent support in Erlang/OTP).
 t_update_dtls_options(Config) ->
@@ -670,16 +675,15 @@ t_update_dtls_options(Config) ->
     {ok, DtlsSock1} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 1000),
 
     ?assertMatch(
-        {error, not_supported},
+        {error, ?invalid_ssl_option},
         esockd:set_options({dtls_echo, 7000},
                            [{udp_options, UdpOpts}, {dtls_options, DtlsOpts2}])
     ),
     ?assertMatch(
-        {error, not_supported},
+        {error, ?invalid_ssl_option},
         esockd:reset_options({dtls_echo, 7000},
                              [{udp_options, UdpOpts}, {dtls_options, DtlsOpts2}])
     ),
-
     {ok, DtlsSock2} = ssl:connect({127,0,0,1}, 7000, ClientOpts, 1000),
 
     %% Both new and existing connections should still work.

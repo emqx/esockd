@@ -161,7 +161,7 @@ check_ssl_opts(Key, Opts) ->
             ok;
         SslOpts ->
             try
-                {ok, _} = ssl:handle_options(SslOpts, server, undefined),
+                {ok, _} = handle_ssl_options(SslOpts),
                 ok
             catch
                 _ : {error, Reason} ->
@@ -172,6 +172,14 @@ check_ssl_opts(Key, Opts) ->
                     throw_invalid_ssl_option(Key, {Wat, Stack})
             end
     end.
+
+-if(?OTP_RELEASE >= 28).
+handle_ssl_options(SslOpts) ->
+    ssl_config:handle_options(SslOpts, server, undefined).
+-else.
+handle_ssl_options(SslOpts) ->
+    ssl:handle_options(SslOpts, server, undefined).
+-endif.
 
 -spec throw_invalid_ssl_option(_, _) -> no_return().
 throw_invalid_ssl_option(Key, Reason) ->
