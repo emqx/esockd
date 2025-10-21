@@ -120,7 +120,7 @@ format_rdn(#'AttributeTypeAndValue'{type = T, value = V}) ->
             {?'id-at-pseudonym'              , "PSEUDONYM"},
             {?'id-domainComponent'           , "DC"},
             {?'id-emailAddress'              , "EMAILADDRESS"},
-            {{2,5,4,9}                       , "STREET"},
+            {17                              , "STREET"}, %% see lib/public_key/asn1/PKIX1Explicit88.asn1:501 in OTP 27
             {{0,9,2342,19200300,100,1,1}     , "UID"}], %% Not in public_key.hrl
     case proplists:lookup(T, Fmts) of
         {_, Fmt} ->
