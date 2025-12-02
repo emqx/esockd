@@ -29,6 +29,7 @@
     handle_call/3,
     handle_cast/2,
     handle_info/2,
+    handle_continue/2,
     terminate/2
 ]).
 
@@ -89,7 +90,7 @@ takeover(ProxyId, CId) ->
 init([Transport, Peer, #{esockd_proxy_opts := Opts} = COpts]) ->
     #{connection_mod := Mod} = Opts,
     heartbeat(maps:get(heartbeat, Opts, ?DEF_HEARTBEAT)),
-    init_transport(Transport, Peer, #{
+    State = #{
         last_time => ?NOW,
         connection_mod => Mod,
         connection_options => COpts,
@@ -97,7 +98,16 @@ init([Transport, Peer, #{esockd_proxy_opts := Opts} = COpts]) ->
         connection_id => undefined,
         connection_pid => undefined,
         connection_ref => undefined
-    }).
+    },
+    {ok, State, {continue, {init_transport, Transport, Peer}}}.
+
+handle_continue({init_transport, Transport, Peer}, State) ->
+    case init_transport(Transport, Peer, State) of
+        {ok, NewState} ->
+            {noreply, NewState};
+        {error, Reason} ->
+            {stop, {shutdown, Reason}, State}
+    end.
 
 handle_call(close, _From, State) ->
     {stop, {shutdown, close_transport}, ok, State};
@@ -137,7 +147,7 @@ handle_info({heartbeat, Span}, #{last_time := LastTime} = State) ->
 handle_info({ssl_error, _Sock, Reason}, State) ->
     {stop, Reason, socket_exit(State)};
 handle_info({ssl_closed, _Sock}, State) ->
-    {stop, ssl_closed, socket_exit(State)};
+    {stop, {shutdown, ssl_closed}, socket_exit(State)};
 handle_info(
     {'DOWN', _, process, _Pid, _Reason},
     State
@@ -307,10 +317,15 @@ init_transport({udp, _, Sock}, Peer, State) ->
 init_transport(esockd_transport, Sock, State) ->
     case esockd_transport:wait(Sock) of
         {ok, NSock} ->
-            {ok, State#{
-                transport => {?PROXY_TRANSPORT, self(), NSock},
-                peer => esockd_transport:peername(NSock)
-            }};
+            case esockd_transport:peername(NSock) of
+                {ok, Peername} ->
+                    {ok, State#{
+                        transport => {?PROXY_TRANSPORT, self(), NSock},
+                        peer => Peername
+                    }};
+                Error ->
+                    Error
+            end;
         Error ->
             Error
     end.
