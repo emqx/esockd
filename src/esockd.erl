@@ -111,7 +111,7 @@
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}
                 | tune_buffer | {tune_buffer, boolean()}
-                | proxy_protocol | {proxy_protocol, boolean()}
+                | proxy_protocol | {proxy_protocol, boolean() | auto}
                 | {proxy_protocol_timeout, timeout()}
                 | {ssl_options, ssl_options()}
                 | {tcp_options, [gen_tcp:listen_option()]}
@@ -426,6 +426,8 @@ parse_opt([proxy_protocol|Opts], Acc) ->
     parse_opt(Opts, [{proxy_protocol, true}|Acc]);
 parse_opt([{proxy_protocol, I}|Opts], Acc) when is_boolean(I) ->
     parse_opt(Opts, [{proxy_protocol, I}|Acc]);
+parse_opt([{proxy_protocol, auto}|Opts], Acc) ->
+    parse_opt(Opts, [{proxy_protocol, auto}|Acc]);
 parse_opt([{proxy_protocol_timeout, Timeout}|Opts], Acc) when is_integer(Timeout) ->
     parse_opt(Opts, [{proxy_protocol_timeout, Timeout}|Acc]);
 parse_opt([{ssl_options, L}|Opts], Acc) when is_list(L) ->

@@ -36,6 +36,8 @@
         , ssl_upgrade/3
         , proxy_upgrade_fun/1
         , proxy_upgrade/2
+        , auto_proxy_upgrade_fun/1
+        , auto_proxy_upgrade/2
         ]).
 
 -export_type([socket/0, listen_socket/0]).
@@ -65,21 +67,41 @@ is_ssl(#proxy_socket{socket = Sock}) ->
 ready(Pid, Sock, UpgradeFuns) ->
     Pid ! {sock_ready, Sock, UpgradeFuns}.
 
--spec(wait(socket()) -> {ok, socket()} | {error, term()}).
+-spec(wait(socket()) -> {ok, socket()} | {ok, socket(), binary()} | {error, term()}).
 wait(Sock) ->
     receive
         {sock_ready, Sock, UpgradeFuns} ->
-            upgrade(Sock, UpgradeFuns)
+            case upgrade(Sock, UpgradeFuns, none) of
+                {ok, NSock, none} ->
+                    {ok, NSock};
+                {ok, NSock, Prefetched} when is_binary(Prefetched) ->
+                    {ok, NSock, Prefetched};
+                {error, _} = Error ->
+                    Error
+            end
     end.
 
--spec(upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}).
-upgrade(Sock, []) ->
-    {ok, Sock};
-upgrade(Sock, [{Fun, Args}|More]) ->
+-spec(upgrade(socket(), [esockd:sock_fun()], none | binary()) ->
+    {ok, socket(), none | binary()} | {error, term()}).
+upgrade(Sock, [], Prefetched) ->
+    {ok, Sock, Prefetched};
+upgrade(Sock, [{Fun, Args}|More], Prefetched) ->
     case apply(Fun, [Sock|Args]) of
-        {ok, NewSock} -> upgrade(NewSock, More);
-        Error         -> fast_close(Sock), Error
+        {ok, NewSock} ->
+            upgrade(NewSock, More, Prefetched);
+        {ok, NewSock, none} ->
+            upgrade(NewSock, More, Prefetched);
+        {ok, NewSock, Data} when is_binary(Data) ->
+            upgrade(NewSock, More, append_prefetched(Prefetched, Data));
+        Error ->
+            fast_close(Sock),
+            Error
     end.
+
+append_prefetched(none, Data) ->
+    Data;
+append_prefetched(Prefetched, Data) ->
+    <<Prefetched/binary, Data/binary>>.
 
 -spec(listen(inet:port_number(), [gen_tcp:listen_option()])
       -> {ok, listen_socket()} | {error, system_limit | inet:posix()}).
@@ -450,6 +472,13 @@ proxy_upgrade(Sock, Timeout) ->
         {ok, ProxySock} -> {ok, ProxySock};
         {error, Reason} -> {error, Reason}
     end.
+
+auto_proxy_upgrade_fun(Opts) ->
+    Timeout = proxy_protocol_timeout(Opts),
+    {fun ?MODULE:auto_proxy_upgrade/2, [Timeout]}.
+
+auto_proxy_upgrade(Sock, Timeout) ->
+    esockd_proxy_protocol:recv_auto(?MODULE, Sock, Timeout).
 
 proxy_protocol_timeout(Opts) ->
     proplists:get_value(proxy_protocol_timeout, Opts, ?PROXY_RECV_TIMEOUT).

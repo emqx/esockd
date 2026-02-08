@@ -579,6 +579,70 @@ t_bad_tls_options(_Config) ->
                                         key := dtls_options}}}, _}}, Res),
     ok.
 
+t_proxy_protocol_auto_with_ssl_not_supported(Config) ->
+    LPort = 7002,
+    SslOpts = [{certfile, esockd_ct:certfile(Config)},
+               {keyfile, esockd_ct:keyfile(Config)},
+               {verify, verify_none}],
+    Res = esockd:open(
+            echo_tls_auto,
+            LPort,
+            [{proxy_protocol, auto},
+             {ssl_options, SslOpts},
+             {connection_mfargs, echo_server}]
+          ),
+    ?assertMatch(
+        {error, {{shutdown, {failed_to_start_child, acceptor_sup,
+                             proxy_protocol_auto_not_supported_with_ssl}}, _}},
+        Res
+    ),
+    ok.
+
+t_proxy_protocol_auto_not_supported_for_tcp_listener_non_raw(_) ->
+    Res = esockd:open(
+            echo_auto_non_raw,
+            7006,
+            [{proxy_protocol, auto},
+             {tcp_options, [{packet, 2}]},
+             {connection_mfargs, echo_server}]
+          ),
+    ?assertMatch(
+        {error, {{shutdown, {failed_to_start_child, acceptor_sup,
+                             proxy_protocol_auto_only_supported_for_raw_packet_mode}}, _}},
+        Res
+    ),
+    ok.
+
+t_proxy_protocol_auto_supported_for_tcp_listener_raw(_) ->
+    {ok, _LSup} = esockd:open(
+                    echo_auto_raw,
+                    7007,
+                    [{proxy_protocol, auto},
+                     {tcp_options, [{packet, raw}]},
+                     {connection_mfargs, {echo_server, start_link}}]
+                  ),
+    {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7007, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock1, <<"Hello">>),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock1, 0),
+    ok = gen_tcp:close(Sock1),
+
+    {ok, Sock2} = gen_tcp:connect("127.0.0.1", 7007, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock2, <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,
+                               12,127,50,210,1,210,21,16,142,250,32,1,181,
+                               "HelloPPv2">>),
+    {ok, <<"HelloPPv2">>} = gen_tcp:recv(Sock2, 0),
+    ok = gen_tcp:close(Sock2),
+    ok = esockd:close(echo_auto_raw, 7007).
+
+t_proxy_protocol_auto_supported_for_tcpsocket(_) ->
+    {ok, _LSup} = esockd:open_tcpsocket(
+                    echo_auto_tcpsocket,
+                    7008,
+                    [{proxy_protocol, auto},
+                     {connection_mfargs, {echo_server, start_link}}]
+                  ),
+    ok = esockd:close(echo_auto_tcpsocket, 7008).
+
 t_update_tls_options(Config) ->
     LPort = 7000,
     SslOpts1 = [ {certfile, esockd_ct:certfile(Config)}
@@ -774,7 +838,7 @@ t_changed_opts(_) ->
     ?assertEqual(Result, esockd:changed_opts(Opts2, Opts1)).
 
 t_parse_opt(_) ->
-    Opts = [{acceptors, 10}, {tune_buffer, true}, {proxy_protocol, true}, {ssl_options, []}],
+    Opts = [{acceptors, 10}, {tune_buffer, true}, {proxy_protocol, auto}, {ssl_options, []}],
     ?assertEqual(Opts, esockd:parse_opt([{badopt1, val1}, {badopt2, val2}|Opts])).
 
 t_fixaddr(_) ->

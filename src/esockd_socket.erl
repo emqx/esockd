@@ -36,7 +36,7 @@
 -export([peercert/1, peer_cert_subject/1, peer_cert_common_name/1, peersni/1]).
 
 %% Internal callbacks
--export([proxy_upgrade_fun/1, proxy_upgrade/2]).
+-export([proxy_upgrade_fun/1, proxy_upgrade/2, auto_proxy_upgrade_fun/1, auto_proxy_upgrade/2]).
 
 -export_type([socket/0]).
 
@@ -94,22 +94,41 @@ ready(Pid, Sock, UpgradeFuns) ->
     %% NOTE: See `esockd_transport:ready/3'.
     Pid ! {sock_ready, Sock, UpgradeFuns}.
 
--spec wait(socket()) -> {ok, socket()} | {error, term()}.
+-spec wait(socket()) -> {ok, socket()} | {ok, socket(), binary()} | {error, term()}.
 wait(Sock) ->
-    %% NOTE: See `esockd_transport:wait/1'.
     receive
         {sock_ready, Sock, UpgradeFuns} ->
-            upgrade(Sock, UpgradeFuns)
+            case upgrade(Sock, UpgradeFuns, none) of
+                {ok, NSock, none} ->
+                    {ok, NSock};
+                {ok, NSock, Prefetched} when is_binary(Prefetched) ->
+                    {ok, NSock, Prefetched};
+                {error, _} = Error ->
+                    Error
+            end
     end.
 
--spec upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}.
-upgrade(Sock, []) ->
-    {ok, Sock};
-upgrade(Sock, [{Fun, Args} | More]) ->
+-spec upgrade(socket(), [esockd:sock_fun()], none | binary()) ->
+    {ok, socket(), none | binary()} | {error, term()}.
+upgrade(Sock, [], Prefetched) ->
+    {ok, Sock, Prefetched};
+upgrade(Sock, [{Fun, Args} | More], Prefetched) ->
     case apply(Fun, [Sock | Args]) of
-        {ok, NSock} -> upgrade(NSock, More);
-        Error       -> fast_close(Sock), Error
+        {ok, NSock} ->
+            upgrade(NSock, More, Prefetched);
+        {ok, NSock, none} ->
+            upgrade(NSock, More, Prefetched);
+        {ok, NSock, Data} when is_binary(Data) ->
+            upgrade(NSock, More, append_prefetched(Prefetched, Data));
+        Error ->
+            fast_close(Sock),
+            Error
     end.
+
+append_prefetched(none, Data) ->
+    Data;
+append_prefetched(Prefetched, Data) ->
+    <<Prefetched/binary, Data/binary>>.
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->
@@ -221,6 +240,18 @@ proxy_upgrade_fun(Opts) ->
 
 proxy_upgrade(Sock, Timeout) ->
     esockd_proxy_protocol:recv(?MODULE, Sock, Timeout).
+
+%% @doc TCP -> TCP Socket with conditional Proxy Protocol v2 upgrade.
+-spec auto_proxy_upgrade_fun(list()) -> esockd:sock_fun().
+auto_proxy_upgrade_fun(Opts) ->
+    Timeout = proxy_protocol_timeout(Opts),
+    {fun ?MODULE:auto_proxy_upgrade/2, [Timeout]}.
+
+%% @doc Conditionally parse PPv2; when not PPv2, return prefetched payload.
+-spec auto_proxy_upgrade(socket(), timeout()) ->
+    {ok, socket(), none | binary()} | {error, term()}.
+auto_proxy_upgrade(Sock, Timeout) ->
+    esockd_proxy_protocol:recv_auto(?MODULE, Sock, Timeout).
 
 proxy_protocol_timeout(Opts) ->
     proplists:get_value(proxy_protocol_timeout, Opts, ?PROXY_RECV_TIMEOUT).

@@ -89,11 +89,25 @@ Option:
                     | {access_rules, [esockd_access:rule()]}
                     | {shutdown, brutal_kill | infinity | pos_integer()}
                     | tune_buffer | {tune_buffer, boolean()}
-                    | proxy_protocol | {proxy_protocol, boolean()}
+                    | proxy_protocol | {proxy_protocol, boolean() | auto}
                     | {proxy_protocol_timeout, timeout()}
                     | {ssl_options, [ssl:ssl_option()]}
                     | {udp_options, [gen_udp:option()]}
                     | {dtls_options, [gen_udp:option() | ssl:ssl_option()]}).
+
+Proxy protocol modes:
+
+    {proxy_protocol, true}   %% strict: every connection must send PROXY header
+    {proxy_protocol, false}  %% disabled
+    {proxy_protocol, auto}   %% conditional PPv2 parsing:
+                             %% - `esockd:open/3` (gen_tcp): only with `{packet, raw}` and without `ssl_options`
+                             %% - `esockd:open_tcpsocket/3`: supported
+
+Caution for `proxy_protocol = auto`:
+
+1. `wait/1` may return either `{ok, Socket}` or `{ok, Socket, Prefetched}` when `auto` is enabled.
+2. If prefetched bytes are returned, the application must process/prepend them before continuing normal socket reads.
+3. Do not use this mode when first application payload can be fragmented and start with a PPv2-signature prefix (for example `<<"\r\n">>`). In this case esockd waits for disambiguation and fail-closes the connection on timeout/close while matching the signature prefix.
 
 MFArgs:
 
@@ -199,4 +213,3 @@ Apache License Version 2.0
 ## Author
 
 EMQX Team.
-

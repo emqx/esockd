@@ -28,6 +28,9 @@ init(Transport, RawSock) ->
     case Transport:wait(RawSock) of
         {ok, Sock} ->
             loop(Transport, Sock);
+        {ok, Sock, Prefetched} ->
+            ok = Transport:send(Sock, Prefetched),
+            loop(Transport, Sock);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -47,4 +50,3 @@ loop(Transport, Sock) ->
         {inet_reply, _Sock, {error, Reason}} ->
             exit(Reason)
     end.
-

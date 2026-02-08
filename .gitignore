@@ -33,3 +33,4 @@ rebar3.crashdump
 .rebar3/
 rebar.lock
 TEST-*.xml
+.agent

@@ -28,12 +28,18 @@ init(esockd_socket, RawSock) ->
     case esockd_socket:wait(RawSock) of
         {ok, Sock} ->
             loop(socket, Sock);
+        {ok, Sock, Prefetched} ->
+            socket:send(Sock, Prefetched),
+            loop(socket, Sock);
         {error, Reason} ->
             {error, Reason}
     end;
 init(Transport, RawSock) ->
     case Transport:wait(RawSock) of
         {ok, Sock} ->
+            loop(Transport, Sock);
+        {ok, Sock, Prefetched} ->
+            Transport:send(Sock, Prefetched),
             loop(Transport, Sock);
         {error, Reason} ->
             {error, Reason}
@@ -51,4 +57,3 @@ loop(Transport, Sock) ->
         {error, Reason} ->
             exit({shutdown, Reason})
 	end.
-

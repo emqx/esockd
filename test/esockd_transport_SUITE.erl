@@ -260,6 +260,10 @@ t_proxy_upgrade_fun(_) ->
     {Fun, [1000]} = esockd_transport:proxy_upgrade_fun([{proxy_protocol_timeout, 1000}]),
     ?assert(is_function(Fun)).
 
+t_auto_proxy_upgrade_fun(_) ->
+    {Fun, [1000]} = esockd_transport:auto_proxy_upgrade_fun([{proxy_protocol_timeout, 1000}]),
+    ?assert(is_function(Fun)).
+
 t_ssl_upgrade_fun(_) ->
     {Fun0, [[], #{timeout := 1000, gc_after_handshake := false}]}
         = esockd_transport:ssl_upgrade_fun([{handshake_timeout, 1000}]),

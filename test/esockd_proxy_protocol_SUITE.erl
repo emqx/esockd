@@ -22,6 +22,8 @@
 -include("esockd.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
+-define(FULL_PPV2_SIG, <<13,10,13,10,0,13,10,81,85,73,84,10>>).
+
 all() -> [{group, gen_tcp},
           {group, socket},
           {group, parser},
@@ -31,6 +33,11 @@ groups() ->
     SocketTCs = [t_recv_ppv1,
                  t_recv_ppv1_unknown,
                  t_recv_ppv2,
+                 t_recv_auto_ppv2,
+                 t_recv_auto_non_pp,
+                 t_recv_auto_partial_prefix_timeout,
+                 t_recv_auto_partial_prefix_closed,
+                 t_recv_auto_invalid_ppv2_header,
                  t_recv_pp_invalid,
                  t_recv_pp_partial,
                  t_recv_socket_error],
@@ -44,6 +51,10 @@ groups() ->
      {integration, [sequence], [t_ppv1_tcp4_connect,
                                t_ppv1_tcp6_connect,
                                t_ppv2_connect,
+                               t_ppv2_auto_connect,
+                               t_non_proxy_auto_connect,
+                               t_ppv2_auto_connect_gen_tcp,
+                               t_non_proxy_auto_connect_gen_tcp,
                                t_ppv2_connect_first_marker_timeout,
                                t_ppv2_connect_header_timeout,
                                t_ppv2_connect_proxy_info_timeout,
@@ -124,6 +135,64 @@ t_recv_ppv2(Config) ->
         {ok, <<"Hello">>} = recv(Backend, ServerSide, 0)
     end).
 
+t_recv_auto_ppv2(Config) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                        12,127,50,210,1,210,21,16,142,250,32,1,181>>),
+        {ok, ProxySocket, Prefetched} =
+            esockd_proxy_protocol:recv_auto(Backend, ServerSide, 1000),
+        ?assertEqual(
+            #{proxy_protocol => inet4,
+              proxy_src_addr => {127,50,210,1}, proxy_dst_addr => {210,21,16,142},
+              proxy_src_port => 64032, proxy_dst_port => 437,
+              proxy_pp2_info => []},
+            esockd_proxy_protocol:get_proxy_attrs(ProxySocket)
+        ),
+        ?assertEqual(none, Prefetched)
+    end).
+
+t_recv_auto_non_pp(Config) ->
+    Payload = <<"Hello-auto-non-proxy">>,
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, Payload),
+        {ok, Sock, Prefetched} =
+            esockd_proxy_protocol:recv_auto(Backend, ServerSide, 1000),
+        ?assert(is_binary(Prefetched)),
+        PrefixSize = byte_size(Prefetched),
+        ?assert(PrefixSize > 0),
+        <<Prefix:PrefixSize/binary, _/binary>> = Payload,
+        ?assertEqual(Prefix, Prefetched),
+        RestSize = byte_size(Payload) - PrefixSize,
+        Rest = case RestSize of
+            0 -> <<>>;
+            _ -> recv_exact(Backend, Sock, RestSize)
+        end,
+        ?assertEqual(Payload, <<Prefetched/binary, Rest/binary>>)
+    end).
+
+t_recv_auto_partial_prefix_timeout(Config) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, <<"\r\n">>),
+        {error, proxy_proto_timeout} =
+            esockd_proxy_protocol:recv_auto(Backend, ServerSide, 100)
+    end).
+
+t_recv_auto_partial_prefix_closed(Config) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, <<"\r\n">>),
+        ok = gen_tcp:close(ClientSide),
+        {error, proxy_proto_close} =
+            esockd_proxy_protocol:recv_auto(Backend, ServerSide, 1000)
+    end).
+
+t_recv_auto_invalid_ppv2_header(Config) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        %% Full PPv2 signature followed by invalid v2 header nibble (version=1).
+        ok = gen_tcp:send(ClientSide, <<?FULL_PPV2_SIG/binary, 16#11, 16#11, 0:16>>),
+        {error, {invalid_proxy_info, _}} =
+            esockd_proxy_protocol:recv_auto(Backend, ServerSide, 1000)
+    end).
+
 t_recv_pp_invalid(Config) ->
     with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
         ok = gen_tcp:send(ClientSide, <<"Invalid PROXY\r\n">>),
@@ -156,6 +225,13 @@ recv(esockd_transport, Sock, Len) ->
     esockd_transport:recv(Sock, Len);
 recv(esockd_socket, Sock, Len) ->
     socket:recv(Sock, Len).
+
+recv_exact(esockd_transport, Sock, Len) ->
+    {ok, Bin} = esockd_transport:recv(Sock, Len),
+    Bin;
+recv_exact(esockd_socket, Sock, Len) ->
+    {ok, Bin} = socket:recv(Sock, Len),
+    Bin.
 
 %%--------------------------------------------------------------------
 %% Test cases for parse
@@ -245,6 +321,34 @@ t_ppv2_connect(_) ->
                             {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
                    end,
                    [{proxy_protocol_timeout, infinity}]).
+
+t_ppv2_auto_connect(_) ->
+    with_auto_pp_server(fun(Sock) ->
+        ok = gen_tcp:send(Sock, <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                  12,127,50,210,1,210,21,16,142,250,32,1,181>>),
+        ok = gen_tcp:send(Sock, <<"Hello">>),
+        {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+    end).
+
+t_non_proxy_auto_connect(_) ->
+    with_auto_pp_server(fun(Sock) ->
+        ok = gen_tcp:send(Sock, <<"Hello">>),
+        {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+    end).
+
+t_ppv2_auto_connect_gen_tcp(_) ->
+    with_auto_pp_transport_server(fun(Sock) ->
+        ok = gen_tcp:send(Sock, <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,
+                                  12,127,50,210,1,210,21,16,142,250,32,1,181,
+                                  "Hello">>),
+        {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+    end).
+
+t_non_proxy_auto_connect_gen_tcp(_) ->
+    with_auto_pp_transport_server(fun(Sock) ->
+        ok = gen_tcp:send(Sock, <<"Hello-auto-non-proxy">>),
+        {ok, <<"Hello-auto-non-proxy">>} = gen_tcp:recv(Sock, 0)
+    end).
 
 t_ppv2_connect_first_marker_timeout(_) ->
     with_pp_server(
@@ -359,6 +463,22 @@ with_pp_server(TestFun, PPOpts) ->
         {tcp_options, [binary]},
         proxy_protocol
     ],
+    {ok, _} = esockd:open(echo, 5000, Opts, {echo_server, start_link, []}),
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, [binary, {active, false}]),
+    try TestFun(Sock) after ok = esockd:close(echo, 5000) end.
+
+with_auto_pp_server(TestFun) ->
+    Opts = [{proxy_protocol, auto},
+            {proxy_protocol_timeout, 3000},
+            {tcp_options, [binary]}],
+    {ok, _} = esockd:open_tcpsocket(echo, 5000, [{connection_mfargs, echo_server} | Opts]),
+    {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, [binary, {active, false}]),
+    try TestFun(Sock) after ok = esockd:close(echo, 5000) end.
+
+with_auto_pp_transport_server(TestFun) ->
+    Opts = [{proxy_protocol, auto},
+            {proxy_protocol_timeout, 3000},
+            {tcp_options, [binary, {packet, raw}]}],
     {ok, _} = esockd:open(echo, 5000, Opts, {echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 5000, [binary, {active, false}]),
     try TestFun(Sock) after ok = esockd:close(echo, 5000) end.

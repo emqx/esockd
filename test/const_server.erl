@@ -28,12 +28,18 @@ init(esockd_socket, RawSock, Resp) ->
     case esockd_socket:wait(RawSock) of
         {ok, Sock} ->
             loop(socket, Sock, Resp);
+        {ok, Sock, _Prefetched} ->
+            %% Prefetched data is ignored for const response server.
+            loop(socket, Sock, Resp);
         {error, Reason} ->
             {error, Reason}
     end;
 init(Transport, RawSock, Resp) ->
     case Transport:wait(RawSock) of
         {ok, Sock} ->
+            loop(Transport, Sock, Resp);
+        {ok, Sock, _Prefetched} ->
+            %% Prefetched data is ignored for const response server.
             loop(Transport, Sock, Resp);
         {error, Reason} ->
             {error, Reason}

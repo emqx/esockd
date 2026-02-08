@@ -121,13 +121,17 @@ upgrade_funs(Type, Opts) ->
     proxy_upgrade_fun(Type, Opts) ++ ssl_upgrade_fun(Type, Opts).
 
 proxy_upgrade_fun(Type, Opts) ->
-    case proplists:get_bool(proxy_protocol, Opts) of
+    case proplists:get_value(proxy_protocol, Opts, false) of
         false ->
             [];
+        auto when Type =:= tcp ->
+            [esockd_transport:auto_proxy_upgrade_fun(Opts)];
         true when Type =:= tcpsocket ->
             [esockd_socket:proxy_upgrade_fun(Opts)];
         true ->
-            [esockd_transport:proxy_upgrade_fun(Opts)]
+            [esockd_transport:proxy_upgrade_fun(Opts)];
+        auto when Type =:= tcpsocket ->
+            [esockd_socket:auto_proxy_upgrade_fun(Opts)]
     end.
 
 ssl_upgrade_fun(Type, Opts) ->
@@ -146,14 +150,48 @@ check_options(tcpsocket, Opts) ->
         undefined -> ok;
         _SslOpts -> {error, ssl_not_supported}
     end;
-check_options(_Type, Opts) ->
+check_options(Type, Opts) ->
     try
+        ok = check_proxy_protocol_opts(Type, Opts),
         ok = check_ssl_opts(ssl_options, Opts),
         ok = check_ssl_opts(dtls_options, Opts)
     catch
         throw : Reason ->
             {error, Reason}
     end.
+
+check_proxy_protocol_opts(Type, Opts) ->
+    case proplists:get_value(proxy_protocol, Opts, false) of
+        auto when Type =:= tcp ->
+            case proplists:get_value(ssl_options, Opts) of
+                undefined ->
+                    case is_raw_packet_mode(proxy_protocol_packet_mode(Opts)) of
+                        true ->
+                            ok;
+                        false ->
+                            throw(proxy_protocol_auto_only_supported_for_raw_packet_mode)
+                    end;
+                _ ->
+                    throw(proxy_protocol_auto_not_supported_with_ssl)
+            end;
+        auto ->
+            case Type =:= tcpsocket of
+                true ->
+                    ok;
+                false ->
+                    throw(proxy_protocol_auto_only_supported_for_gen_tcp)
+            end;
+        _ ->
+            ok
+    end.
+
+proxy_protocol_packet_mode(Opts) ->
+    TcpOpts = proplists:get_value(tcp_options, Opts, []),
+    proplists:get_value(packet, TcpOpts, raw).
+
+is_raw_packet_mode(raw) -> true;
+is_raw_packet_mode(0) -> true;
+is_raw_packet_mode(_) -> false.
 
 check_ssl_opts(Key, Opts) ->
     case proplists:get_value(Key, Opts) of
