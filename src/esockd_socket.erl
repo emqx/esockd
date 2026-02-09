@@ -101,6 +101,8 @@ wait(Sock) ->
             case upgrade(Sock, UpgradeFuns, none) of
                 {ok, NSock, none} ->
                     {ok, NSock};
+                {ok, NSock, <<>>} ->
+                    {ok, NSock};
                 {ok, NSock, Prefetched} when is_binary(Prefetched) ->
                     {ok, NSock, Prefetched};
                 {error, _} = Error ->

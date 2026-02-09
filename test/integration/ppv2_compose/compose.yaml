@@ -1,0 +1,19 @@
+services:
+  haproxy:
+    image: haproxy:2.8-alpine
+    network_mode: host
+    depends_on:
+      - fault_proxy
+    volumes:
+      - ./haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+
+  fault_proxy:
+    build:
+      context: ./fault_proxy
+    network_mode: host
+    environment:
+      MODE: ${MODE:-timeout}
+      HOLD_MS: ${HOLD_MS:-800}
+      LISTEN_PORT: ${FAULT_PROXY_PORT:-29091}
+      UPSTREAM_HOST: ${UPSTREAM_HOST:-127.0.0.1}
+      UPSTREAM_PORT: ${UPSTREAM_PORT:-7007}
