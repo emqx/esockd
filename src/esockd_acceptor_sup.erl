@@ -162,28 +162,29 @@ check_options(Type, Opts) ->
 
 check_proxy_protocol_opts(Type, Opts) ->
     case proplists:get_value(proxy_protocol, Opts, false) of
-        auto when Type =:= tcp ->
-            case proplists:get_value(ssl_options, Opts) of
-                undefined ->
-                    case is_raw_packet_mode(proxy_protocol_packet_mode(Opts)) of
-                        true ->
-                            ok;
-                        false ->
-                            throw(proxy_protocol_auto_only_supported_for_raw_packet_mode)
-                    end;
-                _ ->
-                    throw(proxy_protocol_auto_not_supported_with_ssl)
-            end;
         auto ->
-            case Type =:= tcpsocket of
-                true ->
-                    ok;
-                false ->
-                    throw(proxy_protocol_auto_only_supported_for_gen_tcp)
-            end;
+            check_proxy_protocol_auto(Type, Opts);
         _ ->
             ok
     end.
+
+check_proxy_protocol_auto(tcp, Opts) ->
+    case proplists:get_value(ssl_options, Opts) of
+        undefined ->
+            Mode = proxy_protocol_packet_mode(Opts),
+            case is_raw_packet_mode(Mode) of
+                true ->
+                    ok;
+                false ->
+                    throw({proxy_protocol_auto_not_supported, {packet, Mode}})
+            end;
+        _ ->
+            throw({proxy_protocol_auto_not_supported, ssl})
+    end;
+check_proxy_protocol_auto(tcpsocket, _Opts) ->
+    ok;
+check_proxy_protocol_auto(Type, _Opts) ->
+    throw({proxy_protocol_auto_not_supported, Type}).
 
 proxy_protocol_packet_mode(Opts) ->
     TcpOpts = proplists:get_value(tcp_options, Opts, []),

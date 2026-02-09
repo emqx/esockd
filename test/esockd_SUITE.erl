@@ -593,7 +593,7 @@ t_proxy_protocol_auto_with_ssl_not_supported(Config) ->
           ),
     ?assertMatch(
         {error, {{shutdown, {failed_to_start_child, acceptor_sup,
-                             proxy_protocol_auto_not_supported_with_ssl}}, _}},
+                             {proxy_protocol_auto_not_supported, ssl}}}, _}},
         Res
     ),
     ok.
@@ -608,7 +608,7 @@ t_proxy_protocol_auto_not_supported_for_tcp_listener_non_raw(_) ->
           ),
     ?assertMatch(
         {error, {{shutdown, {failed_to_start_child, acceptor_sup,
-                             proxy_protocol_auto_only_supported_for_raw_packet_mode}}, _}},
+                             {proxy_protocol_auto_not_supported, {packet, 2}}}}, _}},
         Res
     ),
     ok.
@@ -623,7 +623,7 @@ t_proxy_protocol_auto_supported_for_tcp_listener_raw(_) ->
                   ),
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7007, [binary, {active, false}]),
     ok = gen_tcp:send(Sock1, <<"Hello">>),
-    {ok, <<"Hello">>} = gen_tcp:recv(Sock1, 0),
+    {ok, <<"Hello">>} = gen_tcp:recv(Sock1, byte_size(<<"Hello">>)),
     ok = gen_tcp:close(Sock1),
 
     {ok, Sock2} = gen_tcp:connect("127.0.0.1", 7007, [binary, {active, false}]),

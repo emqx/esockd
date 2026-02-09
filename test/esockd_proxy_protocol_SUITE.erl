@@ -34,6 +34,7 @@ groups() ->
                  t_recv_ppv1_unknown,
                  t_recv_ppv2,
                  t_recv_auto_ppv2,
+                 t_recv_auto_ppv2_with_payload_no_prefetched,
                  t_recv_auto_non_pp,
                  t_recv_auto_partial_prefix_timeout,
                  t_recv_auto_partial_prefix_closed,
@@ -149,6 +150,25 @@ t_recv_auto_ppv2(Config) ->
             esockd_proxy_protocol:get_proxy_attrs(ProxySocket)
         ),
         ?assertEqual(none, Prefetched)
+    end).
+
+t_recv_auto_ppv2_with_payload_no_prefetched(Config) ->
+    Payload = <<"Hello-after-ppv2">>,
+    Ppv2Frame = <<13,10,13,10,0,13,10,81,85,73,84,10,33,17,0,12,
+                  127,50,210,1,210,21,16,142,250,32,1,181>>,
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, <<Ppv2Frame/binary, Payload/binary>>),
+        {ok, ProxySocket, Prefetched} =
+            esockd_proxy_protocol:recv_auto(Backend, ServerSide, 1000),
+        ?assertEqual(
+            #{proxy_protocol => inet4,
+              proxy_src_addr => {127,50,210,1}, proxy_dst_addr => {210,21,16,142},
+              proxy_src_port => 64032, proxy_dst_port => 437,
+              proxy_pp2_info => []},
+            esockd_proxy_protocol:get_proxy_attrs(ProxySocket)
+        ),
+        ?assertEqual(none, Prefetched),
+        ?assertEqual(Payload, recv_exact(Backend, ServerSide, byte_size(Payload)))
     end).
 
 t_recv_auto_non_pp(Config) ->
@@ -331,9 +351,10 @@ t_ppv2_auto_connect(_) ->
     end).
 
 t_non_proxy_auto_connect(_) ->
+    Payload = <<"Hello">>,
     with_auto_pp_server(fun(Sock) ->
-        ok = gen_tcp:send(Sock, <<"Hello">>),
-        {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+        ok = gen_tcp:send(Sock, Payload),
+        {ok, Payload} = gen_tcp:recv(Sock, byte_size(Payload))
     end).
 
 t_ppv2_auto_connect_gen_tcp(_) ->
@@ -345,9 +366,10 @@ t_ppv2_auto_connect_gen_tcp(_) ->
     end).
 
 t_non_proxy_auto_connect_gen_tcp(_) ->
+    Payload = <<"Hello-auto-non-proxy">>,
     with_auto_pp_transport_server(fun(Sock) ->
-        ok = gen_tcp:send(Sock, <<"Hello-auto-non-proxy">>),
-        {ok, <<"Hello-auto-non-proxy">>} = gen_tcp:recv(Sock, 0)
+        ok = gen_tcp:send(Sock, Payload),
+        {ok, Payload} = gen_tcp:recv(Sock, byte_size(Payload))
     end).
 
 t_ppv2_connect_first_marker_timeout(_) ->

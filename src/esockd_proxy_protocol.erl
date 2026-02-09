@@ -105,27 +105,15 @@ recv_auto(Transport, Sock, Timeout) ->
 
 do_recv_auto(Transport, Sock, Timeout) ->
     Deadline = deadline(Timeout),
-    ok = Transport:setopts(Sock, [binary, {active, once}, {packet, raw}]),
-    case recv_first_chunk(Transport, Sock, Timeout) of
-        {ok, Bytes} ->
+    ok = Transport:setopts(Sock, [binary, {active, false}, {packet, raw}]),
+    RecvBytes = fun(S, Need, Timeout1) ->
+        recv_transport(Transport, S, Need, Timeout1)
+    end,
+    case take_bytes(Sock, 1, <<>>, Deadline, RecvBytes) of
+        {ok, Bytes, _Rest} ->
             recv_auto_transport(Transport, Sock, Bytes, Deadline);
         {error, _} = Error ->
             Error
-    end.
-
-recv_first_chunk(_Transport, _Sock, Timeout) when Timeout =< 0 ->
-    {error, proxy_proto_timeout};
-recv_first_chunk(_Transport, Sock, Timeout) ->
-    receive
-        {_, Sock, Bytes} ->
-            {ok, Bytes};
-        {tcp_error, Sock, Reason} ->
-            {error, {recv_proxy_info_error, Reason}};
-        {tcp_closed, Sock} ->
-            {error, proxy_proto_close}
-    after
-        Timeout ->
-            {error, proxy_proto_timeout}
     end.
 
 recv_auto_transport(Transport, Sock, Bytes, Deadline) ->
@@ -199,12 +187,15 @@ take_bytes(Sock, Len, Bytes, Deadline, RecvBytes) ->
 
 recv_auto_esockd_socket(Sock, Timeout) ->
     Deadline = deadline(Timeout),
-    %% Read once in raw mode and then classify as PPv2 or plain payload.
-    case socket:recv(Sock, 0, [], Timeout) of
-        {ok, Bytes} ->
+    %% Probe with 1 byte first; only read more when PPv2 prefix still matches.
+    RecvBytes = fun(S, Need, Timeout1) ->
+        recv_socket(S, Need, Timeout1)
+    end,
+    case take_bytes(Sock, 1, <<>>, Deadline, RecvBytes) of
+        {ok, Bytes, _Rest} ->
             recv_auto_socket(Sock, Bytes, Deadline);
-        {error, Reason} ->
-            map_tcpsocket_error(Reason)
+        {error, _} = Error ->
+            Error
     end.
 
 recv_auto_socket(Sock, Bytes, Deadline) ->
@@ -362,6 +353,10 @@ socket_recvline(Sock, MaxLine, Deadline) ->
 map_tcpsocket_error(closed) ->
     {error, proxy_proto_close};
 map_tcpsocket_error(timeout) ->
+    {error, proxy_proto_timeout};
+map_tcpsocket_error({closed, _}) ->
+    {error, proxy_proto_close};
+map_tcpsocket_error({timeout, _}) ->
     {error, proxy_proto_timeout};
 map_tcpsocket_error({Reason, _}) ->
     {error, {recv_proxy_info_error, Reason}};
