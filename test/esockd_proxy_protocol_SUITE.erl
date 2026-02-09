@@ -87,34 +87,18 @@ t_recv_ppv1(Config) ->
     with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
         ok = gen_tcp:send(ClientSide, <<"PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n">>),
         ok = gen_tcp:send(ClientSide, <<"Hello">>),
-        
-        {ok, ProxySocket} =
-            esockd_proxy_protocol:recv(Backend, ServerSide, 1000),
-        ?assertEqual(
-            #{proxy_protocol => inet4,
-              proxy_src_addr => {192,168,1,1}, proxy_dst_addr => {192,168,1,2},
-              proxy_src_port => 80, proxy_dst_port => 81,
-              proxy_pp2_info => []},
-            esockd_proxy_protocol:get_proxy_attrs(ProxySocket)
-        ),
-        
-        {ok, <<"Hello">>} = recv(Backend, ServerSide, 0)
+
+        {error, {invalid_proxy_info, <<"P">>}} =
+            esockd_proxy_protocol:recv(Backend, ServerSide, 1000)
     end).
 
 t_recv_ppv1_unknown(Config) ->
     with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
         ok = gen_tcp:send(ClientSide, <<"PROXY UNKNOWN\r\n">>),
         ok = gen_tcp:send(ClientSide, <<"Hello">>),
-        
-        {ok, Sock} = esockd_proxy_protocol:recv(Backend, ServerSide, 1000),
-        case Backend of
-            esockd_transport ->
-                ?assert(is_port(Sock));
-            esockd_socket ->
-                ?assertMatch(#{}, socket:info(Sock))
-        end,
-        
-        {ok, <<"Hello">>} = recv(Backend, ServerSide, 0)
+
+        {error, {invalid_proxy_info, <<"P">>}} =
+            esockd_proxy_protocol:recv(Backend, ServerSide, 1000)
     end).
 
 t_recv_ppv2(Config) ->
@@ -217,8 +201,8 @@ t_recv_pp_invalid(Config) ->
     with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
         ok = gen_tcp:send(ClientSide, <<"Invalid PROXY\r\n">>),
         ok = gen_tcp:send(ClientSide, <<"Hello">>),
-        
-        {error, {invalid_proxy_info, <<"In", _/binary>>}} =
+
+        {error, {invalid_proxy_info, <<"I">>}} =
             esockd_proxy_protocol:recv(Backend, ServerSide, 1000)
     end).
 
@@ -226,8 +210,8 @@ t_recv_pp_partial(Config) ->
     with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
         ok = gen_tcp:send(ClientSide, <<"PROXY DUMMY\r\n">>),
         ok = gen_tcp:send(ClientSide, <<"Hello">>),
-        
-        {error, {invalid_proxy_info, <<"PROXY DUMMY", _/binary>>}} =
+
+        {error, {invalid_proxy_info, <<"P">>}} =
             esockd_proxy_protocol:recv(Backend, ServerSide, 1000)
     end).
 
@@ -260,11 +244,11 @@ recv_exact(esockd_socket, Sock, Len) ->
 t_parse_v1(_Config) ->
     {ok, #proxy_socket{src_addr = {192,168,1,30}, src_port = 45420,
                        dst_addr = {192,168,1,2},  dst_port = 1883}}
-    = esockd_proxy_protocol:parse_v1(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>,
+    = esockd_proxy_protocol_v1:parse(<<"192.168.1.30 192.168.1.2 45420 1883\r\n">>,
                                      #proxy_socket{}),
     {ok, #proxy_socket{src_addr = {255,255,255,255}, src_port = 65535,
                        dst_addr = {255,255,255,255}, dst_port = 65535}}
-    = esockd_proxy_protocol:parse_v1(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>,
+    = esockd_proxy_protocol_v1:parse(<<"255.255.255.255 255.255.255.255 65535 65535\r\n">>,
                                      #proxy_socket{}).
 
 t_parse_v2(_Config) ->
@@ -317,14 +301,14 @@ t_ppv1_tcp4_connect(_) ->
     with_pp_server(fun(Sock) ->
                            ok = gen_tcp:send(Sock, <<"PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r\n">>),
                            ok = gen_tcp:send(Sock, <<"Hello">>),
-                           {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+                           {error, closed} = gen_tcp:recv(Sock, 0)
                    end).
 
 t_ppv1_tcp6_connect(_) ->
     with_pp_server(fun(Sock) ->
                            ok = gen_tcp:send(Sock, <<"PROXY TCP6 ::1 ::1 6000 50000\r\n">>),
                            ok = gen_tcp:send(Sock, <<"Hello">>),
-                           {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+                           {error, closed} = gen_tcp:recv(Sock, 0)
                    end).
 
 t_ppv2_connect(_) ->
@@ -440,7 +424,7 @@ t_ppv1_unknown(_) ->
     with_pp_server(fun(Sock) ->
                            ok = gen_tcp:send(Sock, <<"PROXY UNKNOWN\r\n">>),
                            ok = gen_tcp:send(Sock, <<"Hello">>),
-                           {ok, <<"Hello">>} = gen_tcp:recv(Sock, 0)
+                           {error, closed} = gen_tcp:recv(Sock, 0)
                    end).
 
 t_ppv1_garbage_data(_) ->

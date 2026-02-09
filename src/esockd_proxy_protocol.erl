@@ -23,7 +23,7 @@
 
 -ifdef(TEST).
 -export([get_proxy_attrs/1]).
--export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2, parse_pp2_ssl/1]).
+-export([parse_v2/4, parse_pp2_tlv/2, parse_pp2_ssl/1]).
 -endif.
 
 %% Protocol Command
@@ -38,8 +38,6 @@
 
 -define(STREAM, 16#1).
 -define(DGRAM,  16#2).
-
--define(SPACE, 16#20).
 
 -define(MAX_TIMEOUT, 17000).
 
@@ -56,9 +54,6 @@
 -define(PP2_SUBTYPE_SSL_KEY_ALG, 16#25).
 -define(PP2_TYPE_NETNS,          16#30).
 
-%% Protocol signature:
-%% 16#0D,16#0A,16#00,16#0D,16#0A,16#51,16#55,16#49,16#54,16#0A
--define(SIG, "\r\n\0\r\nQUIT\n").
 %% Full PPv2 signature from stream start:
 %% 16#0D,16#0A,16#0D,16#0A,16#00,16#0D,16#0A,16#51,16#55,16#49,16#54,16#0A
 -define(FULL_SIG, "\r\n\r\n\0\r\nQUIT\n").
@@ -73,13 +68,20 @@
     (module(), inet:socket() | #ssl_socket{}, timeout()) ->
         {ok, maybe_proxy_socket()} | {error, term()}.
 recv(esockd_socket, Sock, Timeout) ->
-    recv_esockd_socket(Sock, Timeout);
+    case recv_auto(esockd_socket, Sock, Timeout) of
+        {ok, ProxySock, none} ->
+            {ok, ProxySock};
+        {ok, _Sock, Prefetched} when is_binary(Prefetched) ->
+            {error, {invalid_proxy_info, Prefetched}};
+        {error, _} = Error ->
+            Error
+    end;
 recv(Transport, Sock, Timeout) ->
-    {ok, OriginalOpts} = Transport:getopts(Sock, [mode, active, packet]),
-    case do_recv(Transport, Sock, Timeout) of
-        {ok, _} = OkResult ->
-            Transport:setopts(Sock, OriginalOpts),
-            OkResult;
+    case recv_auto(Transport, Sock, Timeout) of
+        {ok, ProxySock, none} ->
+            {ok, ProxySock};
+        {ok, _Sock, Prefetched} when is_binary(Prefetched) ->
+            {error, {invalid_proxy_info, Prefetched}};
         {error, _} = Error ->
             Error
     end.
@@ -265,91 +267,6 @@ classify_ppv2_sig(Sig) when is_binary(Sig), byte_size(Sig) < ?FULL_SIG_BYTES ->
 classify_ppv2_sig(_Sig) ->
     nomatch.
 
-do_recv(Transport, Sock, Timeout) ->
-    Deadline = deadline(Timeout),
-    ok = Transport:setopts(Sock, [binary, {active, once}, {packet, line}]),
-    receive
-        %% V1 TCP
-        {_, _Sock, <<"PROXY TCP", Proto, ?SPACE, ProxyInfo/binary>>} ->
-            parse_v1(ProxyInfo, #proxy_socket{inet = inet_family(Proto), socket = Sock});
-        %% V1 Unknown
-        {_, _Sock, <<"PROXY UNKNOWN", _ProxyInfo/binary>>} ->
-            {ok, Sock};
-        %% V2 TCP
-        {_, _Sock, <<"\r\n">>} ->
-            Transport:setopts(Sock, [{active, false}, {packet, raw}]),
-            recv_v2(Transport, Sock, Deadline);
-        {tcp_error, _Sock, Reason} ->
-            {error, {recv_proxy_info_error, Reason}};
-        {tcp_closed, _Sock} ->
-            %% socket closed before any data is received
-            %% return an atom here to avoid error level logging
-            {error, proxy_proto_close};
-        {_, _Sock, ProxyInfo} ->
-            {error, {invalid_proxy_info, ProxyInfo}}
-    after
-        Timeout ->
-            {error, proxy_proto_timeout}
-    end.
-
-recv_esockd_socket(Sock, Timeout) ->
-    Deadline = deadline(Timeout),
-    case socket:recv(Sock, 2, [], Timeout) of
-        {ok, <<"\r\n">>} ->
-            recv_v2_esockd_socket(Sock, Deadline);
-        {ok, <<"PR">>} ->
-            recv_v1_esockd_socket(Sock, Deadline);
-        {ok, Header} ->
-            {error, {invalid_proxy_info, Header}};
-        {error, Reason} ->
-            map_tcpsocket_error(Reason)
-    end.
-
-recv_v1_esockd_socket(Sock, Deadline) ->
-    case socket_recvline(Sock, _MaxLine = 108, Deadline) of
-        %% NOTE: "PR" was already received.
-        {ok, <<"OXY TCP", Proto, ?SPACE, ProxyInfo/binary>>} ->
-            {ok, ProxySock} = parse_v1(ProxyInfo,
-                                       #proxy_socket{inet = inet_family(Proto), socket = Sock}),
-            ok = set_socket_meta(ProxySock),
-            {ok, Sock};
-        {ok, <<"OXY UNKNOWN", _ProxyInfo/binary>>} ->
-            {ok, Sock};
-        {ok, Header} ->
-            {error, {invalid_proxy_info, <<"PR", Header/binary>>}};
-        {error, Reason} ->
-            map_tcpsocket_error(Reason)
-    end.
-
-recv_v2_esockd_socket(Sock, Deadline) ->
-    case recv_v2(socket, Sock, Deadline) of
-        {ok, ProxySock} ->
-            ok = set_socket_meta(ProxySock),
-            {ok, Sock};
-        {error, Reason} ->
-            {error, Reason}
-    end.
-
-socket_recvline(Sock, MaxLine, Deadline) ->
-    case socket:recv(Sock, 0, [peek], timeout_left(Deadline)) of
-        {ok, Bytes} ->
-            MatchOpts = case byte_size(Bytes) of
-                N when N > MaxLine -> [{scope, {0, MaxLine}}];
-                _                  -> []
-            end,
-            case binary:match(Bytes, <<"\r\n">>, MatchOpts) of
-                {Pos, _} ->
-                    _ = socket:recv(Sock, Pos + 2, [], timeout_left(Deadline)),
-                    {ok, binary:part(Bytes, {0, Pos})};
-                nomatch when byte_size(Bytes) < MaxLine ->
-                    socket_recvline(Sock, MaxLine, Deadline);
-                nomatch ->
-                    {error, {invalid_proxy_info, Bytes}}
-            end;
-        {error, Reason} ->
-            map_tcpsocket_error(Reason)
-    end.
-
 map_tcpsocket_error(closed) ->
     {error, proxy_proto_close};
 map_tcpsocket_error(timeout) ->
@@ -365,33 +282,6 @@ map_tcpsocket_error(Reason) ->
 
 set_socket_meta(ProxySocket = #proxy_socket{socket = Sock}) ->
     socket:setopt(Sock, {otp, meta}, mk_proxy_attrs(ProxySocket)).
-
-recv_v2(Transport, Sock, Deadline) ->
-    with_remaining_timeout(Deadline, fun(HeaderTimeout) ->
-        case Transport:recv(Sock, 14, HeaderTimeout) of
-            {ok, <<?SIG, Rest0/binary>>} when byte_size(Rest0) =:= 4 ->
-                ReadBytes = fun(S, Len, Rest, D) ->
-                    RecvBytes = fun(Sock0, Need, Timeout) ->
-                        recv_transport(Transport, Sock0, Need, Timeout)
-                    end,
-                    take_bytes(S, Len, Rest, D, RecvBytes)
-                end,
-                case recv_v2_frame(Sock, Rest0, ReadBytes, Deadline) of
-                    {ok, ProxySock, _Rest} ->
-                        {ok, ProxySock};
-                    {error, {invalid_v2_header, Header}} ->
-                        {error, {invalid_proxy_info, <<?SIG, Header/binary>>}};
-                    {error, _} = Error ->
-                        Error
-                end;
-            {ok, UnknownHeader} ->
-                {error, {invalid_proxy_info, UnknownHeader}};
-            {error, closed} ->
-                {error, proxy_proto_close};
-            {error, Reason} ->
-                {error, {recv_proxy_info_error, Reason}}
-        end
-    end).
 
 recv_v2_frame(Sock, Rest0, ReadBytes, Deadline) ->
     case ReadBytes(Sock, 4, Rest0, Deadline) of
@@ -440,16 +330,6 @@ get_proxy_attrs(_Socket) ->
     #{}.
 
 -endif.
-
-parse_v1(ProxyInfo, ProxySock) ->
-    [SrcAddrBin, DstAddrBin, SrcPortBin, DstPortBin]
-        = binary:split(ProxyInfo, [<<" ">>, <<"\r\n">>], [global, trim]),
-    {ok, SrcAddr} = inet:parse_address(binary_to_list(SrcAddrBin)),
-    {ok, DstAddr} = inet:parse_address(binary_to_list(DstAddrBin)),
-    SrcPort = list_to_integer(binary_to_list(SrcPortBin)),
-    DstPort = list_to_integer(binary_to_list(DstPortBin)),
-    {ok, ProxySock#proxy_socket{src_addr = SrcAddr, dst_addr = DstAddr,
-                                src_port = SrcPort, dst_port = DstPort}}.
 
 parse_v2(?LOCAL, _Trans, _ProxyInfo, #proxy_socket{socket = Sock}) ->
     {ok, Sock};
@@ -539,10 +419,6 @@ pp2_additional_ssl_field({Field, Val}) ->
 
 ssl_certificate_verified(0) -> success;
 ssl_certificate_verified(_) -> failed.
-
-%% V1
-inet_family($4) -> inet4;
-inet_family($6) -> inet6;
 
 %% V2
 inet_family(?UNSPEC) -> unspec;
