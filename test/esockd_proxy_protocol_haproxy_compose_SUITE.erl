@@ -15,7 +15,10 @@
 all() ->
     [t_ppv2_partial_signature_timeout_returns_reason_to_app,
      t_ppv2_partial_signature_close_returns_reason_to_app,
-     t_ppv2_pass_mode_echo_roundtrip_through_haproxy].
+     t_ppv2_pass_mode_echo_roundtrip_through_haproxy,
+     t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket,
+     t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket,
+     t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket].
 
 init_per_suite(Config) ->
     case docker_available() of
@@ -45,7 +48,7 @@ init_per_testcase(Case, Config) ->
         {tcp_options, [binary, {packet, raw}, {reuseaddr, true}]},
         {connection_mfargs, {ppv2_upgrade_reason_echo_server, start_link, [Case]}}
     ],
-    {ok, _} = esockd:open(Listener, EsockdPort, Opts),
+    {ok, _} = open_listener(Case, Listener, EsockdPort, Opts),
 
     ok = compose_up(Mode, HaproxyPort, EsockdPort),
     ok = wait_haproxy_ready(HaproxyPort, 30),
@@ -102,21 +105,72 @@ t_ppv2_pass_mode_echo_roundtrip_through_haproxy(Config) ->
     end,
     ok.
 
+t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket(Config) ->
+    HaproxyPort = ?config(haproxy_port, Config),
+    CaseTag = ?config(case_tag, Config),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", HaproxyPort, [binary, {active, false}], 3000),
+    ok = gen_tcp:send(Sock, <<"client-data">>),
+    ok = gen_tcp:close(Sock),
+
+    {error, proxy_proto_timeout, Msg} = wait_result(CaseTag, 5000),
+    ?assertMatch(<<"proxy protocol upgrade timed out", _/binary>>, Msg),
+    ok.
+
+t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket(Config) ->
+    HaproxyPort = ?config(haproxy_port, Config),
+    CaseTag = ?config(case_tag, Config),
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", HaproxyPort, [binary, {active, false}], 3000),
+    ok = gen_tcp:send(Sock, <<"client-data">>),
+    ok = gen_tcp:close(Sock),
+
+    {error, proxy_proto_close, Msg} = wait_result(CaseTag, 5000),
+    ?assertMatch(<<"peer closed connection", _/binary>>, Msg),
+    ok.
+
+t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket(Config) ->
+    HaproxyPort = ?config(haproxy_port, Config),
+    CaseTag = ?config(case_tag, Config),
+    Payload = <<"hello-through-haproxy-tcpsocket">>,
+    {ok, Sock} = gen_tcp:connect("127.0.0.1", HaproxyPort, [binary, {active, false}], 3000),
+    ok = gen_tcp:send(Sock, Payload),
+    {ok, Payload} = gen_tcp:recv(Sock, 0, 3000),
+    ok = gen_tcp:close(Sock),
+    case wait_result(CaseTag, 5000) of
+        {ok, _Msg} ->
+            ok;
+        {ok_prefetched, Prefetched} ->
+            ?assertEqual(Payload, Prefetched),
+            ok
+    end,
+    ok.
+
 listener_name(t_ppv2_partial_signature_timeout_returns_reason_to_app) -> ppv2_it_timeout;
 listener_name(t_ppv2_partial_signature_close_returns_reason_to_app) -> ppv2_it_close;
-listener_name(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> ppv2_it_pass.
+listener_name(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> ppv2_it_pass;
+listener_name(t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket) -> ppv2_it_timeout_sock;
+listener_name(t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket) -> ppv2_it_close_sock;
+listener_name(t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket) -> ppv2_it_pass_sock.
 
 choose_mode(t_ppv2_partial_signature_timeout_returns_reason_to_app) -> "timeout";
 choose_mode(t_ppv2_partial_signature_close_returns_reason_to_app) -> "close";
-choose_mode(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> "pass".
+choose_mode(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> "pass";
+choose_mode(t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket) -> "timeout";
+choose_mode(t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket) -> "close";
+choose_mode(t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket) -> "pass".
 
 choose_esockd_port(t_ppv2_partial_signature_timeout_returns_reason_to_app) -> 27070;
 choose_esockd_port(t_ppv2_partial_signature_close_returns_reason_to_app) -> 27071;
-choose_esockd_port(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> 27072.
+choose_esockd_port(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> 27072;
+choose_esockd_port(t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket) -> 27073;
+choose_esockd_port(t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket) -> 27074;
+choose_esockd_port(t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket) -> 27075.
 
 choose_haproxy_port(t_ppv2_partial_signature_timeout_returns_reason_to_app) -> 28080;
 choose_haproxy_port(t_ppv2_partial_signature_close_returns_reason_to_app) -> 28080;
-choose_haproxy_port(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> 28080.
+choose_haproxy_port(t_ppv2_pass_mode_echo_roundtrip_through_haproxy) -> 28080;
+choose_haproxy_port(t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket) -> 28080;
+choose_haproxy_port(t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket) -> 28080;
+choose_haproxy_port(t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket) -> 28080.
 
 wait_haproxy_ready(_Port, 0) ->
     {error, timeout};
@@ -238,3 +292,16 @@ wait_result(CaseTag, Timeout) ->
             timer:sleep(100),
             wait_result(CaseTag, Timeout - 100)
     end.
+
+open_listener(Case, Listener, EsockdPort, Opts) ->
+    case is_tcpsocket_case(Case) of
+        true ->
+            esockd:open_tcpsocket(Listener, EsockdPort, Opts);
+        false ->
+            esockd:open(Listener, EsockdPort, Opts)
+    end.
+
+is_tcpsocket_case(t_ppv2_partial_signature_timeout_returns_reason_to_app_tcpsocket) -> true;
+is_tcpsocket_case(t_ppv2_partial_signature_close_returns_reason_to_app_tcpsocket) -> true;
+is_tcpsocket_case(t_ppv2_pass_mode_echo_roundtrip_through_haproxy_tcpsocket) -> true;
+is_tcpsocket_case(_) -> false.
