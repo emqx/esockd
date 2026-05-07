@@ -245,6 +245,107 @@ t_peersni_proxy(_) ->
                            pp2_additional_info = [{pp2_authority, <<"localhost">>}]
                           }).
 
+%% A TCP-passthrough proxy in front of an SSL listener delivers the
+%% TLS handshake (and therefore the client certificate) directly to
+%% the listener. Proxy V1 has no SSL TLVs, so the proxy header carries
+%% no peer-cert info; peercert/peer_cert_* must read from the inner
+%% ssl_socket.
+t_peercert_proxy_ssl(_Config) ->
+    ssl:start(),
+    Port = 8884,
+    {ServerBase, ClientBase} = mtls_chain(),
+    ServerSslOpts =
+        ServerBase ++
+        [{verify, verify_peer},
+         {fail_if_no_peer_cert, true},
+         {sni_fun, fun(_SNI) -> [] end}],
+    Self = self(),
+    {ok, _} = esockd:open(
+        echo, Port,
+        [proxy_protocol,
+         {proxy_protocol_timeout, 3000},
+         {ssl_options, ServerSslOpts}],
+        {?MODULE, start_link_peercert_proxy_ssl, [Self]}),
+    %% Raw TCP connect, send PP V1 header, then upgrade to TLS with
+    %% a client cert. This mirrors a TCP-passthrough proxy in front
+    %% of an SSL listener.
+    {ok, TcpSock} = gen_tcp:connect(
+        {127,0,0,1}, Port,
+        [binary, {active, false}, {packet, raw}], 3000),
+    ok = gen_tcp:send(
+        TcpSock,
+        <<"PROXY TCP4 192.168.1.1 192.168.1.2 4321 ", (integer_to_binary(Port))/binary, "\r\n">>),
+    ClientSslOpts =
+        ClientBase ++
+        [{verify, verify_peer},
+         {server_name_indication, disable},
+         {active, false}],
+    {ok, SslSock} = ssl:connect(TcpSock, ClientSslOpts, 5000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    {ok, <<"Hello">>} = ssl:recv(SslSock, 0, 2000),
+    %% Wait for the connection process's peercert assertion result.
+    receive
+        {peercert_check, ok} -> ok;
+        {peercert_check, {fail, Why}} -> ct:fail({peercert_check_failed, Why})
+    after 2000 ->
+              ct:fail(no_peercert_check_result)
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, Port).
+
+%% Generate a fresh CA + server peer + client peer chain at runtime so
+%% the suite carries no static client-cert fixtures. Returns ssl
+%% option lists ready to be merged into server/client opts.
+mtls_chain() ->
+    KeySpec = [{digest, sha256}, {key, {rsa, 2048, 65537}}],
+    #{server_config := ServerConf, client_config := ClientConf} =
+        public_key:pkix_test_data(
+          #{server_chain => #{root => KeySpec,
+                              intermediates => [],
+                              peer => KeySpec},
+            client_chain => #{root => KeySpec,
+                              intermediates => [],
+                              peer => KeySpec}}),
+    {ServerConf, ClientConf}.
+
+start_link_peercert_proxy_ssl(Transport, RawSock, ReportTo) ->
+    {ok, spawn_link(?MODULE, peercert_proxy_ssl_init,
+                    [Transport, RawSock, ReportTo])}.
+
+peercert_proxy_ssl_init(Transport, RawSock, ReportTo) ->
+    case Transport:wait(RawSock) of
+        {ok, Sock} ->
+            Result = check_peercert(Transport, Sock),
+            ReportTo ! {peercert_check, Result},
+            peercert_proxy_ssl_loop(Transport, Sock);
+        {error, Reason} ->
+            ReportTo ! {peercert_check, {fail, {wait, Reason}}}
+    end.
+
+check_peercert(Transport, Sock) ->
+    %% peercert/1 must return the DER-encoded client cert (not [] from
+    %% the empty pp2_additional_info, and not undefined).
+    case Transport:peercert(Sock) of
+        Cert when is_binary(Cert) ->
+            CN = Transport:peer_cert_common_name(Sock),
+            Subject = Transport:peer_cert_subject(Sock),
+            case is_binary(CN) andalso is_binary(Subject) of
+                true -> ok;
+                false -> {fail, {unexpected_subject, CN, Subject}}
+            end;
+        Other ->
+            {fail, {unexpected_peercert, Other}}
+    end.
+
+peercert_proxy_ssl_loop(Transport, Sock) ->
+    case Transport:recv(Sock, 0) of
+        {ok, Data} ->
+            Transport:send(Sock, Data),
+            peercert_proxy_ssl_loop(Transport, Sock);
+        {error, _} ->
+            ok
+    end.
+
 t_shutdown(_) ->
     {ok, _} = esockd:open(echo, 3000, [{tcp_options, ?TCP_OPTS}], {echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 3000, [{active, false}]),

@@ -321,6 +321,13 @@ peercert(SslSock = #sslsocket{}) ->
         {error, no_peercert} -> undefined;
         Error -> Error
     end;
+%% When the proxied connection is itself TLS-terminated by this
+%% listener (e.g. TCP-passthrough proxy in front of an SSL listener),
+%% the real client certificate lives on the inner ssl_socket. The
+%% proxy header (V1 or V2 without SSL TLVs) carries no cert info, so
+%% delegate to the inner socket.
+peercert(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
+    peercert(Sock);
 peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl, AdditionalInfo, []).
 
@@ -334,6 +341,8 @@ peer_cert_subject(#ssl_socket{ssl = SslSock}) ->
             esockd_ssl:peer_cert_subject(Cert);
         _Error -> undefined
     end;
+peer_cert_subject(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
+    peer_cert_subject(Sock);
 peer_cert_subject(Sock = #proxy_socket{}) ->
     %% Common Name? Haproxy PP2 will not pass subject.
     peer_cert_common_name(Sock).
@@ -348,6 +357,8 @@ peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
             esockd_ssl:peer_cert_common_name(Cert);
         _Error -> undefined
     end;
+peer_cert_common_name(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
+    peer_cert_common_name(Sock);
 peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl_cn,
                         proplists:get_value(pp2_ssl, AdditionalInfo, [])).
@@ -365,6 +376,8 @@ peersni(#ssl_socket{ssl = SslSock}) ->
         {ok, []} -> undefined;
         {error, _Reason} -> undefined
     end;
+peersni(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
+    peersni(Sock);
 peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_authority, AdditionalInfo, undefined).
 
