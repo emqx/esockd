@@ -23,7 +23,7 @@
 
 -ifdef(TEST).
 -export([get_proxy_attrs/1]).
--export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2, parse_pp2_ssl/1]).
+-export([parse_v1/2, parse_v2/4, parse_pp2_tlv/2, parse_pp2_tlv/3, parse_pp2_ssl/1]).
 -endif.
 
 %% Protocol Command
@@ -260,13 +260,44 @@ parse_pp2_additional(<<>>, ProxySock) ->
     {ok, ProxySock};
 parse_pp2_additional(Bytes, ProxySock) when is_binary(Bytes) ->
     IgnoreGuard = fun(?PP2_TYPE_NOOP) -> false; (_Type) -> true end,
-    AdditionalInfo = parse_pp2_tlv(fun pp2_additional_field/1, Bytes, IgnoreGuard),
-    {ok, ProxySock#proxy_socket{pp2_additional_info = AdditionalInfo}}.
+    try parse_pp2_tlv(fun pp2_additional_field/1, Bytes, IgnoreGuard) of
+        {ok, AdditionalInfo} ->
+            {ok, ProxySock#proxy_socket{pp2_additional_info = AdditionalInfo}};
+        {error, {malformed_tlv, Remaining}} ->
+            log_malformed_pp2_tlv(top_level, Remaining, byte_size(Bytes)),
+            {error, {malformed_pp2_tlv, Remaining}}
+    catch
+        throw:{malformed_pp2_ssl_tlv, Remaining} = Reason ->
+            log_malformed_pp2_tlv(ssl_subtlv, Remaining, byte_size(Bytes)),
+            {error, Reason}
+    end.
 
+%% @doc Strict PROXY-Protocol v2 TLV parser.
+%%
+%% Returns `{ok, [Tuple]}' on a cleanly consumed byte stream, or
+%% `{error, {malformed_tlv, RemainingBytes}}' if a TLV's declared length
+%% overruns the buffer. The previous binary-comprehension implementation
+%% silently terminated on overrun, hiding any trailing TLVs (well-formed
+%% or not) from the caller.
+%%
+%% `Guard' decides whether a TLV's value is emitted; in either case the
+%% parser advances past the TLV's bytes.
 parse_pp2_tlv(Fun, Bytes) ->
     parse_pp2_tlv(Fun, Bytes, fun(_Any) -> true end).
+
 parse_pp2_tlv(Fun, Bytes, Guard) ->
-    [Fun({Type, Val}) || <<Type:8, Len:16, Val:Len/binary>> <= Bytes, Guard(Type)].
+    parse_pp2_tlv(Fun, Bytes, Guard, []).
+
+parse_pp2_tlv(_Fun, <<>>, _Guard, Acc) ->
+    {ok, lists:reverse(Acc)};
+parse_pp2_tlv(Fun, <<Type:8, Len:16, Val:Len/binary, Rest/binary>>, Guard, Acc) ->
+    Acc1 = case Guard(Type) of
+               true  -> [Fun({Type, Val}) | Acc];
+               false -> Acc
+           end,
+    parse_pp2_tlv(Fun, Rest, Guard, Acc1);
+parse_pp2_tlv(_Fun, Bad, _Guard, _Acc) when is_binary(Bad) ->
+    {error, {malformed_tlv, byte_size(Bad)}}.
 
 pp2_additional_field({?PP2_TYPE_ALPN, PP2_ALPN}) ->
     {pp2_alpn, PP2_ALPN};
@@ -277,32 +308,51 @@ pp2_additional_field({?PP2_TYPE_CRC32C, PP2_CRC32C}) ->
 pp2_additional_field({?PP2_TYPE_NETNS, PP2_NETNS}) ->
     {pp2_netns, PP2_NETNS};
 pp2_additional_field({?PP2_TYPE_SSL, PP2_SSL}) ->
-    {pp2_ssl, parse_pp2_ssl(PP2_SSL)};
+    case parse_pp2_ssl(PP2_SSL) of
+        {ok, SSLInfo} ->
+            {pp2_ssl, SSLInfo};
+        {error, {malformed_tlv, Remaining}} ->
+            throw({malformed_pp2_ssl_tlv, Remaining})
+    end;
 pp2_additional_field({Field, Value}) ->
     {{pp2_raw, Field}, Value}.
 
 parse_pp2_ssl(<<_Unused:5, PP2_CLIENT_CERT_SESS:1, PP2_CLIENT_CERT_CONN:1, PP2_CLIENT_SSL:1,
                 PP2_SSL_VERIFY:32, SubFields/bitstring>>) ->
-    [
-     %% The PP2_CLIENT_SSL flag indicates that the client connected over SSL/TLS. When
-     %% this field is present, the US-ASCII string representation of the TLS version is
-     %% appended at the end of the field in the TLV format using the type PP2_SUBTYPE_SSL_VERSION.
-     {pp2_ssl_client, bool(PP2_CLIENT_SSL)},
+    case parse_pp2_tlv(fun pp2_additional_ssl_field/1, SubFields) of
+        {ok, SubList} ->
+            {ok,
+             [
+              %% The PP2_CLIENT_SSL flag indicates that the client connected over SSL/TLS.
+              %% When this field is present, the US-ASCII string representation of the TLS
+              %% version is appended at the end of the field in the TLV format using the
+              %% type PP2_SUBTYPE_SSL_VERSION.
+              {pp2_ssl_client, bool(PP2_CLIENT_SSL)},
 
-     %% PP2_CLIENT_CERT_CONN indicates that the client provided a certificate over the
-     %% current connection.
-     {pp2_ssl_client_cert_conn, bool(PP2_CLIENT_CERT_CONN)},
+              %% PP2_CLIENT_CERT_CONN indicates that the client provided a certificate over
+              %% the current connection.
+              {pp2_ssl_client_cert_conn, bool(PP2_CLIENT_CERT_CONN)},
 
-     %% PP2_CLIENT_CERT_SESS indicates that the client provided a
-     %% certificate at least once over the TLS session this connection belongs to.
-     {pp2_ssl_client_cert_sess, bool(PP2_CLIENT_CERT_SESS)},
+              %% PP2_CLIENT_CERT_SESS indicates that the client provided a certificate at
+              %% least once over the TLS session this connection belongs to.
+              {pp2_ssl_client_cert_sess, bool(PP2_CLIENT_CERT_SESS)},
 
-     %% The <verify> field will be zero if the client presented a certificate
-     %% and it was successfully verified, and non-zero otherwise.
-     {pp2_ssl_verify, ssl_certificate_verified(PP2_SSL_VERIFY)}
+              %% The <verify> field will be zero if the client presented a certificate
+              %% and it was successfully verified, and non-zero otherwise.
+              {pp2_ssl_verify, ssl_certificate_verified(PP2_SSL_VERIFY)}
 
-     | parse_pp2_tlv(fun pp2_additional_ssl_field/1, SubFields)
-    ].
+              | SubList
+             ]};
+        {error, _} = Error ->
+            Error
+    end.
+
+log_malformed_pp2_tlv(Where, Remaining, TotalBytes) ->
+    logger:log(warning,
+               #{msg => "malformed_pp2_tlv",
+                 where => Where,
+                 remaining_bytes => Remaining,
+                 total_bytes => TotalBytes}).
 
 pp2_additional_ssl_field({?PP2_SUBTYPE_SSL_VERSION, PP2_SSL_VERSION}) ->
     {pp2_ssl_version, PP2_SSL_VERSION};

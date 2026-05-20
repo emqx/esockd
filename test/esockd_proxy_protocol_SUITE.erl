@@ -39,8 +39,14 @@ groups() ->
      {parser, [sequence], [t_parse_v1,
                            t_parse_v2,
                            t_parse_pp2_additional,
+                           t_parse_pp2_additional_malformed,
                            t_parse_pp2_ssl,
-                           t_parse_pp2_tlv]},
+                           t_parse_pp2_ssl_malformed,
+                           t_parse_pp2_tlv,
+                           t_parse_pp2_tlv_empty,
+                           t_parse_pp2_tlv_malformed,
+                           t_parse_pp2_tlv_guard_skip,
+                           t_parse_v2_malformed_tlv_rejected]},
      {integration, [sequence], [t_ppv1_tcp4_connect,
                                t_ppv1_tcp6_connect,
                                t_ppv2_connect,
@@ -202,16 +208,72 @@ t_parse_pp2_additional(_) ->
 
 t_parse_pp2_ssl(_) ->
     Bin = <<01,00,05,"29zka",02,00,06,"219a3k",16#30,00,07,"abc.com",16#20,00,05,03,00,00,00,01>>,
-    [{pp2_ssl_client, false},
-     {pp2_ssl_client_cert_conn, false},
-     {pp2_ssl_client_cert_sess, true},
-     {pp2_ssl_verify, success}|_]
+    {ok, [{pp2_ssl_client, false},
+          {pp2_ssl_client_cert_conn, false},
+          {pp2_ssl_client_cert_sess, true},
+          {pp2_ssl_verify, success}|_]}
     = esockd_proxy_protocol:parse_pp2_ssl(<<0:5, 1:1, 0:1, 0:1, 0:32, Bin/binary>>).
+
+t_parse_pp2_ssl_malformed(_) ->
+    %% First sub-TLV declares Len=20 but only 5 bytes follow.
+    Bad = <<16#21:8, 20:16, "TLSv1">>,
+    {error, {malformed_tlv, _}}
+        = esockd_proxy_protocol:parse_pp2_ssl(<<0:5, 1:1, 0:1, 1:1, 0:32, Bad/binary>>).
 
 t_parse_pp2_tlv(_) ->
     Bin = <<01,00,05,"29zka",02,00,06,"219a3k",16#30,00,07,"abc.com",16#20,00,05,03,00,00,00,01>>,
-    [{1, <<"29zka">>}, {2, <<"219a3k">>}, {16#30, <<"abc.com">>}, {16#20, <<3,0,0,0,1>>}]
-    = esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin).
+    {ok, [{1, <<"29zka">>}, {2, <<"219a3k">>}, {16#30, <<"abc.com">>}, {16#20, <<3,0,0,0,1>>}]}
+        = esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin).
+
+t_parse_pp2_tlv_empty(_) ->
+    {ok, []} = esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, <<>>).
+
+t_parse_pp2_tlv_malformed(_) ->
+    %% A well-formed ALPN TLV followed by a TLV whose declared length (16#FFFF)
+    %% massively overruns the buffer — the old parser would silently return only
+    %% [{1, <<"abc">>}], hiding the malformed remainder. The strict parser must
+    %% surface the error.
+    Good = <<01, 00, 03, "abc">>,
+    BadHeader = <<02, 16#FF, 16#FF, "short">>,
+    Bin = <<Good/binary, BadHeader/binary>>,
+    {error, {malformed_tlv, R}}
+        = esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin),
+    ?assert(R > 0),
+    %% A trailing legit TLV after a malformed one must also surface the malformed
+    %% condition rather than be silently dropped.
+    TrailingLegit = <<03, 00, 03, "xyz">>,
+    Bin2 = <<Good/binary, BadHeader/binary, TrailingLegit/binary>>,
+    {error, {malformed_tlv, _}}
+        = esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin2).
+
+t_parse_pp2_tlv_guard_skip(_) ->
+    %% Guard returning false must still advance past the TLV's bytes — the
+    %% guarded-out TLV does not appear in the output, but the following TLV
+    %% parses correctly.
+    Bin = <<16#04, 0, 4, 0, 0, 0, 0, 01, 00, 03, "abc">>,
+    Guard = fun(16#04) -> false; (_) -> true end,
+    {ok, [{1, <<"abc">>}]}
+        = esockd_proxy_protocol:parse_pp2_tlv(fun(E) -> E end, Bin, Guard).
+
+t_parse_pp2_additional_malformed(_) ->
+    %% Top-level TLV with declared Len overshooting the buffer must cause
+    %% parse_v2/4 to reject the frame.
+    Bad = <<01, 16#FF, 16#FF, "short">>,
+    Frame = <<104,199,189,98,106,185,34,253,6000:16,8883:16, Bad/binary>>,
+    {error, {malformed_pp2_tlv, _}}
+        = esockd_proxy_protocol:parse_v2(16#1, 16#1, Frame,
+                                         #proxy_socket{inet = inet4}).
+
+t_parse_v2_malformed_tlv_rejected(_) ->
+    %% Malformed inner SSL sub-TLV must also propagate as a frame-level error.
+    BadSsl = <<16#21:8, 20:16, "TLSv1">>,
+    SslVal = <<0:5, 1:1, 0:1, 1:1, 0:32, BadSsl/binary>>,
+    SslLen = byte_size(SslVal),
+    Tlv = <<16#20:8, SslLen:16, SslVal/binary>>,
+    Frame = <<104,199,189,98,106,185,34,253,6000:16,8883:16, Tlv/binary>>,
+    {error, {malformed_pp2_ssl_tlv, _}}
+        = esockd_proxy_protocol:parse_v2(16#1, 16#1, Frame,
+                                         #proxy_socket{inet = inet4}).
 
 %%--------------------------------------------------------------------
 %% Test cases for pp server
