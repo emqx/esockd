@@ -64,7 +64,36 @@ t_peer_cert_subject_alt_names(_) ->
         esockd_ssl:peer_cert_subject_alt_names(san_cert())
     ).
 
+t_peer_cert_subject_alt_names_empty(_) ->
+    ?assertEqual(
+        #{
+            dns => [],
+            ip => [],
+            email => [],
+            uri => []
+        },
+        esockd_ssl:peer_cert_subject_alt_names(no_san_cert())
+    ).
+
 san_cert() ->
+    cert_with_extensions([
+        #'Extension'{
+            extnID = ?'id-ce-subjectAltName',
+            extnValue = [
+                {dNSName, "example.com"},
+                {dNSName, "www.example.com"},
+                {iPAddress, [192, 168, 1, 100]},
+                {iPAddress, [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]},
+                {rfc822Name, "device@example.com"},
+                {uniformResourceIdentifier, "urn:device:123"}
+            ]
+        }
+    ]).
+
+no_san_cert() ->
+    cert_with_extensions(asn1_NOVALUE).
+
+cert_with_extensions(Extensions) ->
     Key = public_key:generate_key({namedCurve, secp521r1}),
     Subject = {rdnSequence, [
         [
@@ -94,18 +123,6 @@ san_cert() ->
             },
             subjectPublicKey = #'ECPoint'{point = Key#'ECPrivateKey'.publicKey}
         },
-        extensions = [
-            #'Extension'{
-                extnID = ?'id-ce-subjectAltName',
-                extnValue = [
-                    {dNSName, "example.com"},
-                    {dNSName, "www.example.com"},
-                    {iPAddress, [192, 168, 1, 100]},
-                    {iPAddress, [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]},
-                    {rfc822Name, "device@example.com"},
-                    {uniformResourceIdentifier, "urn:device:123"}
-                ]
-            }
-        ]
+        extensions = Extensions
     },
     public_key:pkix_sign(TBS, Key).
