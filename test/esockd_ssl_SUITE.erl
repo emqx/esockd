@@ -19,6 +19,7 @@
 -compile(export_all).
 -compile(nowarn_export_all).
 
+-include_lib("public_key/include/public_key.hrl").
 -include_lib("eunit/include/eunit.hrl").
 
 all() -> esockd_ct:all(?MODULE).
@@ -52,3 +53,59 @@ t_peer_cert_common_name(Config) ->
 t_peer_cert_subject(Config) ->
     esockd_ssl:peer_cert_subject(cert(Config)).
 
+t_peer_cert_subject_alt_names(_) ->
+    ?assertEqual(
+        #{
+            dns => [<<"example.com">>, <<"www.example.com">>],
+            ip => [<<"192.168.1.100">>, <<"2001:db8::1">>],
+            email => [<<"device@example.com">>],
+            uri => [<<"urn:device:123">>]
+        },
+        esockd_ssl:peer_cert_subject_alt_names(san_cert())
+    ).
+
+san_cert() ->
+    Key = public_key:generate_key({namedCurve, secp521r1}),
+    Subject = {rdnSequence, [
+        [
+            #'AttributeTypeAndValue'{
+                type = ?'id-at-commonName',
+                value = {printableString, "SAN Test"}
+            }
+        ]
+    ]},
+    TBS = #'OTPTBSCertificate'{
+        version = v3,
+        serialNumber = 1,
+        signature = #'SignatureAlgorithm'{
+            algorithm = ?'ecdsa-with-SHA256',
+            parameters = Key#'ECPrivateKey'.parameters
+        },
+        issuer = Subject,
+        validity = #'Validity'{
+            notBefore = {generalTime, "20260101000000Z"},
+            notAfter = {generalTime, "20270101000000Z"}
+        },
+        subject = Subject,
+        subjectPublicKeyInfo = #'OTPSubjectPublicKeyInfo'{
+            algorithm = #'PublicKeyAlgorithm'{
+                algorithm = ?'id-ecPublicKey',
+                parameters = Key#'ECPrivateKey'.parameters
+            },
+            subjectPublicKey = #'ECPoint'{point = Key#'ECPrivateKey'.publicKey}
+        },
+        extensions = [
+            #'Extension'{
+                extnID = ?'id-ce-subjectAltName',
+                extnValue = [
+                    {dNSName, "example.com"},
+                    {dNSName, "www.example.com"},
+                    {iPAddress, [192, 168, 1, 100]},
+                    {iPAddress, [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]},
+                    {rfc822Name, "device@example.com"},
+                    {uniformResourceIdentifier, "urn:device:123"}
+                ]
+            }
+        ]
+    },
+    public_key:pkix_sign(TBS, Key).

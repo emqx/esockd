@@ -37,8 +37,23 @@ t_common_name(Config) ->
     _CN = esockd_peercert:common_name(DerCert),
     <<"C=CH">> = esockd_peercert:common_name([{pp2_ssl_cn, <<"C=CH">>}]).
 
+t_subject_alt_names(Config) ->
+    Empty = #{
+        dns => [],
+        ip => [],
+        email => [],
+        uri => []
+    },
+    Empty = esockd_peercert:subject_alt_names(nossl),
+    Empty = esockd_peercert:subject_alt_names(undefined),
+    Empty = esockd_peercert:subject_alt_names([{pp2_ssl_cn, <<"C=CH">>}]),
+    DerCert = pem_decode(esockd_ct:certfile(Config)),
+    ?assertMatch(
+        #{dns := [<<"Server">>, <<"dengzhongwendeMacBook-Pro.local">>, <<"localhost">>]},
+        esockd_peercert:subject_alt_names(DerCert)
+    ).
+
 pem_decode(CertFile) ->
     {ok, CertBin} = file:read_file(CertFile),
     [{'Certificate', DerCert, _}] = public_key:pem_decode(CertBin),
     DerCert.
-
