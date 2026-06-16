@@ -64,16 +64,14 @@ t_peer_cert_subject_alt_names(_) ->
         esockd_ssl:peer_cert_subject_alt_names(san_cert())
     ).
 
-t_peer_cert_subject_alt_names_empty(_) ->
+t_peer_cert_subject_alt_names_sparse(Config) ->
     ?assertEqual(
-        #{
-            dns => [],
-            ip => [],
-            email => [],
-            uri => []
-        },
-        esockd_ssl:peer_cert_subject_alt_names(no_san_cert())
+        #{dns => [<<"Server">>, <<"dengzhongwendeMacBook-Pro.local">>, <<"localhost">>]},
+        esockd_ssl:peer_cert_subject_alt_names(cert(Config))
     ).
+
+t_peer_cert_subject_alt_names_empty(_) ->
+    ?assertEqual(nosan, esockd_ssl:peer_cert_subject_alt_names(no_san_cert())).
 
 san_cert() ->
     cert_with_extensions([

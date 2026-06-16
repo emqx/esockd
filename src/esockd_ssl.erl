@@ -32,11 +32,13 @@
         ]).
 
 -type(certificate() :: binary()).
--type(subject_alt_names() :: #{
-        dns := [binary()],
-        ip := [binary()],
-        email := [binary()],
-        uri := [binary()]
+-type(subject_alt_names() ::
+    nosan
+    | #{
+        dns => [binary()],
+        ip => [binary()],
+        email => [binary()],
+        uri => [binary()]
     }).
 -export_type([certificate/0, subject_alt_names/0]).
 
@@ -126,8 +128,21 @@ find_subject_alt_names([]) ->
     undefined.
 
 normalize_general_names(Names) ->
-    Acc = lists:foldl(fun add_general_name/2, empty_subject_alt_names(), Names),
-    maps:map(fun(_NameType, Values) -> lists:reverse(Values) end, Acc).
+    Acc = lists:foldl(fun add_general_name/2, subject_alt_names_acc(), Names),
+    Sparse = maps:fold(
+        fun
+            (_NameType, [], SparseAcc) ->
+                SparseAcc;
+            (NameType, Values, SparseAcc) ->
+                SparseAcc#{NameType => lists:reverse(Values)}
+        end,
+        #{},
+        Acc
+    ),
+    case map_size(Sparse) of
+        0 -> empty_subject_alt_names();
+        _ -> Sparse
+    end.
 
 add_general_name({dNSName, Name}, Acc) ->
     add_string_name(dns, Name, Acc);
@@ -206,6 +221,9 @@ is_byte(Byte) ->
     is_integer(Byte) andalso Byte >= 0 andalso Byte =< 255.
 
 empty_subject_alt_names() ->
+    nosan.
+
+subject_alt_names_acc() ->
     #{
         dns => [],
         ip => [],

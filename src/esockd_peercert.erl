@@ -49,9 +49,4 @@ subject_alt_names(PP2Info) when is_list(PP2Info) ->
     empty_subject_alt_names().
 
 empty_subject_alt_names() ->
-    #{
-        dns => [],
-        ip => [],
-        email => [],
-        uri => []
-    }.
+    nosan.

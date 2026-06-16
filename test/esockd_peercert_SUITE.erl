@@ -38,18 +38,12 @@ t_common_name(Config) ->
     <<"C=CH">> = esockd_peercert:common_name([{pp2_ssl_cn, <<"C=CH">>}]).
 
 t_subject_alt_names(Config) ->
-    Empty = #{
-        dns => [],
-        ip => [],
-        email => [],
-        uri => []
-    },
-    Empty = esockd_peercert:subject_alt_names(nossl),
-    Empty = esockd_peercert:subject_alt_names(undefined),
-    Empty = esockd_peercert:subject_alt_names([{pp2_ssl_cn, <<"C=CH">>}]),
+    nosan = esockd_peercert:subject_alt_names(nossl),
+    nosan = esockd_peercert:subject_alt_names(undefined),
+    nosan = esockd_peercert:subject_alt_names([{pp2_ssl_cn, <<"C=CH">>}]),
     DerCert = pem_decode(esockd_ct:certfile(Config)),
-    ?assertMatch(
-        #{dns := [<<"Server">>, <<"dengzhongwendeMacBook-Pro.local">>, <<"localhost">>]},
+    ?assertEqual(
+        #{dns => [<<"Server">>, <<"dengzhongwendeMacBook-Pro.local">>, <<"localhost">>]},
         esockd_peercert:subject_alt_names(DerCert)
     ).
 
