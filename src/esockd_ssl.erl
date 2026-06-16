@@ -26,12 +26,21 @@
 -export([ peer_cert_issuer/1
         , peer_cert_subject/1
         , peer_cert_common_name/1
+        , peer_cert_subject_alt_names/1
         , peer_cert_subject_items/2
         , peer_cert_validity/1
         ]).
 
 -type(certificate() :: binary()).
--export_type([certificate/0]).
+-type(subject_alt_names() ::
+    nosan
+    | #{
+        dns => [binary()],
+        ip => [binary()],
+        email => [binary()],
+        uri => [binary()]
+    }).
+-export_type([certificate/0, subject_alt_names/0]).
 
 %% Return a string describing the certificate's issuer.
 -spec(peer_cert_issuer(certificate()) -> binary()).
@@ -57,6 +66,14 @@ peer_cert_common_name(Cert) ->
         undefined -> undefined;
         CNs       -> iolist_to_binary(string:join(CNs, ","))
      end.
+
+-spec(peer_cert_subject_alt_names(certificate()) -> subject_alt_names()).
+peer_cert_subject_alt_names(Cert) ->
+    cert_info(fun(#'OTPCertificate' {
+                     tbsCertificate = #'OTPTBSCertificate' {
+                       extensions = Extensions }}) ->
+                      subject_alt_names_from_extensions(Extensions)
+              end, Cert).
 
 %% Return the parts of the certificate's subject.
 -spec(peer_cert_subject_items(certificate(), tuple()) -> [string()] | undefined).
@@ -88,6 +105,131 @@ find_by_type(Type, {rdnSequence, RDNs}) ->
         [] -> undefined;
         L  -> [format_asn1_value(V) || V <- L]
     end.
+
+subject_alt_names_from_extensions(asn1_NOVALUE) ->
+    empty_subject_alt_names();
+subject_alt_names_from_extensions(Extensions) when is_list(Extensions) ->
+    case find_subject_alt_names(Extensions) of
+        Names when is_list(Names) ->
+            normalize_general_names(Names);
+        _ ->
+            empty_subject_alt_names()
+    end;
+subject_alt_names_from_extensions(_) ->
+    empty_subject_alt_names().
+
+find_subject_alt_names([
+    #'Extension'{extnID = ?'id-ce-subjectAltName', extnValue = Names} | _Rest
+]) ->
+    Names;
+find_subject_alt_names([_ | Rest]) ->
+    find_subject_alt_names(Rest);
+find_subject_alt_names([]) ->
+    undefined.
+
+normalize_general_names(Names) ->
+    Acc = lists:foldl(fun add_general_name/2, subject_alt_names_acc(), Names),
+    Sparse = maps:fold(
+        fun
+            (_NameType, [], SparseAcc) ->
+                SparseAcc;
+            (NameType, Values, SparseAcc) ->
+                SparseAcc#{NameType => lists:reverse(Values)}
+        end,
+        #{},
+        Acc
+    ),
+    case map_size(Sparse) of
+        0 -> empty_subject_alt_names();
+        _ -> Sparse
+    end.
+
+add_general_name({dNSName, Name}, Acc) ->
+    add_string_name(dns, Name, Acc);
+add_general_name({iPAddress, IPAddress}, Acc) ->
+    add_ip_name(IPAddress, Acc);
+add_general_name({rfc822Name, Email}, Acc) ->
+    add_string_name(email, Email, Acc);
+add_general_name({uniformResourceIdentifier, URI}, Acc) ->
+    add_string_name(uri, URI, Acc);
+add_general_name(_Other, Acc) ->
+    Acc.
+
+add_string_name(NameType, Value, Acc) ->
+    case to_binary(Value) of
+        {ok, Bin} ->
+            Acc#{NameType := [Bin | maps:get(NameType, Acc)]};
+        error ->
+            Acc
+    end.
+
+add_ip_name(IPAddress, Acc) ->
+    case ip_to_binary(IPAddress) of
+        {ok, Bin} ->
+            Acc#{ip := [Bin | maps:get(ip, Acc)]};
+        error ->
+            Acc
+    end.
+
+to_binary(Bin) when is_binary(Bin) ->
+    {ok, Bin};
+to_binary(String) when is_list(String) ->
+    case unicode:characters_to_binary(String) of
+        Bin when is_binary(Bin) ->
+            {ok, Bin};
+        _ ->
+            error
+    end;
+to_binary(_) ->
+    error.
+
+ip_to_binary(IPAddress) when is_tuple(IPAddress) ->
+    try iolist_to_binary(inet:ntoa(IPAddress)) of
+        Bin ->
+            {ok, Bin}
+    catch
+        _:_ ->
+            error
+    end;
+ip_to_binary(IPAddress) when is_binary(IPAddress) ->
+    ip_bytes_to_binary(binary_to_list(IPAddress));
+ip_to_binary(IPAddress) when is_list(IPAddress) ->
+    ip_bytes_to_binary(IPAddress);
+ip_to_binary(_) ->
+    error.
+
+ip_bytes_to_binary(Bytes) ->
+    case is_byte_list(Bytes) of
+        true ->
+            ip_byte_list_to_binary(Bytes);
+        false ->
+            error
+    end.
+
+ip_byte_list_to_binary([A, B, C, D]) ->
+    {ok, iolist_to_binary(inet:ntoa({A, B, C, D}))};
+ip_byte_list_to_binary(Bytes) when length(Bytes) =:= 16 ->
+    <<A:16, B:16, C:16, D:16, E:16, F:16, G:16, H:16>> = list_to_binary(Bytes),
+    {ok, iolist_to_binary(inet:ntoa({A, B, C, D, E, F, G, H}))};
+ip_byte_list_to_binary(_) ->
+    error.
+
+is_byte_list(Bytes) ->
+    lists:all(fun is_byte/1, Bytes).
+
+is_byte(Byte) ->
+    is_integer(Byte) andalso Byte >= 0 andalso Byte =< 255.
+
+empty_subject_alt_names() ->
+    nosan.
+
+subject_alt_names_acc() ->
+    #{
+        dns => [],
+        ip => [],
+        email => [],
+        uri => []
+    }.
 
 %%--------------------------------------------------------------------
 %% Formatting functions
@@ -261,4 +403,3 @@ flatten_ssl_list_item(N) when is_number (N) ->
 
 format(Fmt, Args) ->
     lists:flatten(io_lib:format(Fmt, Args)).
-

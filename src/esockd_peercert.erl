@@ -16,11 +16,12 @@
 
 -module(esockd_peercert).
 
--export([subject/1, common_name/1]).
+-export([subject/1, common_name/1, subject_alt_names/1]).
 
--export_type([peercert/0]).
+-export_type([peercert/0, subject_alt_names/0]).
 
 -type(peercert() :: binary() | proplists:proplist()).
+-type(subject_alt_names() :: esockd_ssl:subject_alt_names()).
 
 -spec(subject(nossl | undefined | peercert()) -> undefined | binary()).
 subject(nossl)     -> undefined;
@@ -39,3 +40,13 @@ common_name(Cert) when is_binary(Cert) ->
 common_name(PP2Info) when is_list(PP2Info) ->
     proplists:get_value(pp2_ssl_cn, PP2Info).
 
+-spec(subject_alt_names(nossl | undefined | peercert()) -> subject_alt_names()).
+subject_alt_names(nossl)     -> empty_subject_alt_names();
+subject_alt_names(undefined) -> empty_subject_alt_names();
+subject_alt_names(Cert) when is_binary(Cert) ->
+    esockd_ssl:peer_cert_subject_alt_names(Cert);
+subject_alt_names(PP2Info) when is_list(PP2Info) ->
+    empty_subject_alt_names().
+
+empty_subject_alt_names() ->
+    nosan.
