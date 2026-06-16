@@ -105,7 +105,7 @@ cert_with_extensions(Extensions) ->
         version = v3,
         serialNumber = 1,
         signature = #'SignatureAlgorithm'{
-            algorithm = ?'ecdsa-with-SHA256',
+            algorithm = ?'ecdsa-with-SHA512',
             parameters = Key#'ECPrivateKey'.parameters
         },
         issuer = Subject,
