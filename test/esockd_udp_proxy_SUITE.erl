@@ -65,6 +65,39 @@ t_reroute_when_connection_id_changes(_) ->
         erlang:is_process_alive(Srv) andalso esockd_udp:stop(Srv)
     end.
 
+t_reroute_detaches_old_connection_without_closing(_) ->
+    process_flag(trap_exit, true),
+    ensure_proxy_db(),
+    Port = pick_udp_port(),
+    ProxyOpts = #{
+        test_parent => self(),
+        esockd_proxy_opts => #{connection_mod => ?MODULE}
+    },
+    {ok, Srv} = esockd_udp:server(
+        test_udp_proxy_detach_on_reroute,
+        {{127, 0, 0, 1}, Port},
+        [
+            {connection_mfargs, {esockd_udp_proxy, start_link, [ProxyOpts]}}
+        ]
+    ),
+    {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+    try
+        ok = gen_udp:send(Sock, {127, 0, 0, 1}, Port, <<"client-a">>),
+        PidA = receive_find_or_create(<<"client-a">>),
+        receive_dispatch(PidA, <<"client-a">>),
+
+        ok = gen_udp:send(Sock, {127, 0, 0, 1}, Port, <<"client-b">>),
+        PidB = receive_find_or_create(<<"client-b">>),
+        receive_dispatch(PidB, <<"client-b">>),
+
+        ?assertNotEqual(PidA, PidB),
+        ?assert(received_detach(PidA)),
+        ?assertNot(received_close(PidA))
+    after
+        gen_udp:close(Sock),
+        erlang:is_process_alive(Srv) andalso esockd_udp:stop(Srv)
+    end.
+
 t_lookup_failure_preserves_old_binding(_) ->
     process_flag(trap_exit, true),
     ensure_proxy_db(),
@@ -210,6 +243,11 @@ close(Pid, State) ->
     Pid ! close,
     ok.
 
+detach(Pid, State) ->
+    maps:get(parent, State) ! {detach, Pid},
+    Pid ! detach,
+    ok.
+
 %%--------------------------------------------------------------------
 %% Helpers
 %%--------------------------------------------------------------------
@@ -276,6 +314,14 @@ receive_find_or_create_ignored(CId) ->
 received_close(Pid) ->
     receive
         {close, Pid} ->
+            true
+    after 100 ->
+        false
+    end.
+
+received_detach(Pid) ->
+    receive
+        {detach, Pid} ->
             true
     after 100 ->
         false

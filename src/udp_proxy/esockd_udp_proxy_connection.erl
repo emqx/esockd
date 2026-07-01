@@ -24,6 +24,7 @@
     find_or_create/6,
     get_connection_id/5,
     dispatch/4,
+    detach/3,
     close/3
 ]).
 
@@ -42,8 +43,6 @@
 ) ->
     gen_server:start_ret().
 
--optional_callbacks([find_or_create/5]).
-
 %% Find routing information
 -callback get_connection_id(
     proxy_transport(), peer(), connection_state(), socket_packet()
@@ -53,8 +52,13 @@
 %% Dispacth message
 -callback dispatch(pid(), connection_state(), proxy_packet()) -> ok.
 
+%% Detach Connection
+-callback detach(pid(), connection_state()) -> ok.
+
 %% Close Connection
 -callback close(pid(), connection_state()) -> ok.
+
+-optional_callbacks([find_or_create/5, detach/2]).
 
 %%--------------------------------------------------------------------
 %%- API
@@ -78,6 +82,14 @@ get_connection_id(Mod, Transport, Peer, State, Data) ->
 
 dispatch(Mod, Pid, State, Packet) ->
     Mod:dispatch(Pid, State, Packet).
+
+detach(Mod, Pid, State) ->
+    case erlang:function_exported(Mod, detach, 2) of
+        true ->
+            Mod:detach(Pid, State);
+        false ->
+            ok
+    end.
 
 close(Mod, Pid, State) ->
     Mod:close(Pid, State).
