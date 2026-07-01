@@ -139,10 +139,15 @@ handle_info({ssl_error, _Sock, Reason}, State) ->
 handle_info({ssl_closed, _Sock}, State) ->
     {stop, ssl_closed, socket_exit(State)};
 handle_info(
-    {'DOWN', _, process, _Pid, _Reason},
+    {'DOWN', Ref, process, _Pid, _Reason},
+    #{connection_ref := Ref} = State
+) when is_reference(Ref) ->
+    {stop, {shutdown, connection_closed}, State};
+handle_info(
+    {'DOWN', _Ref, process, _Pid, _Reason},
     State
 ) ->
-    {stop, {shutdown, connection_closed}, State};
+    {noreply, State};
 handle_info(Info, State) ->
     ?ERROR_MSG("Unexpected info: ~p", [Info]),
     {noreply, State}.
@@ -207,8 +212,8 @@ dispatch(
         State
 ) ->
     case lookup(CId, State) of
-        {ok, Pid} ->
-            Result = attach(CId, State, Pid),
+        {ok, Pid, LookupState} ->
+            Result = attach(CId, LookupState, Pid),
             esockd_udp_proxy_connection:dispatch(
                 Mod, Pid, CState, {Transport, Data, Packet}
             ),
@@ -245,7 +250,7 @@ detach(
     } = State,
     Clear
 ) ->
-    erlang:demonitor(Ref),
+    _ = erlang:demonitor(Ref, [flush]),
 
     Result = esockd_udp_proxy_db:detach(Mod, CId),
     case Clear andalso Result of
@@ -270,19 +275,40 @@ heartbeat(Span) ->
     erlang:send_after(timer:seconds(Span), self(), {?FUNCTION_NAME, Span}),
     ok.
 
--spec lookup(connection_id(), state()) -> {ok, pid()} | {error, Reason :: term()}.
-lookup(_CId, #{connection_pid := Pid}) when is_pid(Pid) ->
-    {ok, Pid};
-lookup(CId, #{
-    connection_pid := undefined,
-    connection_mod := Mod,
-    transport := Transport,
-    peer := Peer,
-    connection_options := Opts
-}) ->
+-spec lookup(connection_id(), state()) -> {ok, pid(), state()} | {error, Reason :: term()}.
+lookup(CId, #{connection_id := CId, connection_pid := Pid} = State) when is_pid(Pid) ->
+    {ok, Pid, State};
+lookup(CId, #{connection_pid := Pid} = State) when is_pid(Pid) ->
+    case find_or_create_connection(CId, State) of
+        {ok, NPid} ->
+            {ok, NPid, detach(State, false)};
+        Error ->
+            Error
+    end;
+lookup(
+    CId,
+    #{connection_pid := undefined} = State
+) ->
+    case find_or_create_connection(CId, State) of
+        {ok, Pid} ->
+            {ok, Pid, State};
+        Error ->
+            Error
+    end.
+
+find_or_create_connection(
+    CId,
+    #{
+        connection_mod := Mod,
+        transport := Transport,
+        peer := Peer,
+        connection_options := Opts,
+        connection_state := CState
+    }
+) ->
     %% TODO: use proc_lib:start_link to instead of this call
     Fun = fun() ->
-        esockd_udp_proxy_connection:find_or_create(Mod, CId, Transport, Peer, Opts)
+        esockd_udp_proxy_connection:find_or_create(Mod, CId, Transport, Peer, Opts, CState)
     end,
     case esockd_udp:proxy_request(Fun) of
         {ok, Pid} ->
