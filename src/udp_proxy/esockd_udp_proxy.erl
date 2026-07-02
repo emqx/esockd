@@ -250,20 +250,21 @@ detach(
     } = State,
     Clear
 ) ->
+    ProxyId = self(),
     _ = erlang:demonitor(Ref, [flush]),
 
     Result = esockd_udp_proxy_db:detach(Mod, CId),
-    maybe_detach_connection(Clear, Result, Mod, Pid, CState),
+    maybe_detach_connection(Clear, Result, Mod, Pid, ProxyId, CState),
     State#{connection_id := undefined, connection_pid := undefined, connection_ref := undefined}.
 
-maybe_detach_connection(_Clear, false, _Mod, _Pid, _CState) ->
+maybe_detach_connection(_Clear, false, _Mod, _Pid, _ProxyId, _CState) ->
     ok;
-maybe_detach_connection(Clear, true, Mod, Pid, CState) ->
+maybe_detach_connection(Clear, true, Mod, Pid, ProxyId, CState) ->
     case erlang:is_process_alive(Pid) of
         true when Clear ->
-            esockd_udp_proxy_connection:close(Mod, Pid, CState);
+            esockd_udp_proxy_connection:close(Mod, Pid, ProxyId, CState);
         true ->
-            esockd_udp_proxy_connection:detach(Mod, Pid, CState);
+            esockd_udp_proxy_connection:detach(Mod, Pid, ProxyId, CState);
         _ ->
             ok
     end.

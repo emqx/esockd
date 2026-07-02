@@ -85,13 +85,14 @@ t_reroute_detaches_old_connection_without_closing(_) ->
         ok = gen_udp:send(Sock, {127, 0, 0, 1}, Port, <<"client-a">>),
         PidA = receive_find_or_create(<<"client-a">>),
         receive_dispatch(PidA, <<"client-a">>),
+        ProxyPid = proxy_pid(Srv),
 
         ok = gen_udp:send(Sock, {127, 0, 0, 1}, Port, <<"client-b">>),
         PidB = receive_find_or_create(<<"client-b">>),
         receive_dispatch(PidB, <<"client-b">>),
 
         ?assertNotEqual(PidA, PidB),
-        ?assert(received_detach(PidA)),
+        ?assert(received_detach(PidA, ProxyPid)),
         ?assertNot(received_close(PidA))
     after
         gen_udp:close(Sock),
@@ -124,7 +125,7 @@ t_lookup_failure_preserves_old_binding(_) ->
         receive_find_or_create_ignored(<<"ignore">>),
 
         ok = esockd_udp_proxy:close(ProxyPid),
-        ?assert(received_close(PidA))
+        ?assert(received_close(PidA, ProxyPid))
     after
         gen_udp:close(Sock),
         erlang:is_process_alive(Srv) andalso esockd_udp:stop(Srv)
@@ -211,6 +212,18 @@ t_legacy_find_or_create_wrapper_still_works(_) ->
         persistent_term:erase({esockd_udp_proxy_legacy_conn, test_parent})
     end.
 
+t_legacy_detach_wrapper_still_works(_) ->
+    Pid = spawn(fun connection_loop/0),
+    State = #{parent => self()},
+    ok = esockd_udp_proxy_connection:detach(?MODULE, Pid, State),
+    ?assert(received_legacy_detach(Pid)).
+
+t_legacy_close_wrapper_still_works(_) ->
+    Pid = spawn(fun connection_loop/0),
+    State = #{parent => self()},
+    ok = esockd_udp_proxy_connection:close(?MODULE, Pid, State),
+    ?assert(received_legacy_close(Pid)).
+
 %%--------------------------------------------------------------------
 %% esockd_udp_proxy_connection callbacks
 %%--------------------------------------------------------------------
@@ -239,12 +252,22 @@ dispatch(Pid, State, {_Transport, _Data, Packet}) ->
     ok.
 
 close(Pid, State) ->
-    maps:get(parent, State) ! {close, Pid},
+    maps:get(parent, State) ! {legacy_close, Pid},
+    Pid ! close,
+    ok.
+
+close(Pid, ProxyPid, State) ->
+    maps:get(parent, State) ! {close, Pid, ProxyPid},
     Pid ! close,
     ok.
 
 detach(Pid, State) ->
-    maps:get(parent, State) ! {detach, Pid},
+    maps:get(parent, State) ! {legacy_detach, Pid},
+    Pid ! detach,
+    ok.
+
+detach(Pid, ProxyPid, State) ->
+    maps:get(parent, State) ! {detach, Pid, ProxyPid},
     Pid ! detach,
     ok.
 
@@ -319,9 +342,41 @@ received_close(Pid) ->
         false
     end.
 
+received_close(Pid, ProxyPid) ->
+    receive
+        {close, Pid, ProxyPid} ->
+            true
+    after 100 ->
+        false
+    end.
+
+received_legacy_close(Pid) ->
+    receive
+        {legacy_close, Pid} ->
+            true
+    after 100 ->
+        false
+    end.
+
 received_detach(Pid) ->
     receive
         {detach, Pid} ->
+            true
+    after 100 ->
+        false
+    end.
+
+received_detach(Pid, ProxyPid) ->
+    receive
+        {detach, Pid, ProxyPid} ->
+            true
+    after 100 ->
+        false
+    end.
+
+received_legacy_detach(Pid) ->
+    receive
+        {legacy_detach, Pid} ->
             true
     after 100 ->
         false
