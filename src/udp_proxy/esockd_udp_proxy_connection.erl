@@ -21,9 +21,13 @@
 -export([
     initialize/2,
     find_or_create/5,
+    find_or_create/6,
     get_connection_id/5,
     dispatch/4,
-    close/3
+    detach/3,
+    detach/4,
+    close/3,
+    close/4
 ]).
 
 -export_type([connection_id/0, connection_module/0]).
@@ -36,6 +40,10 @@
 %% Create new connection
 -callback find_or_create(connection_id(), proxy_transport(), peer(), connection_options()) ->
     gen_server:start_ret().
+-callback find_or_create(
+    connection_id(), proxy_transport(), peer(), connection_options(), connection_state()
+) ->
+    gen_server:start_ret().
 
 %% Find routing information
 -callback get_connection_id(
@@ -46,8 +54,15 @@
 %% Dispacth message
 -callback dispatch(pid(), connection_state(), proxy_packet()) -> ok.
 
+%% Detach Connection
+-callback detach(pid(), connection_state()) -> ok.
+-callback detach(pid(), proxy_id(), connection_state()) -> ok.
+
 %% Close Connection
 -callback close(pid(), connection_state()) -> ok.
+-callback close(pid(), proxy_id(), connection_state()) -> ok.
+
+-optional_callbacks([find_or_create/5, detach/2, detach/3, close/3]).
 
 %%--------------------------------------------------------------------
 %%- API
@@ -58,11 +73,43 @@ initialize(Mod, Opts) ->
 find_or_create(Mod, CId, Transport, Peer, Opts) ->
     Mod:find_or_create(CId, Transport, Peer, Opts).
 
+find_or_create(Mod, CId, Transport, Peer, Opts, State) ->
+    case erlang:function_exported(Mod, find_or_create, 5) of
+        true ->
+            Mod:find_or_create(CId, Transport, Peer, Opts, State);
+        false ->
+            Mod:find_or_create(CId, Transport, Peer, Opts)
+    end.
+
 get_connection_id(Mod, Transport, Peer, State, Data) ->
     Mod:get_connection_id(Transport, Peer, State, Data).
 
 dispatch(Mod, Pid, State, Packet) ->
     Mod:dispatch(Pid, State, Packet).
+
+detach(Mod, Pid, ProxyId, State) ->
+    case erlang:function_exported(Mod, detach, 3) of
+        true ->
+            Mod:detach(Pid, ProxyId, State);
+        false ->
+            detach(Mod, Pid, State)
+    end.
+
+detach(Mod, Pid, State) ->
+    case erlang:function_exported(Mod, detach, 2) of
+        true ->
+            Mod:detach(Pid, State);
+        false ->
+            ok
+    end.
+
+close(Mod, Pid, ProxyId, State) ->
+    case erlang:function_exported(Mod, close, 3) of
+        true ->
+            Mod:close(Pid, ProxyId, State);
+        false ->
+            close(Mod, Pid, State)
+    end.
 
 close(Mod, Pid, State) ->
     Mod:close(Pid, State).
