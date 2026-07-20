@@ -344,7 +344,7 @@ connection_crashed(Pid, {shutdown, #{shutdown_count := Key} = Reason}, State) wh
 connection_crashed(Pid, {shutdown, Reason}, State) ->
     %% unidentified shutdown, cannot keep a counter of it,
     %% ideally we should try to add a 'shutdown_count' filed to the reason.
-    log(error, connection_shutdown, Reason, Pid, State);
+    log(warning, connection_shutdown, Reason, Pid, State);
 connection_crashed(Pid, Reason, State) ->
     %% unexpected crash, probably deserve a fix
     log(error, connection_crashed, Reason, Pid, State).
@@ -460,6 +460,8 @@ log(Level, Error, Reason, Pid, #state{mfargs = MFA}) ->
     case Level of
         info ->
             error_logger:info_report(supervisor_report, ErrorMsg);
+        warning ->
+            error_logger:warning_report(supervisor_report, ErrorMsg);
         error ->
             error_logger:error_report(supervisor_report, ErrorMsg)
     end.
