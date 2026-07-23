@@ -99,6 +99,137 @@ t_reroute_detaches_old_connection_without_closing(_) ->
         erlang:is_process_alive(Srv) andalso esockd_udp:stop(Srv)
     end.
 
+t_close_remote_connection(_) ->
+    case start_remote_node() of
+        {skip, _} = Skip ->
+            Skip;
+        {ok, Peer, RemoteNode} ->
+            process_flag(trap_exit, true),
+            ensure_proxy_db(),
+            Port = pick_udp_port(),
+            RemotePid = rpc:call(RemoteNode, erlang, spawn, [timer, sleep, [infinity]]),
+            ProxyOpts = #{
+                test_parent => self(),
+                remote_connection_pid => RemotePid,
+                esockd_proxy_opts => #{connection_mod => ?MODULE}
+            },
+            {ok, Srv} = esockd_udp:server(
+                test_udp_proxy_remote_connection,
+                {{127, 0, 0, 1}, Port},
+                [
+                    {connection_mfargs, {esockd_udp_proxy, start_link, [ProxyOpts]}}
+                ]
+            ),
+            {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+            try
+                ok = gen_udp:send(Sock, {127, 0, 0, 1}, Port, <<"remote-client">>),
+                ?assertEqual(RemotePid, receive_find_or_create(<<"remote-client">>)),
+                receive_dispatch(RemotePid, <<"remote-client">>),
+                ProxyPid = proxy_pid(Srv),
+
+                ok = esockd_udp_proxy:close(ProxyPid),
+                ?assert(received_close(RemotePid, ProxyPid))
+            after
+                gen_udp:close(Sock),
+                erlang:is_process_alive(Srv) andalso esockd_udp:stop(Srv),
+                ok = peer:stop(Peer)
+            end
+    end.
+
+t_close_remote_proxy(_) ->
+    case start_remote_node() of
+        {skip, _} = Skip ->
+            Skip;
+        {ok, Peer, RemoteNode} ->
+            process_flag(trap_exit, true),
+            ensure_proxy_db(),
+            Port = pick_udp_port(),
+            ProxyOpts = #{
+                test_parent => self(),
+                esockd_proxy_opts => #{connection_mod => ?MODULE}
+            },
+            {ok, Srv} = esockd_udp:server(
+                test_remote_udp_proxy_close,
+                {{127, 0, 0, 1}, Port},
+                [
+                    {connection_mfargs, {esockd_udp_proxy, start_link, [ProxyOpts]}}
+                ]
+            ),
+            {ok, Sock} = gen_udp:open(0, [binary, {active, false}]),
+            try
+                ok = gen_udp:send(Sock, {127, 0, 0, 1}, Port, <<"client-a">>),
+                Pid = receive_find_or_create(<<"client-a">>),
+                receive_dispatch(Pid, <<"client-a">>),
+                ProxyPid = proxy_pid(Srv),
+                ok = load_udp_proxy_module(RemoteNode),
+
+                ?assertEqual(ok, rpc:call(RemoteNode, esockd_udp_proxy, close, [ProxyPid])),
+                ?assert(received_close(Pid, ProxyPid))
+            after
+                gen_udp:close(Sock),
+                erlang:is_process_alive(Srv) andalso esockd_udp:stop(Srv),
+                ok = peer:stop(Peer)
+            end
+    end.
+
+t_close_unavailable_remote_proxy(_) ->
+    case start_remote_node() of
+        {skip, _} = Skip ->
+            Skip;
+        {ok, Peer, RemoteNode} ->
+            try
+                DeadPid = rpc:call(RemoteNode, erlang, spawn, [timer, sleep, [0]]),
+                Ref = erlang:monitor(process, DeadPid),
+                receive
+                    {'DOWN', Ref, process, DeadPid, _Reason} ->
+                        ok
+                after 1000 ->
+                    error({process_still_alive, DeadPid})
+                end,
+                ?assertEqual(ok, esockd_udp_proxy:close(DeadPid)),
+
+                DisconnectedPid = rpc:call(
+                    RemoteNode, erlang, spawn, [timer, sleep, [infinity]]
+                ),
+                ok = peer:stop(Peer),
+                ?assertEqual(ok, esockd_udp_proxy:close(DisconnectedPid))
+            after
+                erlang:is_process_alive(Peer) andalso peer:stop(Peer)
+            end
+    end.
+
+t_close_stopping_proxy(_) ->
+    lists:foreach(
+        fun(Reason) ->
+            ProxyPid = spawn(fun() -> stopping_proxy_loop(Reason) end),
+            ?assertEqual(ok, esockd_udp_proxy:close(ProxyPid))
+        end,
+        [normal, shutdown, {shutdown, restarting}, kill]
+    ).
+
+t_close_preserves_unexpected_failures(_) ->
+    CrashingProxy = spawn(fun() -> stopping_proxy_loop(unexpected_failure) end),
+    ?assertMatch(
+        {'EXIT', {unexpected_failure, {gen_server, call, _}}},
+        catch esockd_udp_proxy:close(CrashingProxy)
+    ),
+    UnexpectedReplyProxy = spawn(fun unexpected_reply_proxy_loop/0),
+    ?assertMatch(
+        {'EXIT', {{try_clause, unexpected_reply}, _}},
+        catch esockd_udp_proxy:close(UnexpectedReplyProxy)
+    ).
+
+t_close_unresponsive_proxy(_) ->
+    ProxyPid = spawn(fun unresponsive_proxy_loop/0),
+    Ref = erlang:monitor(process, ProxyPid),
+    ok = esockd_udp_proxy:close(ProxyPid),
+    receive
+        {'DOWN', Ref, process, ProxyPid, killed} ->
+            ok
+    after 1000 ->
+        error({proxy_not_killed, ProxyPid})
+    end.
+
 t_lookup_failure_preserves_old_binding(_) ->
     process_flag(trap_exit, true),
     ensure_proxy_db(),
@@ -229,7 +360,10 @@ t_legacy_close_wrapper_still_works(_) ->
 %%--------------------------------------------------------------------
 
 initialize(Opts) ->
-    #{parent => maps:get(test_parent, Opts)}.
+    #{
+        parent => maps:get(test_parent, Opts),
+        remote_connection_pid => maps:get(remote_connection_pid, Opts, undefined)
+    }.
 
 get_connection_id(_Transport, _Peer, State, Data) ->
     {ok, Data, Data, State#{last_cid => Data}}.
@@ -240,6 +374,10 @@ find_or_create(CId, _Transport, _Peer, _Opts, State) ->
         <<"ignore">> ->
             Parent ! {find_or_create_ignored, CId},
             ignore;
+        <<"remote-client">> ->
+            Pid = maps:get(remote_connection_pid, State),
+            Parent ! {find_or_create, CId, maps:get(last_cid, State), Pid},
+            {ok, Pid};
         _ ->
             Pid = spawn(fun connection_loop/0),
             Parent ! {find_or_create, CId, maps:get(last_cid, State), Pid},
@@ -284,6 +422,32 @@ ensure_proxy_db() ->
             ok
     end.
 
+start_remote_node() ->
+    case erlang:function_exported(peer, start_link, 1) of
+        false ->
+            {skip, peer_module_unavailable};
+        true ->
+            ensure_distribution(),
+            {ok, Peer, RemoteNode} = peer:start_link(#{name => esockd_udp_proxy_peer}),
+            {ok, Peer, RemoteNode}
+    end.
+
+ensure_distribution() ->
+    case node() of
+        nonode@nohost ->
+            _ = os:cmd("epmd -daemon"),
+            {ok, _} = net_kernel:start([esockd_udp_proxy_test, shortnames]),
+            ok;
+        _ ->
+            ok
+    end.
+
+load_udp_proxy_module(RemoteNode) ->
+    {esockd_udp_proxy, Beam, BeamFile} = code:get_object_code(esockd_udp_proxy),
+    {module, esockd_udp_proxy} =
+        rpc:call(RemoteNode, code, load_binary, [esockd_udp_proxy, BeamFile, Beam]),
+    ok.
+
 pick_udp_port() ->
     {ok, Sock} = gen_udp:open(0, [binary]),
     {ok, Port} = inet:port(Sock),
@@ -300,6 +464,31 @@ connection_loop() ->
             ok;
         _Msg ->
             connection_loop()
+    end.
+
+unresponsive_proxy_loop() ->
+    receive
+        _Msg ->
+            unresponsive_proxy_loop()
+    end.
+
+stopping_proxy_loop(Reason) ->
+    receive
+        {'$gen_call', _From, close} when Reason =:= kill ->
+            ProxyPid = self(),
+            spawn(fun() -> exit(ProxyPid, kill) end),
+            receive
+            after infinity ->
+                ok
+            end;
+        {'$gen_call', _From, close} ->
+            exit(Reason)
+    end.
+
+unexpected_reply_proxy_loop() ->
+    receive
+        {'$gen_call', From, close} ->
+            gen_server:reply(From, unexpected_reply)
     end.
 
 receive_find_or_create(CId) ->

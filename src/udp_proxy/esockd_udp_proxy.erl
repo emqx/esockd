@@ -39,6 +39,7 @@
     error_logger:error_msg("[~s]: " ++ Format, [?MODULE | Args])
 ).
 -define(DEF_HEARTBEAT, 60).
+-define(CLOSE_TIMEOUT, 5000).
 
 -type timespan() :: non_neg_integer().
 
@@ -70,11 +71,25 @@ start_link(Transport, Peer, Opts) ->
 send(ProxyId, Data) ->
     gen_server:cast(ProxyId, {send, Data}).
 
+-spec close(proxy_id()) -> ok.
 close(ProxyId) ->
-    case erlang:is_process_alive(ProxyId) of
-        true ->
-            gen_server:call(ProxyId, close);
-        _ ->
+    try gen_server:call(ProxyId, close, ?CLOSE_TIMEOUT) of
+        ok ->
+            ok
+    catch
+        exit:{Reason, {gen_server, call, _}} when
+            Reason =:= noproc;
+            Reason =:= normal;
+            Reason =:= shutdown;
+            Reason =:= killed
+        ->
+            ok;
+        exit:{{shutdown, _}, {gen_server, call, _}} ->
+            ok;
+        exit:{{nodedown, _}, {gen_server, call, _}} ->
+            ok;
+        exit:{timeout, {gen_server, call, _}} ->
+            exit(ProxyId, kill),
             ok
     end.
 
@@ -259,15 +274,22 @@ detach(
 
 maybe_detach_connection(_Clear, false, _Mod, _Pid, _ProxyId, _CState) ->
     ok;
-maybe_detach_connection(Clear, true, Mod, Pid, ProxyId, CState) ->
+maybe_detach_connection(Clear, true, Mod, Pid, ProxyId, CState) when node(Pid) =:= node() ->
     case erlang:is_process_alive(Pid) of
-        true when Clear ->
-            esockd_udp_proxy_connection:close(Mod, Pid, ProxyId, CState);
         true ->
-            esockd_udp_proxy_connection:detach(Mod, Pid, ProxyId, CState);
-        _ ->
+            notify_connection(Clear, Mod, Pid, ProxyId, CState);
+        false ->
             ok
-    end.
+    end;
+maybe_detach_connection(Clear, true, Mod, Pid, ProxyId, CState) ->
+    %% erlang:is_process_alive/1 only accepts local pids.  Remote connections
+    %% still need their owner-aware cleanup notification, so send it directly.
+    notify_connection(Clear, Mod, Pid, ProxyId, CState).
+
+notify_connection(true, Mod, Pid, ProxyId, CState) ->
+    esockd_udp_proxy_connection:close(Mod, Pid, ProxyId, CState);
+notify_connection(false, Mod, Pid, ProxyId, CState) ->
+    esockd_udp_proxy_connection:detach(Mod, Pid, ProxyId, CState).
 
 -spec socket_exit(state()) -> state().
 socket_exit(State) ->
