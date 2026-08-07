@@ -148,6 +148,10 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) -> ssl:close(Sock).
 
+%% No limiter configured: skip the consume so the connection hot path
+%% does not hit a `ets:update_counter` exception on a missing bucket.
+rate_limit(State = #state{conn_limiter = undefined}) ->
+    {keep_state, State, {next_event, internal, accept}};
 rate_limit(State = #state{conn_limiter = Limiter}) ->
     case esockd_limiter:consume(Limiter, 1) of
         {I, Pause} when I =< 0 ->

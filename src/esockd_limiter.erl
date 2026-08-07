@@ -79,7 +79,10 @@ bucket_info({{bucket, Name}, Capacity, Interval, LastTime}) ->
      }.
 
 tokens(Name) ->
-    ets:lookup_element(?TAB, {tokens, Name}, 2).
+    case ets:lookup(?TAB, {tokens, Name}) of
+        [] -> 0; %% the bucket is being deleted concurrently; report a stale 0 instead of crashing
+        [{_, Tokens}] -> Tokens
+    end.
 
 -spec(stop() -> ok).
 stop() ->
@@ -254,10 +257,28 @@ code_change(_OldVsn, State, _Extra) ->
 time_now() ->
     erlang:system_time(millisecond).
 
+%% The countdown ticks must fire roughly once per second: every bucket's
+%% countdown is decremented once per tick, so a tick longer than 1s slows down
+%% the token refill of every bucket.
+%%
+%% Two failure modes of the un-clamped `StrictNow + 1000 - Now` are avoided:
+%%
+%% 1. When a bucket is (re)configured via `update/3` with a larger interval, its
+%%    countdown can reach 1 well before `LastTime + Interval * 1000`. The bucket
+%%    then refills "early", pushing `StrictNow` far into the future. Since all
+%%    buckets share a single timer, the next tick would be delayed by ~Interval
+%%    seconds, starving every other bucket (e.g. a 1-second conn-rate limiter).
+%%    Clamping the tick to at most 1s keeps other buckets refilling on time.
+%%
+%% 2. If a tick is processed more than 1s after its refill boundary, the formula
+%%    becomes non-positive. `ensure_countdown_timer/2` only arms a timer for a
+%%    positive duration, so the limiter would stall permanently. Clamping to at
+%%    least 1ms guarantees a timer is always armed, letting the limiter recover
+%%    from a delayed tick.
 schedule_time(_Now, undefined) ->
     1000;
 schedule_time(Now, StrictNow) ->
-    StrictNow + 1000 - Now.
+    max(1, min(1000, StrictNow + 1000 - Now)).
 
 ensure_countdown_timer(State = #{timer := undefined}) ->
     ensure_countdown_timer(State, timer:seconds(1));
