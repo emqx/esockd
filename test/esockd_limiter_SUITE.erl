@@ -360,9 +360,11 @@ t_stale_countdown_tick_ignored_and_heals(_) ->
         timer:sleep(100),
         #{timer := TRef2} = sys:get_state(esockd_limiter),
         ?assert(is_integer(erlang:read_timer(TRef2))),
-        %% a stale tick against a dead timer must re-arm instead of stalling
+        %% a stale tick against a dead timer must re-arm instead of stalling;
+        %% a burst of stale ticks (a leak from earlier timer generations) is
+        %% drained in one go, so it must not re-arm once per leaked message
         _ = erlang:cancel_timer(TRef2),
-        esockd_limiter ! {timeout, make_ref(), countdown},
+        [esockd_limiter ! {timeout, make_ref(), countdown} || _ <- lists:seq(1, 5)],
         timer:sleep(100),
         #{timer := TRef3} = sys:get_state(esockd_limiter),
         ?assert(is_integer(erlang:read_timer(TRef3))),

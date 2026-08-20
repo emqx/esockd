@@ -291,7 +291,10 @@ schedule_time(Now, StrictNow) ->
 %% `Time` is clamped to at least 1ms before arming: erlang:start_timer/3
 %% crashes the server on a negative timeout, and a zero timeout arms a timer
 %% that never delivers its message - both would leave the countdown dead.
-%% No timer is armed while no buckets exist, so an idle limiter does not tick.
+%% No new timer is armed while no buckets exist, so an idle limiter is not
+%% kept ticking by this call. A timer already running is not cancelled here:
+%% after the last bucket is deleted, the pending tick is still allowed to
+%% wind down (see ensure_countdown_timer/1).
 arm_countdown_timer(State = #{countdown := Countdown}, Time) ->
     case maps:size(Countdown) of
         0 -> State#{timer := undefined};
@@ -302,9 +305,14 @@ arm_countdown_timer(State = #{countdown := Countdown}, Time) ->
 %% timer is armed. The `timer` state field alone is not trusted - the reference
 %% is verified against erlang:read_timer/1, so a timer that has died (cancelled,
 %% or its reference replaced while a tick was still in flight) is re-armed.
-%% Every callback that touches the countdown map ends here, so the invariant
-%% is re-established on every state transition no matter how the previous
-%% timer was lost.
+%% Every state transition that touches the countdown map - create, update,
+%% delete, and a stale countdown tick - ends here, so the invariant is
+%% re-established no matter how the previous timer was lost. (The countdown
+%% tick itself is the exception: it recomputes the schedule and arms the next
+%% timer directly via arm_countdown_timer/2.)
+%% Once the countdown is empty, a still-running timer is left alone and winds
+%% down on its next tick, so the limiter stops ticking at most one tick after
+%% the last bucket is deleted.
 ensure_countdown_timer(State = #{countdown := Countdown, timer := TRef}) ->
     Running = is_reference(TRef) andalso is_integer(erlang:read_timer(TRef)),
     case {Running, maps:size(Countdown)} of
@@ -313,5 +321,20 @@ ensure_countdown_timer(State = #{countdown := Countdown, timer := TRef}) ->
         {false, 0} ->
             State#{timer := undefined};
         {false, _} ->
+            drain_countdown_ticks(),
             arm_countdown_timer(State, timer:seconds(1))
+    end.
+
+%% Drain countdown tick messages that are already in the mailbox. With the
+%% timer dead, these can only be leaks from earlier timer generations; a leak
+%% that is processed in the window right after the re-armed timer has fired
+%% (e.g. a 1ms tick) but before its own message is handled would see the timer
+%% as dead again, arm yet another one, and drop the real tick - delaying every
+%% bucket's refill. Consuming the whole batch up front keeps a single re-arm
+%% from being followed by such a cascade.
+drain_countdown_ticks() ->
+    receive
+        {timeout, _Ref, countdown} -> drain_countdown_ticks()
+    after 0 ->
+        ok
     end.
