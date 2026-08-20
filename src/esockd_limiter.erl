@@ -198,7 +198,7 @@ handle_cast({delete, Name}, State = #{countdown := Countdown}) ->
     true = ets:delete(?TAB, {bucket, Name}),
     true = ets:delete(?TAB, {tokens, Name}),
     NCountdown = maps:remove({bucket, Name}, Countdown),
-    {noreply, State#{countdown := NCountdown}};
+    {noreply, ensure_countdown_timer(State#{countdown := NCountdown})};
 
 handle_cast(Msg, State) ->
     error_logger:error_msg("Unexpected cast: ~p~n", [Msg]),
@@ -238,7 +238,13 @@ handle_info({timeout, Timer, countdown}, State = #{countdown := Countdown, timer
         ),
     ScheduleTime = schedule_time(Now, StrictNow),
     NState = State#{countdown := Countdown1, timer := undefined},
-    {noreply, ensure_countdown_timer(NState, ScheduleTime)};
+    {noreply, arm_countdown_timer(NState, ScheduleTime)};
+
+%% A countdown tick whose reference no longer matches the state: the timer was
+%% replaced while this tick was still in flight. Re-establish the invariant
+%% (a live timer while buckets exist) instead of dropping the countdown.
+handle_info({timeout, _StaleRef, countdown}, State) ->
+    {noreply, ensure_countdown_timer(State)};
 
 handle_info(Info, State) ->
     error_logger:error_msg("Unexpected info: ~p~n", [Info]),
@@ -271,22 +277,41 @@ time_now() ->
 %%    Clamping the tick to at most 1s keeps other buckets refilling on time.
 %%
 %% 2. If a tick is processed more than 1s after its refill boundary, the formula
-%%    becomes non-positive. `ensure_countdown_timer/2` only arms a timer for a
-%%    positive duration, so the limiter would stall permanently. Clamping to at
-%%    least 1ms guarantees a timer is always armed, letting the limiter recover
+%%    becomes non-positive. `arm_countdown_timer/2` clamps it back to at least
+%%    1ms (a non-positive timeout would either crash the server or arm a timer
+%%    that never fires), so a timer is always armed and the limiter recovers
 %%    from a delayed tick.
 schedule_time(_Now, undefined) ->
     1000;
 schedule_time(Now, StrictNow) ->
     max(1, min(1000, StrictNow + 1000 - Now)).
 
-ensure_countdown_timer(State = #{timer := undefined}) ->
-    ensure_countdown_timer(State, timer:seconds(1));
-ensure_countdown_timer(State = #{timer := _TRef}) ->
-    State.
+%% Arm a fresh countdown timer for `Time` ms.
+%%
+%% `Time` is clamped to at least 1ms before arming: erlang:start_timer/3
+%% crashes the server on a negative timeout, and a zero timeout arms a timer
+%% that never delivers its message - both would leave the countdown dead.
+%% No timer is armed while no buckets exist, so an idle limiter does not tick.
+arm_countdown_timer(State = #{countdown := Countdown}, Time) ->
+    case maps:size(Countdown) of
+        0 -> State#{timer := undefined};
+        _ -> State#{timer := erlang:start_timer(max(1, Time), self(), countdown)}
+    end.
 
-ensure_countdown_timer(State = #{timer := undefined}, Time) when Time > 0 ->
-    TRef = erlang:start_timer(Time, self(), countdown),
-    State#{timer := TRef};
-ensure_countdown_timer(State = #{timer := _TRef}, _Time) ->
-    State.
+%% Guarantee the countdown invariant: while buckets exist, a live countdown
+%% timer is armed. The `timer` state field alone is not trusted - the reference
+%% is verified against erlang:read_timer/1, so a timer that has died (cancelled,
+%% or its reference replaced while a tick was still in flight) is re-armed.
+%% Every callback that touches the countdown map ends here, so the invariant
+%% is re-established on every state transition no matter how the previous
+%% timer was lost.
+ensure_countdown_timer(State = #{countdown := Countdown, timer := TRef}) ->
+    Running = is_reference(TRef) andalso is_integer(erlang:read_timer(TRef)),
+    case {Running, maps:size(Countdown)} of
+        {true, _} ->
+            State;
+        {false, 0} ->
+            State#{timer := undefined};
+        {false, _} ->
+            arm_countdown_timer(State, timer:seconds(1))
+    end.
