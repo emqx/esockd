@@ -326,6 +326,85 @@ t_delete_while_active(_) ->
         esockd_limiter:stop()
     end.
 
+%% While buckets exist a countdown timer must always be running, and it must
+%% come back if it dies: kill the timer behind the limiter's back, then touch
+%% the limiter with any config change and verify it is re-armed and buckets
+%% keep refilling on cadence.
+t_timer_self_heals_after_cancel(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(b, 100, 1),
+        timer:sleep(100),
+        #{timer := TRef} = sys:get_state(esockd_limiter),
+        ?assert(is_integer(erlang:read_timer(TRef))),
+        %% kill the timer behind the limiter's back: the state still holds
+        %% the now-dead reference
+        _ = erlang:cancel_timer(TRef),
+        #{timer := TRef} = sys:get_state(esockd_limiter),
+        ?assertEqual(false, erlang:read_timer(TRef)),
+        %% any config touch re-arms a live timer
+        ok = esockd_limiter:create(b2, 10, 1),
+        #{timer := TRef2} = sys:get_state(esockd_limiter),
+        ?assert(is_reference(TRef2)),
+        ?assert(is_integer(erlang:read_timer(TRef2))),
+        %% and the buckets still refill on cadence
+        drain(b, 100),
+        ok = expect_tokens(b, 100, 3000)
+    after
+        esockd_limiter:stop()
+    end.
+
+%% A countdown tick from a foreign (replaced/dead) timer reference must not
+%% disturb the live timer, and must leave the limiter armed.
+t_stale_countdown_tick_ignored_and_heals(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(b, 100, 1),
+        timer:sleep(100),
+        %% a stale tick: reference does not match the state
+        esockd_limiter ! {timeout, make_ref(), countdown},
+        timer:sleep(100),
+        #{timer := TRef2} = sys:get_state(esockd_limiter),
+        ?assert(is_integer(erlang:read_timer(TRef2))),
+        %% a stale tick against a dead timer must re-arm instead of stalling;
+        %% a burst of stale ticks (a leak from earlier timer generations) is
+        %% drained in one go, so it must not re-arm once per leaked message
+        _ = erlang:cancel_timer(TRef2),
+        [esockd_limiter ! {timeout, make_ref(), countdown} || _ <- lists:seq(1, 5)],
+        timer:sleep(100),
+        #{timer := TRef3} = sys:get_state(esockd_limiter),
+        ?assert(is_integer(erlang:read_timer(TRef3))),
+        %% refills still happen on cadence after the disturbances
+        drain(b, 100),
+        ok = expect_tokens(b, 100, 3000)
+    after
+        esockd_limiter:stop()
+    end.
+
+%% No buckets: no timer. An idle limiter must not tick forever.
+t_no_timer_without_buckets(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        %% fresh limiter: nothing armed
+        #{timer := undefined} = sys:get_state(esockd_limiter),
+        ok = esockd_limiter:create(b, 10, 1),
+        timer:sleep(100),
+        #{timer := TRef} = sys:get_state(esockd_limiter),
+        ?assert(is_reference(TRef)),
+        %% deleting the last bucket lets the last pending tick wind down
+        ok = esockd_limiter:delete(b),
+        timer:sleep(1500),
+        #{timer := undefined, countdown := Countdown} = sys:get_state(esockd_limiter),
+        ?assertEqual(0, map_size(Countdown)),
+        %% re-creating arms it again
+        ok = esockd_limiter:create(b, 10, 1),
+        timer:sleep(100),
+        #{timer := TRef2} = sys:get_state(esockd_limiter),
+        ?assert(is_integer(erlang:read_timer(TRef2)))
+    after
+        esockd_limiter:stop()
+    end.
+
 t_handle_call(_) ->
     {reply, ignore, state} = esockd_limiter:handle_call(req, '_From', state).
 
