@@ -77,9 +77,9 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
     %% Start acceptor sup
     %% init_stats is a synchronous startup barrier: it guarantees a pending
     %% del_stats from a previously stopped listener with the same name is
-    %% processed before this listener starts counting.
+    %% processed before this listener starts counting.  Other counters
+    %% (discarded, sock errors) are created lazily on first update.
     ok = esockd_server:init_stats({Proto, ListenOn}, accepted),
-    ok = esockd_server:init_stats({Proto, ListenOn}, discarded),
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
