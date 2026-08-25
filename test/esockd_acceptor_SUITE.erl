@@ -64,6 +64,9 @@ t_dead_socket_consumes_no_token(_) ->
     ?assertEqual(1, listener_tokens(Port)),
     ?assertEqual(2, listener_stat(Port, accepted)),
     ?assertEqual(1, listener_stat(Port, discarded)),
+    %% the discard reason is recorded for online troubleshooting
+    %% (enotconn on Linux, einval on macOS)
+    ?assertEqual(1, dead_sock_error_count(Port)),
     %% the next live connection is not throttled by the dead one:
     %% with max_conn_rate=1 a wasted token would stall it for ~1s
     {ok, C3} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
@@ -94,6 +97,7 @@ t_live_socket_consumes_token(_) ->
     gen_tcp:close(C2),
     ?assertEqual(2, listener_stat(Port, accepted)),
     ?assertEqual(0, listener_stat(Port, discarded)),
+    ?assertEqual([], esockd_server:get_sock_errors({echo, Port})),
     ok = esockd:close(echo, Port).
 
 %% A socket that fails the tune step was never handed to a connection
@@ -116,7 +120,10 @@ t_tune_failure_consumes_no_token(_) ->
         %% but it did not consume a token for it
         ?assertEqual(Tokens0, listener_tokens(Port)),
         ?assertEqual(Accepted0 + 1, listener_stat(Port, accepted)),
-        ?assertEqual(1, listener_stat(Port, discarded))
+        ?assertEqual(1, listener_stat(Port, discarded)),
+        %% and the tune failure reason is recorded for online troubleshooting
+        ?assertEqual(1, proplists:get_value(enotconn,
+                                            esockd_server:get_sock_errors({echo, Port}), 0))
     after
         catch meck:unload(esockd_transport)
     end,
@@ -134,3 +141,9 @@ listener_tokens(Port) ->
 
 listener_stat(Port, Metric) ->
     proplists:get_value(Metric, esockd_server:get_stats({echo, Port}), 0).
+
+%% count of discarded sockets whose peer was already gone at accept time
+%% ({error, enotconn} on Linux, {error, einval} on macOS)
+dead_sock_error_count(Port) ->
+    Errs = esockd_server:get_sock_errors({echo, Port}),
+    proplists:get_value(enotconn, Errs, 0) + proplists:get_value(einval, Errs, 0).

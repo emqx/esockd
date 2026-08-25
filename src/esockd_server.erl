@@ -29,6 +29,11 @@
         , del_stats/1
         ]).
 
+%% sock error API
+-export([ inc_sock_error/2
+        , get_sock_errors/1
+        ]).
+
 %% gen_server callbacks
 -export([ init/1
         , handle_call/3
@@ -42,6 +47,7 @@
 
 -define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
+-define(SOCK_ERRORS_TAB, esockd_sock_errors).
 
 %%--------------------------------------------------------------------
 %% API
@@ -85,6 +91,25 @@ update_counter(Key, Num) ->
 del_stats({Protocol, ListenOn}) ->
     gen_server:cast(?SERVER, {del, {Protocol, ListenOn}}).
 
+%% @doc Count one accepted socket that failed with Reason before a
+%% connection process was started (peer already gone, tune failure, ...
+%%), or one failed accept.  Kept per listener so that disconnect reasons
+%% that never reach esockd_connection_sup (no connection process was ever
+%% started) are still observable online.
+-spec(inc_sock_error({atom(), esockd:listen_on()}, term()) -> non_neg_integer()).
+inc_sock_error({Protocol, ListenOn}, Reason) ->
+    Key = {{Protocol, ListenOn}, Reason},
+    ets:update_counter(?SOCK_ERRORS_TAB, Key, {2, 1}, {Key, 0}).
+
+%% @doc Accepted-socket / accept failure counts by reason, for online
+%% troubleshooting.  Complement of esockd_connection_sup:get_shutdown_count,
+%% which only covers connection processes that were actually started.
+-spec(get_sock_errors({atom(), esockd:listen_on()}) -> [{term(), non_neg_integer()}]).
+get_sock_errors({Protocol, ListenOn}) ->
+    [{Reason, Count} || [Reason, Count]
+                        <- ets:match(?SOCK_ERRORS_TAB,
+                                     {{{Protocol, ListenOn}, '$1'}, '$2'})].
+
 %%--------------------------------------------------------------------
 %% gen_server callbacks
 %%--------------------------------------------------------------------
@@ -92,6 +117,8 @@ del_stats({Protocol, ListenOn}) ->
 init([]) ->
     _ = ets:new(?STATS_TAB, [public, set, named_table,
                              {write_concurrency, true}]),
+    _ = ets:new(?SOCK_ERRORS_TAB, [public, set, named_table,
+                                   {write_concurrency, true}]),
     {ok, #state{}}.
 
 handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
@@ -104,6 +131,7 @@ handle_call(Req, _From, State) ->
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
+    ets:match_delete(?SOCK_ERRORS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->

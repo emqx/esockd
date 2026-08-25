@@ -132,24 +132,29 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
                     consume_limiter;
                 {error, Reason} when Reason =:= enotconn; Reason =:= einval ->
                     esockd_server:inc_stats({Proto, ListenOn}, discarded, 1),
+                    record_sock_error({Proto, ListenOn}, Reason),
                     close(Sock), %% quiet... issue #10 / haproxy check
                     skip_limiter;
                 {error, Reason} ->
                     error_logger:error_msg("Failed to start connection on ~s: ~p",
                                            [esockd:format(Sockname), Reason]),
+                    record_sock_error({Proto, ListenOn}, Reason),
                     close(Sock),
                     consume_limiter
             end;
         {error, Reason} when Reason =:= enotconn; Reason =:= einval ->
             esockd_server:inc_stats({Proto, ListenOn}, discarded, 1),
+            record_sock_error({Proto, ListenOn}, Reason),
             close(Sock),
             skip_limiter;
         {error, closed} ->
+            record_sock_error({Proto, ListenOn}, closed),
             close(Sock),
             consume_limiter;
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
                                    [esockd:format(Sockname), Reason]),
+            record_sock_error({Proto, ListenOn}, Reason),
             close(Sock),
             consume_limiter
     end,
@@ -162,21 +167,27 @@ accepting(info, {inet_async, LSock, Ref, {error, closed}},
 %% {error, econnaborted} -> accept
 %% {error, esslaccept}   -> accept
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          #state{lsock = LSock, accept_ref = Ref})
+          State = #state{lsock = LSock, proto = Proto, listen_on = ListenOn,
+                         accept_ref = Ref})
     when Reason =:= econnaborted; Reason =:= esslaccept ->
-    {keep_state_and_data, {next_event, internal, accept}};
+    record_sock_error({Proto, ListenOn}, Reason),
+    {keep_state, State, {next_event, internal, accept}};
 
 %% emfile: The per-process limit of open file descriptors has been reached.
 %% enfile: The system limit on the total number of open files has been reached.
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
+          State = #state{lsock = LSock, proto = Proto, listen_on = ListenOn,
+                         sockname = Sockname, accept_ref = Ref})
     when Reason =:= emfile; Reason =:= enfile ->
     error_logger:error_msg("Accept error on ~s: ~s",
                            [esockd:format(Sockname), esockd_utils:explain_posix(Reason)]),
+    record_sock_error({Proto, ListenOn}, Reason),
     {next_state, suspending, State, 1000};
 
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          State = #state{lsock = LSock, accept_ref = Ref}) ->
+          State = #state{lsock = LSock, proto = Proto, listen_on = ListenOn,
+                         accept_ref = Ref}) ->
+    record_sock_error({Proto, ListenOn}, Reason),
     {stop, Reason, State}.
 
 suspending({call, From}, {set_conn_limiter, Limiter}, State) ->
@@ -196,6 +207,15 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 %%--------------------------------------------------------------------
 
 close(Sock) -> catch port_close(Sock).
+
+%% Record an accept/socket failure reason for online troubleshooting
+%% (see esockd_server:get_sock_errors/1).  Complex reasons are normalized
+%% so the per-listener counter keys stay bounded.
+record_sock_error({Proto, ListenOn}, Reason) ->
+    esockd_server:inc_sock_error({Proto, ListenOn}, normalize(Reason)).
+
+normalize(Reason) when is_atom(Reason) -> Reason;
+normalize(_) -> other.
 
 %% No limiter configured: skip the consume so the connection hot path
 %% does not hit a `ets:update_counter` exception on a missing bucket.
