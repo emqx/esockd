@@ -97,7 +97,7 @@ t_live_socket_consumes_token(_) ->
     gen_tcp:close(C2),
     ?assertEqual(2, listener_stat(Port, accepted)),
     ?assertEqual(0, listener_stat(Port, discarded)),
-    ?assertEqual([], esockd_server:get_sock_errors({echo, Port})),
+    ?assertEqual([], sock_errors(Port)),
     ok = esockd:close(echo, Port).
 
 %% A socket that fails the tune step was never handed to a connection
@@ -122,8 +122,7 @@ t_tune_failure_consumes_no_token(_) ->
         ?assertEqual(Accepted0 + 1, listener_stat(Port, accepted)),
         ?assertEqual(1, listener_stat(Port, discarded)),
         %% and the tune failure reason is recorded for online troubleshooting
-        ?assertEqual(1, proplists:get_value(enotconn,
-                                            esockd_server:get_sock_errors({echo, Port}), 0))
+        ?assertEqual(1, proplists:get_value(enotconn, sock_errors(Port), 0))
     after
         catch meck:unload(esockd_transport)
     end,
@@ -167,8 +166,14 @@ listener_tokens(Port) ->
 listener_stat(Port, Metric) ->
     proplists:get_value(Metric, esockd_server:get_stats({echo, Port}), 0).
 
+%% sock-error counters are part of the listener stats, keyed
+%% {sock_error, Reason} (see esockd_server:get_stats/1)
+sock_errors(Port) ->
+    [{Reason, Count} || {{sock_error, Reason}, Count}
+                        <- esockd_server:get_stats({echo, Port})].
+
 %% count of discarded sockets whose peer was already gone at accept time
 %% ({error, enotconn} on Linux, {error, einval} on macOS)
 dead_sock_error_count(Port) ->
-    Errs = esockd_server:get_sock_errors({echo, Port}),
+    Errs = sock_errors(Port),
     proplists:get_value(enotconn, Errs, 0) + proplists:get_value(einval, Errs, 0).

@@ -230,8 +230,9 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 close(Sock) -> catch port_close(Sock).
 
 %% Record an accept/socket failure reason for online troubleshooting
-%% (see esockd_server:get_sock_errors/1).  Complex reasons are normalized
-%% so the per-listener counter keys stay bounded.
+%% (surfaced by esockd_server:get_stats/1 as {sock_error, Reason}).
+%% Complex reasons are normalized so the per-listener counter keys stay
+%% bounded.
 record_sock_error({Proto, ListenOn}, Reason) ->
     esockd_server:inc_sock_error({Proto, ListenOn}, normalize(Reason)).
 

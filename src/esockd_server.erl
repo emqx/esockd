@@ -31,7 +31,6 @@
 
 %% sock error API
 -export([ inc_sock_error/2
-        , get_sock_errors/1
         ]).
 
 %% gen_server callbacks
@@ -48,13 +47,13 @@
 -define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
 
-%% All counters live in one ETS table, keyed per listener:
-%%   {{Proto, ListenOn}, Metric}                -- metrics, queried by get_stats/1
-%%   {sock_error, Proto, ListenOn, Reason}      -- failure reasons, queried by
-%%                                                get_sock_errors/1; the
-%%                                                sock_error namespace is
-%%                                                naturally excluded from
-%%                                                get_stats/1.
+%% All counters live in one ETS table, keyed per listener, and are all
+%% returned by get_stats/1:
+%%   {{Proto, ListenOn}, accepted}             -- accepted sockets
+%%   {{Proto, ListenOn}, discarded}            -- discarded dead sockets
+%%   {{Proto, ListenOn}, {sock_error, Reason}} -- accept/socket failure
+%%                                               reasons (peer already gone,
+%%                                               tune failures, ...)
 
 %%--------------------------------------------------------------------
 %% API
@@ -82,7 +81,8 @@ stats_fun({Protocol, ListenOn}, Metric) ->
 init_stats({Protocol, ListenOn}, Metric) ->
     gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
 
--spec(get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}]).
+-spec(get_stats({atom(), esockd:listen_on()}) ->
+      [{atom() | {sock_error, term()}, non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
     [{Metric, Val} || [Metric, Val]
                       <- ets:match(?STATS_TAB, {{{Protocol, ListenOn}, '$1'}, '$2'})].
@@ -107,22 +107,14 @@ del_stats({Protocol, ListenOn}) ->
 
 %% @doc Count one accepted socket that failed with Reason before a
 %% connection process was started (peer already gone, tune failure, ...
-%%), or one failed accept.  Kept per listener so that disconnect reasons
-%% that never reach esockd_connection_sup (no connection process was ever
-%% started) are still observable online.
+%%), or one failed accept.  Kept per listener, surfaced by get_stats/1 as
+%% {sock_error, Reason}, so disconnect reasons that never reach
+%% esockd_connection_sup (no connection process was ever started) are
+%% observable online.
 -spec(inc_sock_error({atom(), esockd:listen_on()}, term()) -> non_neg_integer()).
 inc_sock_error({Protocol, ListenOn}, Reason) ->
-    Key = {sock_error, Protocol, ListenOn, Reason},
+    Key = {{Protocol, ListenOn}, {sock_error, Reason}},
     ets:update_counter(?STATS_TAB, Key, {2, 1}, {Key, 0}).
-
-%% @doc Accepted-socket / accept failure counts by reason, for online
-%% troubleshooting.  Complement of esockd_connection_sup:get_shutdown_count,
-%% which only covers connection processes that were actually started.
--spec(get_sock_errors({atom(), esockd:listen_on()}) -> [{term(), non_neg_integer()}]).
-get_sock_errors({Protocol, ListenOn}) ->
-    [{Reason, Count} || [Reason, Count]
-                        <- ets:match(?STATS_TAB,
-                                     {{sock_error, Protocol, ListenOn, '$1'}, '$2'})].
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -143,7 +135,6 @@ handle_call(Req, _From, State) ->
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
-    ets:match_delete(?STATS_TAB, {{sock_error, Protocol, ListenOn, '_'}, '_'}),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
