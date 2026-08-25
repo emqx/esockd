@@ -31,6 +31,7 @@
         , lookup/1
         , consume/1
         , consume/2
+        , refund/1
         , delete/1
         ]).
 
@@ -161,6 +162,33 @@ pause_time(Name, Now, Remaining) ->
             %% And since `LastTime` will be updated immediately, we pause for at least 1ms.
             PauseTime = LastTime + (BorrowFrom * Interval * 1000) - Now,
             max(1, PauseTime)
+    end.
+
+%% @doc Return one token that was consumed by a connection which died before
+%% it ever engaged (see conn-rate token refund design).
+%%
+%% The refund is unconditional per pre-establishment death: the token was
+%% consumed at accept, so returning it exactly cancels the dead connection's
+%% contribution (consume and refund are 1:1 for marked deaths). Without this,
+%% a storm of dead sockets would keep draining the bucket - a gated refund
+%% only fires while the bucket is already exhausted, so it can never restore
+%% the drained tokens and the acceptors keep pausing.
+%%
+%% The balance is capped at capacity (same cap as the countdown refill), so
+%% refunds can never inflate the bucket above what a refill would allow: a
+%% dead connection's token is restored, but no "free" tokens are created. A
+%% missing bucket (deleted, or never created) is a no-op.
+-spec(refund(bucket_name()) -> ok).
+refund(Name) ->
+    case ets:lookup(?TAB, {bucket, Name}) of
+        [{_Bucket, Capacity, _Interval, _LastTime}] ->
+            try ets:update_counter(?TAB, {tokens, Name}, {2, 1, Capacity, Capacity}) of
+                _ -> ok
+            catch
+                error:badarg -> ok  %% tokens row deleted concurrently
+            end;
+        _ ->
+            ok
     end.
 
 -spec(delete(bucket_name()) -> ok).

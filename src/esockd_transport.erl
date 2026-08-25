@@ -36,6 +36,7 @@
         , ssl_upgrade/3
         , proxy_upgrade_fun/1
         , proxy_upgrade/2
+        , upgrade/2
         ]).
 
 -export_type([socket/0]).
@@ -77,8 +78,37 @@ upgrade(Sock, []) ->
 upgrade(Sock, [{Fun, Args}|More]) ->
     case apply(Fun, [Sock|Args]) of
         {ok, NewSock} -> upgrade(NewSock, More);
-        Error         -> fast_close(Sock), Error
+        Error ->
+            case pre_establishment_reason(Error) of
+                {ok, Reason} ->
+                    %% The peer disappeared (FIN/RST) while the socket was being
+                    %% upgraded (e.g. during the TLS handshake), before any
+                    %% application data was exchanged: the connection never
+                    %% engaged. Exit with the pre-establishment marker so
+                    %% esockd_connection_sup can refund the connection-rate
+                    %% token (conn-rate token refund design).
+                    fast_close(Sock),
+                    exit({shutdown, {pre_establishment, Reason}});
+                false ->
+                    fast_close(Sock),
+                    Error
+            end
     end.
+
+%% The peer is gone if the upgrade failed with one of these reasons.
+%% `ssl_upgrade/3` additionally wraps unexpected handshake exceptions in
+%% `{ssl_failure, Reason}`; einval/enotconn from a dead socket can surface
+%% that way. A TLS alert (unknown_ca etc.) or a handshake timeout means the
+%% client responded and must not be refunded.
+pre_establishment_reason({error, Reason}) when Reason =:= closed;
+                                               Reason =:= einval;
+                                               Reason =:= enotconn ->
+    {ok, Reason};
+pre_establishment_reason({error, {ssl_failure, Reason}}) when Reason =:= einval;
+                                                               Reason =:= enotconn ->
+    {ok, Reason};
+pre_establishment_reason(_) ->
+    false.
 
 -spec(listen(inet:port_number(), [gen_tcp:listen_option()])
       -> {ok, inet:socket()} | {error, system_limit | inet:posix()}).

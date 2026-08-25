@@ -151,8 +151,168 @@ report_has_socket_info(Report) ->
         maps:get(local, Socket, undefined) =:= "127.0.0.1:9999" andalso
         maps:get(peer, Socket, undefined) =:= "127.0.0.1:3456".
 
+%%--------------------------------------------------------------------
+%% Conn-rate token refund
+%%--------------------------------------------------------------------
+
+%% A connection dying with the pre-establishment marker refunds one token
+%% while the bucket is in debt, and the inner reason is counted in
+%% shutdown_count with unchanged semantics.
+t_refund_on_marked_death(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(bucket, 1, 3600),
+        {0, _} = esockd_limiter:consume(bucket, 1),
+        {-1, _} = esockd_limiter:consume(bucket, 1),
+        #{tokens := -1} = esockd_limiter:lookup(bucket),
+        ok = mock_transport(),
+        try
+            with_conn_sup([{max_connections, 1024}],
+                          fun(ConnSup) ->
+                                  ok = esockd_connection_sup:set_conn_limiter(ConnSup, bucket),
+                                  {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  exit(ConnPid, {shutdown, {pre_establishment, tcp_closed}}),
+                                  timer:sleep(200),
+                                  #{tokens := 0} = esockd_limiter:lookup(bucket),
+                                  [{pre_establishment, 1}, {tcp_closed, 1}] =
+                                      lists:sort(esockd_connection_sup:get_shutdown_count(ConnSup))
+                          end)
+        after
+            meck:unload(esockd_transport)
+        end
+    after
+        esockd_limiter:stop()
+    end.
+
+%% Several marked deaths refund one token each, cancelling debt up to zero.
+t_refund_multiple_marked_deaths(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(bucket, 1, 3600),
+        lists:foreach(fun(_) -> esockd_limiter:consume(bucket, 1) end, lists:seq(1, 4)),
+        #{tokens := -3} = esockd_limiter:lookup(bucket),
+        ok = mock_transport(),
+        try
+            with_conn_sup([{max_connections, 1024}],
+                          fun(ConnSup) ->
+                                  ok = esockd_connection_sup:set_conn_limiter(ConnSup, bucket),
+                                  {ok, P1} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  {ok, P2} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  exit(P1, {shutdown, {pre_establishment, tcp_closed}}),
+                                  exit(P2, {shutdown, {pre_establishment, econnreset}}),
+                                  timer:sleep(200),
+                                  #{tokens := -1} = esockd_limiter:lookup(bucket),
+                                  [{econnreset, 1}, {pre_establishment, 2}, {tcp_closed, 1}] =
+                                      lists:sort(esockd_connection_sup:get_shutdown_count(ConnSup))
+                          end)
+        after
+            meck:unload(esockd_transport)
+        end
+    after
+        esockd_limiter:stop()
+    end.
+
+%% A death WITHOUT the marker (even a client-disappearance reason) must not
+%% refund: only pre-establishment deaths are eligible.
+t_no_refund_without_marker(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(bucket, 1, 3600),
+        {0, _} = esockd_limiter:consume(bucket, 1),
+        {-1, _} = esockd_limiter:consume(bucket, 1),
+        ok = mock_transport(),
+        try
+            with_conn_sup([{max_connections, 1024}],
+                          fun(ConnSup) ->
+                                  ok = esockd_connection_sup:set_conn_limiter(ConnSup, bucket),
+                                  {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  exit(ConnPid, {shutdown, tcp_closed}),
+                                  timer:sleep(200),
+                                  #{tokens := -1} = esockd_limiter:lookup(bucket),
+                                  [{tcp_closed, 1}] = esockd_connection_sup:get_shutdown_count(ConnSup)
+                          end)
+        after
+            meck:unload(esockd_transport)
+        end
+    after
+        esockd_limiter:stop()
+    end.
+
+%% A marked death refunds its token even when the bucket is healthy: consume
+%% and refund are 1:1 for marked deaths, so the dead connection's token is
+%% restored (capped at capacity).
+t_refund_even_when_bucket_healthy(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(bucket, 10, 3600),
+        {9, 0} = esockd_limiter:consume(bucket, 1),
+        ok = mock_transport(),
+        try
+            with_conn_sup([{max_connections, 1024}],
+                          fun(ConnSup) ->
+                                  ok = esockd_connection_sup:set_conn_limiter(ConnSup, bucket),
+                                  {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  exit(ConnPid, {shutdown, {pre_establishment, tcp_closed}}),
+                                  timer:sleep(200),
+                                  #{tokens := 10} = esockd_limiter:lookup(bucket)
+                          end)
+        after
+            meck:unload(esockd_transport)
+        end
+    after
+        esockd_limiter:stop()
+    end.
+
+%% Without set_conn_limiter (or with undefined), a marked death must be
+%% handled gracefully: counted, no crash, no refund attempted.
+t_no_refund_without_limiter(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = mock_transport(),
+        try
+            with_conn_sup([{max_connections, 1024}],
+                          fun(ConnSup) ->
+                                  {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  exit(ConnPid, {shutdown, {pre_establishment, tcp_closed}}),
+                                  timer:sleep(200),
+                                  [{pre_establishment, 1}, {tcp_closed, 1}] =
+                                      lists:sort(esockd_connection_sup:get_shutdown_count(ConnSup))
+                          end),
+            with_conn_sup([{max_connections, 1024}],
+                          fun(ConnSup) ->
+                                  ok = esockd_connection_sup:set_conn_limiter(ConnSup, undefined),
+                                  {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                                  exit(ConnPid, {shutdown, {pre_establishment, tcp_closed}}),
+                                  timer:sleep(200),
+                                  [{pre_establishment, 1}, {tcp_closed, 1}] =
+                                      lists:sort(esockd_connection_sup:get_shutdown_count(ConnSup))
+                          end)
+        after
+            meck:unload(esockd_transport)
+        end
+    after
+        esockd_limiter:stop()
+    end.
+
 with_conn_sup(Opts, Fun) ->
     {ok, ConnSup} = esockd_connection_sup:start_link(Opts, {echo_server, start_link, []}),
     Fun(ConnSup),
     ok = esockd_connection_sup:stop(ConnSup).
+
+%% Mock the transport so start_connection can run; recv/2 blocks so the
+%% echo_server connection process stays alive until the test kills it.
+mock_transport() ->
+    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
+    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
+    ok = meck:expect(esockd_transport, sockname, fun(_Sock) -> {ok, {{127,0,0,1}, 9999}} end),
+    ok = meck:expect(esockd_transport, wait, fun(Sock) -> {ok, Sock} end),
+    ok = meck:expect(esockd_transport, recv, fun(_Sock, 0) -> block() end),
+    ok = meck:expect(esockd_transport, send, fun(_Sock, _Data) -> ok end),
+    ok = meck:expect(esockd_transport, controlling_process, fun(_Sock, _ConnPid) -> ok end),
+    ok = meck:expect(esockd_transport, ready, fun(_ConnPid, _Sock, []) -> ok end).
+
+block() ->
+    receive
+        stop -> ok
+    end.
 

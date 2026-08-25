@@ -24,6 +24,7 @@
 
 -export([ start_connection/3
         , count_connections/1
+        , set_conn_limiter/2
         ]).
 
 -export([ get_max_connections/1
@@ -110,6 +111,14 @@ get_max_connections(Sup) when is_pid(Sup) ->
 set_max_connections(Sup, MaxConns) when is_pid(Sup) ->
     call(Sup, {set_max_connections, MaxConns}).
 
+%% @doc Set the conn-rate limiter bucket whose tokens are consumed for
+%% connections started by this sup. Stored in the process dictionary (not in
+%% #state{}) so hot code upgrades are unaffected; `undefined` disables
+%% refunding (no limiter configured).
+-spec(set_conn_limiter(pid(), 'undefined' | esockd_limiter:bucket_name()) -> ok).
+set_conn_limiter(Sup, Limiter) when is_pid(Sup) ->
+    call(Sup, {set_conn_limiter, Limiter}).
+
 -spec(get_shutdown_count(pid()) -> [{atom(), integer()}]).
 get_shutdown_count(Sup) ->
     call(Sup, get_shutdown_count).
@@ -183,6 +192,10 @@ handle_call(get_max_connections, _From, State = #state{max_connections = MaxConn
 
 handle_call({set_max_connections, MaxConns}, _From, State) ->
     {reply, ok, State#state{max_connections = MaxConns}};
+
+handle_call({set_conn_limiter, Limiter}, _From, State) ->
+    put({?MODULE, conn_limiter}, Limiter),
+    {reply, ok, State};
 
 handle_call(get_shutdown_count, _From, State) ->
     Counts = [{Reason, Count} || {{shutdown_count, Reason}, Count} <- get()],
@@ -264,6 +277,18 @@ connection_crashed(_Pid, shutdown, _Peer, _State) ->
     ok;
 connection_crashed(_Pid, killed, _Peer, _State) ->
     ok;
+connection_crashed(_Pid, {shutdown, {pre_establishment, Reason}}, _Peer, _State) ->
+    %% The connection died before receiving any application data (the peer
+    %% FIN/RST'd before the connection was established, see the conn-rate
+    %% token refund design). Count the inner reason as usual - so existing
+    %% shutdown_count consumers keep their semantics - and additionally under
+    %% the `pre_establishment` key, so operators can tell "socket already
+    %% dead at connection start" apart from ordinary shutdowns. Then refund
+    %% the connection-rate token consumed at accept (unconditional per marked
+    %% death; capped at capacity in esockd_limiter:refund/1).
+    count_shutdown(Reason),
+    count_shutdown(pre_establishment),
+    refund_token();
 connection_crashed(_Pid, Reason, _Peer, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
 connection_crashed(_Pid, {shutdown, Reason}, _Peer, _State) when is_atom(Reason) ->
@@ -276,6 +301,17 @@ connection_crashed(Pid, Reason, Peer, State) ->
 count_shutdown(Reason) ->
     Key = {shutdown_count, Reason},
     put(Key, case get(Key) of undefined -> 1; Cnt -> Cnt+1 end).
+
+%% Refund one token for a connection that died before engaging (see the
+%% conn-rate token refund design). No-op when no limiter bucket was
+%% configured (set_conn_limiter/2 never called, or set to undefined). The
+%% refund itself is unconditional per marked death and capped at capacity
+%% inside esockd_limiter:refund/1.
+refund_token() ->
+    case get({?MODULE, conn_limiter}) of
+        undefined -> ok;
+        Limiter -> esockd_limiter:refund(Limiter)
+    end.
 
 terminate_children(State = #state{curr_connections = Conns, shutdown = Shutdown}) ->
     {Pids, EStack0} = monitor_children(Conns),

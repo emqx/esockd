@@ -212,3 +212,64 @@ t_fast_close(_) ->
     {ok, LSock} = esockd_transport:listen(3000, [{reuseaddr, true}]),
     ok = esockd_transport:fast_close(LSock),
     ok = esockd_transport:close(LSock).
+
+%% An upgrade fun that fails because the peer disappeared (closed-class
+%% reasons) must make the connection process exit with the pre-establishment
+%% marker, so esockd_connection_sup can refund the connection-rate token.
+t_upgrade_marks_closed_class_failures(_) ->
+    lists:foreach(
+      fun(Reason) ->
+              {ok, LSock} = esockd_transport:listen(0, []),
+              UpgradeFuns = [{fun(_Sock) -> {error, Reason} end, []}],
+              {'EXIT', {shutdown, {pre_establishment, Reason}}} =
+                  (catch esockd_transport:upgrade(LSock, UpgradeFuns))
+      end,
+      [closed, einval, enotconn]),
+    %% ssl_upgrade/3 wraps unexpected handshake exceptions in
+    %% {ssl_failure, Reason}: einval/enotconn from a dead socket are still
+    %% marked
+    lists:foreach(
+      fun(Reason) ->
+              {ok, LSock} = esockd_transport:listen(0, []),
+              UpgradeFuns = [{fun(_Sock) -> {error, {ssl_failure, Reason}} end, []}],
+              {'EXIT', {shutdown, {pre_establishment, Reason}}} =
+                  (catch esockd_transport:upgrade(LSock, UpgradeFuns))
+      end,
+      [einval, enotconn]),
+    ok.
+
+%% Failures that mean the client responded (or is still alive) must NOT be
+%% marked: the error is returned as before.
+t_upgrade_does_not_mark_responded_failures(_) ->
+    {error, timeout} = upgrade_with_fun(fun(_Sock) -> {error, timeout} end),
+    {error, {ssl_error, {tls_alert, unknown_ca}}} =
+        upgrade_with_fun(fun(_Sock) -> {error, {ssl_error, {tls_alert, unknown_ca}}} end),
+    {error, {ssl_failure, {tls_alert, unknown_ca}}} =
+        upgrade_with_fun(fun(_Sock) -> {error, {ssl_failure, {tls_alert, unknown_ca}}} end),
+    ok.
+
+%% A chain of upgrade funs: a successful fun hands the socket to the next one,
+%% and a closed-class failure in any fun marks the exit.
+t_upgrade_chain(_) ->
+    {ok, LSock} = esockd_transport:listen(0, []),
+    UpgradeFuns = [{fun(Sock) -> {ok, Sock} end, []},
+                   {fun(Sock) -> {ok, Sock} end, []}],
+    {ok, LSock} = esockd_transport:upgrade(LSock, UpgradeFuns),
+    ok = esockd_transport:close(LSock),
+    %% second fun fails with closed -> marked
+    {ok, LSock2} = esockd_transport:listen(0, []),
+    UpgradeFuns2 = [{fun(Sock) -> {ok, Sock} end, []},
+                    {fun(_Sock) -> {error, closed} end, []}],
+    {'EXIT', {shutdown, {pre_establishment, closed}}} =
+        (catch esockd_transport:upgrade(LSock2, UpgradeFuns2)),
+    ok.
+
+%% upgrade/2 with no upgrade funs is a pass-through.
+t_upgrade_empty_funs(_) ->
+    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:upgrade(LSock, []),
+    ok = esockd_transport:close(LSock).
+
+upgrade_with_fun(Fun) ->
+    {ok, LSock} = esockd_transport:listen(0, []),
+    esockd_transport:upgrade(LSock, [{Fun, []}]).
