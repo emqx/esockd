@@ -26,6 +26,7 @@ all() -> esockd_ct:all(?MODULE).
 t_start_connection(_) ->
     ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
     ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
+    ok = meck:expect(esockd_transport, sockname, fun(_Sock) -> {ok, {{127,0,0,1}, 9999}} end),
     ok = meck:expect(esockd_transport, wait, fun(Sock) -> {ok, Sock} end),
     ok = meck:expect(esockd_transport, recv, fun(_Sock, 0) -> {ok, <<"Hi">>} end),
     ok = meck:expect(esockd_transport, send, fun(_Sock, _Data) -> ok end),
@@ -76,6 +77,52 @@ t_handle_unexpected(_) ->
     {reply, ignore, state} = esockd_connection_sup:handle_call(req, from, state),
     {noreply, state} = esockd_connection_sup:handle_cast(msg, state),
     {noreply, state} = esockd_connection_sup:handle_info(info, state).
+
+%% The error report emitted for a crashed connection must carry the socket
+%% info (local/peer address:port), captured via the process dictionary when
+%% the connection was started.
+t_report_error_has_socket_info(_) ->
+    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
+    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
+    ok = meck:expect(esockd_transport, sockname, fun(_Sock) -> {ok, {{127,0,0,1}, 9999}} end),
+    ok = meck:expect(esockd_transport, wait, fun(Sock) -> {ok, Sock} end),
+    ok = meck:expect(esockd_transport, recv, fun(_Sock, 0) -> {ok, <<"Hi">>} end),
+    ok = meck:expect(esockd_transport, send, fun(_Sock, _Data) -> ok end),
+    ok = meck:expect(esockd_transport, controlling_process, fun(_Sock, _ConnPid) -> ok end),
+    ok = meck:expect(esockd_transport, ready, fun(_ConnPid, _Sock, []) -> ok end),
+    catch logger:remove_handler(esockd_test_log_h),
+    Tab = ets:new(esockd_test_log, [public, named_table, set]),
+    ok = logger:add_handler(esockd_test_log_h, esockd_log_capture, #{table => Tab}),
+    try
+        with_conn_sup([{max_connections, 1024}],
+                      fun(ConnSup) ->
+                              {ok, ConnPid} = esockd_connection_sup:start_connection(ConnSup, sock, []),
+                              exit(ConnPid, {custom, reason}), %% non-atom -> report_error
+                              timer:sleep(300),
+                              Events = [Ev || {_, Ev} <- ets:tab2list(Tab)],
+                              ?assert(lists:any(fun report_has_socket/1, Events))
+                      end)
+    after
+        catch logger:remove_handler(esockd_test_log_h),
+        ets:delete(Tab),
+        catch meck:unload(esockd_transport)
+    end.
+
+report_has_socket(Event) ->
+    case maps:get(msg, Event, undefined) of
+        {report, Msg} when is_map(Msg) ->
+            report_has_socket_info(maps:get(report, Msg, Msg));
+        {report, Report} when is_list(Report) ->
+            report_has_socket_info(Report);
+        _ ->
+            false
+    end.
+
+report_has_socket_info(Report) ->
+    Socket = proplists:get_value(socket, Report, undefined),
+    is_map(Socket) andalso
+        maps:get(local, Socket, undefined) =:= "127.0.0.1:9999" andalso
+        maps:get(peer, Socket, undefined) =:= "127.0.0.1:3456".
 
 with_conn_sup(Opts, Fun) ->
     {ok, ConnSup} = esockd_connection_sup:start_link(Opts, {echo_server, start_link, []}),

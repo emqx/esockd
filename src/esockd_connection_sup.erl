@@ -156,6 +156,7 @@ handle_call({start_connection, Sock}, _From,
                     try start_connection_proc(MFA, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
                             NState = State#state{curr_connections = maps:put(Pid, true, Conns)},
+                            store_conn_socket(Pid, Sock),
                             {reply, {ok, Pid}, NState};
                         ignore ->
                             {reply, ignore, State};
@@ -221,6 +222,7 @@ handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
     case maps:take(Pid, Conns) of
         {true, Conns1} ->
             connection_crashed(Pid, Reason, State),
+            erase({conn_socket, Pid}),
             {noreply, State#state{curr_connections = Conns1}};
         error ->
             ?ERROR_MSG("Unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
@@ -376,10 +378,34 @@ report_error(Error, Reason, Pid, #state{mfargs = MFA}) ->
     ErrorMsg = [{supervisor, SupName},
                 {errorContext, Error},
                 {reason, Reason},
+                {socket, conn_socket_info(Pid)},
                 {offender, [{pid, Pid},
                             {name, connection},
                             {mfargs, MFA}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
+
+%% Remember the socket of a started connection process.  The info is kept
+%% in the process dictionary on purpose: the #state{} record must not
+%% change shape, otherwise hot code upgrades would break.
+%%
+%% Once the connection process dies the socket port is closed and its
+%% address can no longer be read, so the local/peer addresses are captured
+%% here, while the socket is still alive.
+store_conn_socket(Pid, Sock) ->
+    put({conn_socket, Pid}, {Sock, sock_info(Sock)}).
+
+conn_socket_info(Pid) ->
+    case get({conn_socket, Pid}) of
+        undefined -> undefined;
+        {_Sock, Info} -> Info
+    end.
+
+sock_info(Sock) ->
+    #{local => sock_addr(?TRANSPORT:sockname(Sock)),
+      peer  => sock_addr(?TRANSPORT:peername(Sock))}.
+
+sock_addr({ok, AddrPort}) -> esockd:format(AddrPort);
+sock_addr({error, Reason}) -> {error, Reason}.
 
 get_module({M, _F, _A}) -> M;
 get_module({M, _F}) -> M;
