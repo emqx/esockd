@@ -29,6 +29,10 @@
         , del_stats/1
         ]).
 
+%% sock error API
+-export([ inc_sock_error/2
+        ]).
+
 %% gen_server callbacks
 -export([ init/1
         , handle_call/3
@@ -42,6 +46,14 @@
 
 -define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
+
+%% All counters live in one ETS table, keyed per listener, and are all
+%% returned by get_stats/1:
+%%   {{Proto, ListenOn}, accepted}             -- accepted sockets
+%%   {{Proto, ListenOn}, discarded}            -- discarded dead sockets
+%%   {{Proto, ListenOn}, {sock_error, Reason}} -- accept/socket failure
+%%                                               reasons (peer already gone,
+%%                                               tune failures, ...)
 
 %%--------------------------------------------------------------------
 %% API
@@ -61,15 +73,23 @@ stats_fun({Protocol, ListenOn}, Metric) ->
        ({dec, Num}) -> esockd_server:dec_stats({Protocol, ListenOn}, Metric, Num)
     end.
 
+%% @doc Register a counter with 0 at listener startup.  Synchronous on
+%% purpose: it acts as a startup barrier so that a pending asynchronous
+%% del_stats from a previously stopped listener with the same name is
+%% processed before the new listener starts counting.
 -spec(init_stats({atom(), esockd:listen_on()}, atom()) -> ok).
 init_stats({Protocol, ListenOn}, Metric) ->
     gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
 
--spec(get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}]).
+-spec(get_stats({atom(), esockd:listen_on()}) ->
+      [{atom() | {sock_error, term()}, non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
     [{Metric, Val} || [Metric, Val]
                       <- ets:match(?STATS_TAB, {{{Protocol, ListenOn}, '$1'}, '$2'})].
 
+%% Counters that are not pre-registered with init_stats/2 are created
+%% lazily by ets:update_counter/4 with a default of 0 (e.g. sock-error
+%% counters).
 -spec(inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 inc_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, Num).
@@ -79,11 +99,22 @@ dec_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, -Num).
 
 update_counter(Key, Num) ->
-    ets:update_counter(?STATS_TAB, Key, {2, Num}).
+    ets:update_counter(?STATS_TAB, Key, {2, Num}, {Key, 0}).
 
 -spec(del_stats({atom(), esockd:listen_on()}) -> ok).
 del_stats({Protocol, ListenOn}) ->
     gen_server:cast(?SERVER, {del, {Protocol, ListenOn}}).
+
+%% @doc Count one accepted socket that failed with Reason before a
+%% connection process was started (peer already gone, tune failure, ...
+%%), or one failed accept.  Kept per listener, surfaced by get_stats/1 as
+%% {sock_error, Reason}, so disconnect reasons that never reach
+%% esockd_connection_sup (no connection process was ever started) are
+%% observable online.
+-spec(inc_sock_error({atom(), esockd:listen_on()}, term()) -> non_neg_integer()).
+inc_sock_error({Protocol, ListenOn}, Reason) ->
+    Key = {{Protocol, ListenOn}, {sock_error, Reason}},
+    ets:update_counter(?STATS_TAB, Key, {2, 1}, {Key, 0}).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks

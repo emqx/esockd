@@ -116,31 +116,70 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
     %% Inc accepted stats.
     esockd_server:inc_stats({Proto, ListenOn}, accepted, 1),
 
-    case eval_tune_socket_fun(TuneFun, Sock) of
-        {ok, Sock} ->
+    %% A connection may have been aborted (RST) by the peer while it sat in
+    %% the kernel accept backlog; both Linux and macOS still hand such a
+    %% socket out from accept(). Its peer is already gone, so starting a
+    %% connection process is pointless: esockd_connection_sup calls
+    %% esockd_transport:peername up front, which fails with
+    %% {error, enotconn} (Linux) or {error, einval} (macOS) on such a
+    %% socket, and we discard it without spending a connection-rate token.
+    %% Sockets closed with FIN cannot be told apart from live ones without
+    %% consuming stream data, so they remain fail-open.
+    %%
+    %% A token is spent only for sockets that either started a connection
+    %% process or were rejected while genuinely alive (maxlimit/forbidden,
+    %% so rejections stay throttled); every failure before a connection
+    %% process exists spends nothing.
+    Result = case eval_tune_socket_fun(TuneFun, Sock) of
+        {ok, _} ->
             case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
-                {ok, _Pid} -> ok;
-                {error, enotconn} ->
-                    close(Sock); %% quiet...issue #10
-                {error, einval} ->
-                    close(Sock); %% quiet... haproxy check
-                {error, Reason} ->
+                {ok, _Pid} ->
+                    consume_limiter;
+                ignore ->
+                    %% the connection MFA declined the connection
+                    close(Sock),
+                    skip_limiter;
+                {error, {peername, Reason}} ->
+                    %% peer already gone before start_connection (RST while
+                    %% queued in the backlog / health-check connect+close)
+                    esockd_server:inc_stats({Proto, ListenOn}, discarded, 1),
+                    record_sock_error({Proto, ListenOn}, Reason),
+                    close(Sock), %% quiet... issue #10 / haproxy check
+                    skip_limiter;
+                {error, Reason} when Reason =:= maxlimit; Reason =:= forbidden ->
+                    %% a real connection rejected by policy/capacity: still
+                    %% spend a token so rejects remain rate-limited
                     error_logger:error_msg("Failed to start connection on ~s: ~p",
                                            [esockd:format(Sockname), Reason]),
-                    close(Sock)
-                end;
-        {error, enotconn} ->
-            close(Sock);
-        {error, einval} ->
-            close(Sock);
+                    record_sock_error({Proto, ListenOn}, Reason),
+                    close(Sock),
+                    consume_limiter;
+                {error, Reason} ->
+                    %% connection MFA failed or crashed: no process was
+                    %% started, do not spend a token
+                    error_logger:error_msg("Failed to start connection on ~s: ~p",
+                                           [esockd:format(Sockname), Reason]),
+                    record_sock_error({Proto, ListenOn}, Reason),
+                    close(Sock),
+                    skip_limiter
+            end;
+        {error, Reason} when Reason =:= enotconn; Reason =:= einval ->
+            esockd_server:inc_stats({Proto, ListenOn}, discarded, 1),
+            record_sock_error({Proto, ListenOn}, Reason),
+            close(Sock),
+            skip_limiter;
         {error, closed} ->
-            close(Sock);
+            record_sock_error({Proto, ListenOn}, closed),
+            close(Sock),
+            skip_limiter;
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
                                    [esockd:format(Sockname), Reason]),
-            close(Sock)
+            record_sock_error({Proto, ListenOn}, Reason),
+            close(Sock),
+            skip_limiter
     end,
-    rate_limit(State);
+    rate_limit(State, Result);
 
 accepting(info, {inet_async, LSock, Ref, {error, closed}},
           State = #state{lsock = LSock, accept_ref = Ref}) ->
@@ -149,21 +188,27 @@ accepting(info, {inet_async, LSock, Ref, {error, closed}},
 %% {error, econnaborted} -> accept
 %% {error, esslaccept}   -> accept
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          #state{lsock = LSock, accept_ref = Ref})
+          State = #state{lsock = LSock, proto = Proto, listen_on = ListenOn,
+                         accept_ref = Ref})
     when Reason =:= econnaborted; Reason =:= esslaccept ->
-    {keep_state_and_data, {next_event, internal, accept}};
+    record_sock_error({Proto, ListenOn}, Reason),
+    {keep_state, State, {next_event, internal, accept}};
 
 %% emfile: The per-process limit of open file descriptors has been reached.
 %% enfile: The system limit on the total number of open files has been reached.
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          State = #state{lsock = LSock, sockname = Sockname, accept_ref = Ref})
+          State = #state{lsock = LSock, proto = Proto, listen_on = ListenOn,
+                         sockname = Sockname, accept_ref = Ref})
     when Reason =:= emfile; Reason =:= enfile ->
     error_logger:error_msg("Accept error on ~s: ~s",
                            [esockd:format(Sockname), esockd_utils:explain_posix(Reason)]),
+    record_sock_error({Proto, ListenOn}, Reason),
     {next_state, suspending, State, 1000};
 
 accepting(info, {inet_async, LSock, Ref, {error, Reason}},
-          State = #state{lsock = LSock, accept_ref = Ref}) ->
+          State = #state{lsock = LSock, proto = Proto, listen_on = ListenOn,
+                         accept_ref = Ref}) ->
+    record_sock_error({Proto, ListenOn}, Reason),
     {stop, Reason, State}.
 
 suspending({call, From}, {set_conn_limiter, Limiter}, State) ->
@@ -184,17 +229,32 @@ code_change(_OldVsn, StateName, State, _Extra) ->
 
 close(Sock) -> catch port_close(Sock).
 
+%% Record an accept/socket failure reason for online troubleshooting
+%% (surfaced by esockd_server:get_stats/1 as {sock_error, Reason}).
+%% Complex reasons are normalized so the per-listener counter keys stay
+%% bounded.
+record_sock_error({Proto, ListenOn}, Reason) ->
+    esockd_server:inc_sock_error({Proto, ListenOn}, normalize(Reason)).
+
+normalize(Reason) when is_atom(Reason) -> Reason;
+normalize(_) -> other.
+
 %% No limiter configured: skip the consume so the connection hot path
 %% does not hit a `ets:update_counter` exception on a missing bucket.
-rate_limit(State = #state{conn_limiter = undefined}) ->
+rate_limit(State = #state{conn_limiter = undefined}, _Result) ->
     {keep_state, State, {next_event, internal, accept}};
-rate_limit(State = #state{conn_limiter = Limiter}) ->
+rate_limit(State = #state{conn_limiter = Limiter}, consume_limiter) ->
     case esockd_limiter:consume(Limiter, 1) of
         {I, Pause} when I =< 0 ->
             {next_state, suspending, State, Pause};
         _ ->
             {keep_state, State, {next_event, internal, accept}}
-    end.
+    end;
+rate_limit(State, _SkipLimiter) ->
+    %% Peer was already gone when the socket was accepted (RST while queued
+    %% in the backlog, or a health-check connect+close): the socket was
+    %% closed without starting a connection process, no token is spent.
+    {keep_state, State, {next_event, internal, accept}}.
 
 eval_tune_socket_fun({Fun, Args1}, Sock) ->
     apply(Fun, [Sock|Args1]).

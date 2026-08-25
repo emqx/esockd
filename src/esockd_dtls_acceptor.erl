@@ -97,6 +97,10 @@ accepting(internal, accept,
                 {ok, Sock} ->
                     case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
                         {ok, _Pid} -> ok;
+                        ignore ->
+                            close(Sock); %% connection MFA declined
+                        {error, {peername, _Reason}} ->
+                            close(Sock); %% quiet... peer already gone
                         {error, enotconn} ->
                             close(Sock); %% quiet...issue #10
                         {error, einval} ->
