@@ -22,7 +22,6 @@
 
 %% stats API
 -export([ stats_fun/2
-        , init_stats/2
         , get_stats/1
         , inc_stats/3
         , dec_stats/3
@@ -47,7 +46,14 @@
 
 -define(SERVER, ?MODULE).
 -define(STATS_TAB, esockd_stats).
--define(SOCK_ERRORS_TAB, esockd_sock_errors).
+
+%% All counters live in one ETS table, keyed per listener:
+%%   {{Proto, ListenOn}, Metric}                -- metrics, queried by get_stats/1
+%%   {sock_error, Proto, ListenOn, Reason}      -- failure reasons, queried by
+%%                                                get_sock_errors/1; the
+%%                                                sock_error namespace is
+%%                                                naturally excluded from
+%%                                                get_stats/1.
 
 %%--------------------------------------------------------------------
 %% API
@@ -62,20 +68,17 @@ stop() -> gen_server:stop(?SERVER).
 
 -spec(stats_fun({atom(), esockd:listen_on()}, atom()) -> fun()).
 stats_fun({Protocol, ListenOn}, Metric) ->
-    init_stats({Protocol, ListenOn}, Metric),
     fun({inc, Num}) -> esockd_server:inc_stats({Protocol, ListenOn}, Metric, Num);
        ({dec, Num}) -> esockd_server:dec_stats({Protocol, ListenOn}, Metric, Num)
     end.
-
--spec(init_stats({atom(), esockd:listen_on()}, atom()) -> ok).
-init_stats({Protocol, ListenOn}, Metric) ->
-    gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
 
 -spec(get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
     [{Metric, Val} || [Metric, Val]
                       <- ets:match(?STATS_TAB, {{{Protocol, ListenOn}, '$1'}, '$2'})].
 
+%% Counters are created lazily by ets:update_counter/4 with a default of 0,
+%% so there is no need to pre-register them (init_stats).
 -spec(inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 inc_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, Num).
@@ -85,7 +88,7 @@ dec_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, -Num).
 
 update_counter(Key, Num) ->
-    ets:update_counter(?STATS_TAB, Key, {2, Num}).
+    ets:update_counter(?STATS_TAB, Key, {2, Num}, {Key, 0}).
 
 -spec(del_stats({atom(), esockd:listen_on()}) -> ok).
 del_stats({Protocol, ListenOn}) ->
@@ -98,8 +101,8 @@ del_stats({Protocol, ListenOn}) ->
 %% started) are still observable online.
 -spec(inc_sock_error({atom(), esockd:listen_on()}, term()) -> non_neg_integer()).
 inc_sock_error({Protocol, ListenOn}, Reason) ->
-    Key = {{Protocol, ListenOn}, Reason},
-    ets:update_counter(?SOCK_ERRORS_TAB, Key, {2, 1}, {Key, 0}).
+    Key = {sock_error, Protocol, ListenOn, Reason},
+    ets:update_counter(?STATS_TAB, Key, {2, 1}, {Key, 0}).
 
 %% @doc Accepted-socket / accept failure counts by reason, for online
 %% troubleshooting.  Complement of esockd_connection_sup:get_shutdown_count,
@@ -107,8 +110,8 @@ inc_sock_error({Protocol, ListenOn}, Reason) ->
 -spec(get_sock_errors({atom(), esockd:listen_on()}) -> [{term(), non_neg_integer()}]).
 get_sock_errors({Protocol, ListenOn}) ->
     [{Reason, Count} || [Reason, Count]
-                        <- ets:match(?SOCK_ERRORS_TAB,
-                                     {{{Protocol, ListenOn}, '$1'}, '$2'})].
+                        <- ets:match(?STATS_TAB,
+                                     {{sock_error, Protocol, ListenOn, '$1'}, '$2'})].
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
@@ -117,13 +120,7 @@ get_sock_errors({Protocol, ListenOn}) ->
 init([]) ->
     _ = ets:new(?STATS_TAB, [public, set, named_table,
                              {write_concurrency, true}]),
-    _ = ets:new(?SOCK_ERRORS_TAB, [public, set, named_table,
-                                   {write_concurrency, true}]),
     {ok, #state{}}.
-
-handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
-    true = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
-    {reply, ok, State, hibernate};
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
@@ -131,7 +128,7 @@ handle_call(Req, _From, State) ->
 
 handle_cast({del, {Protocol, ListenOn}}, State) ->
     ets:match_delete(?STATS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
-    ets:match_delete(?SOCK_ERRORS_TAB, {{{Protocol, ListenOn}, '_'}, '_'}),
+    ets:match_delete(?STATS_TAB, {{sock_error, Protocol, ListenOn, '_'}, '_'}),
     {noreply, State, hibernate};
 
 handle_cast(Msg, State) ->
