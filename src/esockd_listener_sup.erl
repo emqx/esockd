@@ -75,7 +75,11 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
     {ok, ConnSup} = supervisor:start_child(Sup, ConnSupSpec),
 
     %% Start acceptor sup
-    %% (stats counters are created lazily by esockd_server:inc_stats)
+    %% init_stats is a synchronous startup barrier: it guarantees a pending
+    %% del_stats from a previously stopped listener with the same name is
+    %% processed before this listener starts counting.
+    ok = esockd_server:init_stats({Proto, ListenOn}, accepted),
+    ok = esockd_server:init_stats({Proto, ListenOn}, discarded),
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),

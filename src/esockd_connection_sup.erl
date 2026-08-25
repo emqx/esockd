@@ -150,13 +150,13 @@ handle_call({start_connection, _Sock}, _From,
 handle_call({start_connection, Sock}, _From,
             State = #state{curr_connections = Conns, access_rules = Rules, mfargs = MFA}) ->
     case esockd_transport:peername(Sock) of
-        {ok, {Addr, _Port}} ->
+        {ok, {Addr, _Port} = Peer} ->
             case allowed(Addr, Rules) of
                 true ->
                     try start_connection_proc(MFA, Sock) of
                         {ok, Pid} when is_pid(Pid) ->
-                            NState = State#state{curr_connections = maps:put(Pid, true, Conns)},
-                            store_conn_socket(Pid, Sock),
+                            maybe_cache_sockname(Sock),
+                            NState = State#state{curr_connections = maps:put(Pid, Peer, Conns)},
                             {reply, {ok, Pid}, NState};
                         ignore ->
                             {reply, ignore, State};
@@ -170,7 +170,9 @@ handle_call({start_connection, Sock}, _From,
                     {reply, {error, forbidden}, State}
             end;
         {error, Reason} ->
-            {reply, {error, Reason}, State}
+            %% Tagged so the acceptor can tell "peer already gone" apart
+            %% from errors returned by the connection MFA itself.
+            {reply, {error, {peername, Reason}}, State}
     end;
 
 handle_call(count_connections, _From, State = #state{curr_connections = Conns}) ->
@@ -220,9 +222,8 @@ handle_cast(Msg, State) ->
 
 handle_info({'EXIT', Pid, Reason}, State = #state{curr_connections = Conns}) ->
     case maps:take(Pid, Conns) of
-        {true, Conns1} ->
-            connection_crashed(Pid, Reason, State),
-            erase({conn_socket, Pid}),
+        {Peer, Conns1} ->
+            connection_crashed(Pid, Reason, Peer, State),
             {noreply, State#state{curr_connections = Conns1}};
         error ->
             ?ERROR_MSG("Unexpected 'EXIT': ~p, reason: ~p", [Pid, Reason]),
@@ -257,20 +258,20 @@ raw({deny, CIDR = {_Start, _End, _Len}}) ->
 raw(Rule) ->
      Rule.
 
-connection_crashed(_Pid, normal, _State) ->
+connection_crashed(_Pid, normal, _Peer, _State) ->
     ok;
-connection_crashed(_Pid, shutdown, _State) ->
+connection_crashed(_Pid, shutdown, _Peer, _State) ->
     ok;
-connection_crashed(_Pid, killed, _State) ->
+connection_crashed(_Pid, killed, _Peer, _State) ->
     ok;
-connection_crashed(_Pid, Reason, _State) when is_atom(Reason) ->
+connection_crashed(_Pid, Reason, _Peer, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
-connection_crashed(_Pid, {shutdown, Reason}, _State) when is_atom(Reason) ->
+connection_crashed(_Pid, {shutdown, Reason}, _Peer, _State) when is_atom(Reason) ->
     count_shutdown(Reason);
-connection_crashed(Pid, {shutdown, Reason}, State) ->
-    report_error(connection_shutdown, Reason, Pid, State);
-connection_crashed(Pid, Reason, State) ->
-    report_error(connection_crashed, Reason, Pid, State).
+connection_crashed(Pid, {shutdown, Reason}, Peer, State) ->
+    report_error(connection_shutdown, Reason, Pid, Peer, State);
+connection_crashed(Pid, Reason, Peer, State) ->
+    report_error(connection_crashed, Reason, Pid, Peer, State).
 
 count_shutdown(Reason) ->
     Key = {shutdown_count, Reason},
@@ -293,7 +294,8 @@ terminate_children(State = #state{curr_connections = Conns, shutdown = Shutdown}
              end,
     %% Unroll stacked errors and report them
     dict:fold(fun(Reason, Pid, _) ->
-                  report_error(connection_shutdown_error, Reason, Pid, State)
+                  report_error(connection_shutdown_error, Reason, Pid,
+                               maps:get(Pid, Conns, true), State)
               end, ok, EStack).
 
 monitor_children(Conns) ->
@@ -373,39 +375,48 @@ wait_children(Shutdown, Pids, Sz, TRef, EStack) ->
             wait_children(Shutdown, Pids, Sz-1, undefined, EStack)
     end.
 
-report_error(Error, Reason, Pid, #state{mfargs = MFA}) ->
+report_error(Error, Reason, Pid, Peer, #state{mfargs = MFA}) ->
     SupName  = list_to_atom("esockd_connection_sup - " ++ pid_to_list(self())),
     ErrorMsg = [{supervisor, SupName},
                 {errorContext, Error},
                 {reason, Reason},
-                {socket, conn_socket_info(Pid)},
+                {socket, #{local => cached_sockname(), peer => format_peer(Peer)}},
                 {offender, [{pid, Pid},
                             {name, connection},
                             {mfargs, MFA}]}],
     error_logger:error_report(supervisor_report, ErrorMsg).
 
-%% Remember the socket of a started connection process.  The info is kept
-%% in the process dictionary on purpose: the #state{} record must not
-%% change shape, otherwise hot code upgrades would break.
+%% The peer endpoint of each started connection is kept in the existing
+%% curr_connections map (compact raw {Addr, Port}), so the error report can
+%% name the client without per-connection process-dictionary state.
 %%
 %% Once the connection process dies the socket port is closed and its
-%% address can no longer be read, so the local/peer addresses are captured
-%% here, while the socket is still alive.
-store_conn_socket(Pid, Sock) ->
-    put({conn_socket, Pid}, {Sock, sock_info(Sock)}).
-
-conn_socket_info(Pid) ->
-    case get({conn_socket, Pid}) of
-        undefined -> undefined;
-        {_Sock, Info} -> Info
+%% address can no longer be read, hence the local listener address is
+%% captured here, once, when the first connection is started, and kept in a
+%% single process-dictionary entry (constant, not per connection).  The
+%% #state{} record itself is left untouched so hot code upgrades are
+%% unaffected.
+maybe_cache_sockname(Sock) ->
+    case get({?MODULE, sockname}) of
+        undefined ->
+            case ?TRANSPORT:sockname(Sock) of
+                {ok, Sockname} -> put({?MODULE, sockname}, Sockname);
+                _ -> ok
+            end;
+        _ ->
+            ok
     end.
 
-sock_info(Sock) ->
-    #{local => sock_addr(?TRANSPORT:sockname(Sock)),
-      peer  => sock_addr(?TRANSPORT:peername(Sock))}.
+cached_sockname() ->
+    case get({?MODULE, sockname}) of
+        undefined -> undefined;
+        Sockname -> esockd:format(Sockname)
+    end.
 
-sock_addr({ok, AddrPort}) -> esockd:format(AddrPort);
-sock_addr({error, Reason}) -> {error, Reason}.
+%% true is the pre-hot-upgrade value of curr_connections map entries.
+format_peer(true) -> undefined;
+format_peer({Addr, Port}) when is_integer(Port) -> esockd:format({Addr, Port});
+format_peer(_) -> undefined.
 
 get_module({M, _F, _A}) -> M;
 get_module({M, _F}) -> M;

@@ -134,8 +134,7 @@ t_get_stats(_) ->
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6000, [{active, false}]),
     {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6000, [{active, false}]),
     timer:sleep(10),
-    %% discarded appears lazily, only once a socket was actually discarded
-    [{accepted, 2}] = lists:sort(esockd:get_stats({echo, 6000})),
+    [{accepted, 2}, {discarded, 0}] = lists:sort(esockd:get_stats({echo, 6000})),
     gen_tcp:close(Sock1),
     gen_tcp:close(Sock2),
     ok = esockd:close(echo, 6000).

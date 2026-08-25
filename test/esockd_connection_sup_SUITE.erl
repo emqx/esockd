@@ -53,6 +53,33 @@ t_allow_deny(_) ->
                                        ], esockd_connection_sup:access_rules(ConnSup))
                   end).
 
+%% A peername failure (peer already gone) is tagged so callers can tell it
+%% apart from errors returned by the connection MFA itself.
+t_peername_failure_is_tagged(_) ->
+    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
+    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {error, enotconn} end),
+    with_conn_sup([{max_connections, 1024}],
+                  fun(ConnSup) ->
+                          ?assertEqual({error, {peername, enotconn}},
+                                       esockd_connection_sup:start_connection(ConnSup, sock, []))
+                  end),
+    ok = meck:unload(esockd_transport).
+
+%% A connection MFA returning ignore is forwarded as-is (callers must not
+%% hit a case_clause).
+t_ignore_start_connection(_) ->
+    ok = meck:new(esockd_transport, [non_strict, passthrough, no_history]),
+    ok = meck:expect(esockd_transport, peername, fun(_Sock) -> {ok, {{127,0,0,1}, 3456}} end),
+    ok = meck:new(echo_server, [non_strict, passthrough, no_history]),
+    ok = meck:expect(echo_server, start_link, fun(_Transport, _Sock) -> ignore end),
+    with_conn_sup([{max_connections, 1024}],
+                  fun(ConnSup) ->
+                          ?assertEqual(ignore,
+                                       esockd_connection_sup:start_connection(ConnSup, sock, []))
+                  end),
+    ok = meck:unload(echo_server),
+    ok = meck:unload(esockd_transport).
+
 t_get_shutdown_count(_) ->
     with_conn_sup([{max_connections, 1024}],
                   fun(ConnSup) ->

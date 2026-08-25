@@ -125,22 +125,43 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
     %% socket, and we discard it without spending a connection-rate token.
     %% Sockets closed with FIN cannot be told apart from live ones without
     %% consuming stream data, so they remain fail-open.
+    %%
+    %% A token is spent only for sockets that either started a connection
+    %% process or were rejected while genuinely alive (maxlimit/forbidden,
+    %% so rejections stay throttled); every failure before a connection
+    %% process exists spends nothing.
     Result = case eval_tune_socket_fun(TuneFun, Sock) of
         {ok, _} ->
             case esockd_connection_sup:start_connection(ConnSup, Sock, UpgradeFuns) of
                 {ok, _Pid} ->
                     consume_limiter;
-                {error, Reason} when Reason =:= enotconn; Reason =:= einval ->
+                ignore ->
+                    %% the connection MFA declined the connection
+                    close(Sock),
+                    skip_limiter;
+                {error, {peername, Reason}} ->
+                    %% peer already gone before start_connection (RST while
+                    %% queued in the backlog / health-check connect+close)
                     esockd_server:inc_stats({Proto, ListenOn}, discarded, 1),
                     record_sock_error({Proto, ListenOn}, Reason),
                     close(Sock), %% quiet... issue #10 / haproxy check
                     skip_limiter;
-                {error, Reason} ->
+                {error, Reason} when Reason =:= maxlimit; Reason =:= forbidden ->
+                    %% a real connection rejected by policy/capacity: still
+                    %% spend a token so rejects remain rate-limited
                     error_logger:error_msg("Failed to start connection on ~s: ~p",
                                            [esockd:format(Sockname), Reason]),
                     record_sock_error({Proto, ListenOn}, Reason),
                     close(Sock),
-                    consume_limiter
+                    consume_limiter;
+                {error, Reason} ->
+                    %% connection MFA failed or crashed: no process was
+                    %% started, do not spend a token
+                    error_logger:error_msg("Failed to start connection on ~s: ~p",
+                                           [esockd:format(Sockname), Reason]),
+                    record_sock_error({Proto, ListenOn}, Reason),
+                    close(Sock),
+                    skip_limiter
             end;
         {error, Reason} when Reason =:= enotconn; Reason =:= einval ->
             esockd_server:inc_stats({Proto, ListenOn}, discarded, 1),
@@ -150,13 +171,13 @@ accepting(info, {inet_async, LSock, Ref, {ok, Sock}},
         {error, closed} ->
             record_sock_error({Proto, ListenOn}, closed),
             close(Sock),
-            consume_limiter;
+            skip_limiter;
         {error, Reason} ->
             error_logger:error_msg("Tune buffer failed on ~s: ~s",
                                    [esockd:format(Sockname), Reason]),
             record_sock_error({Proto, ListenOn}, Reason),
             close(Sock),
-            consume_limiter
+            skip_limiter
     end,
     rate_limit(State, Result);
 

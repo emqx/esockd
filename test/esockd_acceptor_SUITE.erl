@@ -129,6 +129,31 @@ t_tune_failure_consumes_no_token(_) ->
     end,
     ok = esockd:close(echo, Port).
 
+%% Regression: a connection MFA returning ignore must neither crash the
+%% acceptor (case_clause) nor spend a connection-rate token.
+t_ignore_start_connection(_) ->
+    Port = 12114,
+    Opts = [{max_conn_rate, 1}, {acceptors, 1}],
+    {ok, _} = esockd:open(echo, Port, Opts, {echo_server, start_link, []}),
+    timer:sleep(100),
+    ok = meck:new(echo_server, [non_strict, passthrough, no_history]),
+    ok = meck:expect(echo_server, start_link, fun(_Transport, _Sock) -> ignore end),
+    try
+        {ok, C1} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+        timer:sleep(300),
+        %% the acceptor closed the socket and did not spend a token on it
+        ?assertMatch({error, _}, gen_tcp:recv(C1, 0, 1000)),
+        ?assertEqual(1, listener_tokens(Port))
+    after
+        catch meck:unload(echo_server)
+    end,
+    %% the acceptor did not crash: a live connection still works
+    {ok, C2} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    ok = gen_tcp:send(C2, <<"hello">>),
+    {ok, <<"hello">>} = gen_tcp:recv(C2, 0, 2000),
+    gen_tcp:close(C2),
+    ok = esockd:close(echo, Port).
+
 %%--------------------------------------------------------------------
 %% Helpers
 %%--------------------------------------------------------------------

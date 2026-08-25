@@ -22,6 +22,7 @@
 
 %% stats API
 -export([ stats_fun/2
+        , init_stats/2
         , get_stats/1
         , inc_stats/3
         , dec_stats/3
@@ -68,17 +69,27 @@ stop() -> gen_server:stop(?SERVER).
 
 -spec(stats_fun({atom(), esockd:listen_on()}, atom()) -> fun()).
 stats_fun({Protocol, ListenOn}, Metric) ->
+    init_stats({Protocol, ListenOn}, Metric),
     fun({inc, Num}) -> esockd_server:inc_stats({Protocol, ListenOn}, Metric, Num);
        ({dec, Num}) -> esockd_server:dec_stats({Protocol, ListenOn}, Metric, Num)
     end.
+
+%% @doc Register a counter with 0 at listener startup.  Synchronous on
+%% purpose: it acts as a startup barrier so that a pending asynchronous
+%% del_stats from a previously stopped listener with the same name is
+%% processed before the new listener starts counting.
+-spec(init_stats({atom(), esockd:listen_on()}, atom()) -> ok).
+init_stats({Protocol, ListenOn}, Metric) ->
+    gen_server:call(?SERVER, {init, {Protocol, ListenOn}, Metric}).
 
 -spec(get_stats({atom(), esockd:listen_on()}) -> [{atom(), non_neg_integer()}]).
 get_stats({Protocol, ListenOn}) ->
     [{Metric, Val} || [Metric, Val]
                       <- ets:match(?STATS_TAB, {{{Protocol, ListenOn}, '$1'}, '$2'})].
 
-%% Counters are created lazily by ets:update_counter/4 with a default of 0,
-%% so there is no need to pre-register them (init_stats).
+%% Counters that are not pre-registered with init_stats/2 are created
+%% lazily by ets:update_counter/4 with a default of 0 (e.g. sock-error
+%% counters).
 -spec(inc_stats({atom(), esockd:listen_on()}, atom(), pos_integer()) -> any()).
 inc_stats({Protocol, ListenOn}, Metric, Num) when is_integer(Num) ->
     update_counter({{Protocol, ListenOn}, Metric}, Num).
@@ -121,6 +132,10 @@ init([]) ->
     _ = ets:new(?STATS_TAB, [public, set, named_table,
                              {write_concurrency, true}]),
     {ok, #state{}}.
+
+handle_call({init, {Protocol, ListenOn}, Metric}, _From, State) ->
+    true = ets:insert(?STATS_TAB, {{{Protocol, ListenOn}, Metric}, 0}),
+    {reply, ok, State, hibernate};
 
 handle_call(Req, _From, State) ->
     error_logger:error_msg("[~s] Unexpected call: ~p", [?MODULE, Req]),
