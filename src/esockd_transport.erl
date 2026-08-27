@@ -21,7 +21,7 @@
 
 -export([type/1, is_ssl/1]).
 -export([listen/2]).
--export([ready/3, wait/1]).
+-export([ready/3, wait/1, wait_with_first_data/1]).
 -export([send/2, async_send/2, async_send/3, recv/2, recv/3, async_recv/2, async_recv/3]).
 -export([controlling_process/2]).
 -export([close/1, fast_close/1]).
@@ -71,6 +71,69 @@ wait(Sock) ->
         {sock_ready, Sock, UpgradeFuns} ->
             upgrade(Sock, UpgradeFuns)
     end.
+
+%% @doc Like wait/1, but for TCP-ish sockets (plain TCP and proxy-protocol,
+%% after their upgrade funs ran) also fetches the first bytes that are already
+%% available on the socket, before the caller activates it. Returns:
+%%
+%%   {ok, Socket}        - no data available yet (peer silent but alive): the
+%%                         caller proceeds with activate + hibernate as usual;
+%%   {ok, Socket, Data}  - the first bytes are already in hand (consumed from
+%%                         the socket): the caller should process them as the
+%%                         first network data (skipping the hibernate cycle);
+%%
+%% When the peer is already gone before sending anything (FIN/RST on a dead
+%% socket), the connection process exits with the {shutdown,
+%% {pre_establishment, _}} marker - exactly like a TLS handshake failure in
+%% upgrade/2 - so that case never returns and the caller does not need to know
+%% the marker (see the conn-rate token refund design). TLS sockets are not
+%% probed: the handshake already engaged the client, and handshake-stage
+%% deaths are handled by the upgrade funs.
+-spec(wait_with_first_data(socket()) ->
+          {ok, socket()} | {ok, socket(), binary()} | {error, term()}).
+wait_with_first_data(Sock) ->
+    receive
+        {sock_ready, Sock, UpgradeFuns} ->
+            case upgrade(Sock, UpgradeFuns) of
+                {ok, NSock} -> probe_first_data(NSock);
+                Error -> Error
+            end
+    end.
+
+%% Only TCP-ish sockets are probed (plain TCP ports and proxy-protocol
+%% sockets, whose inner socket is still a TCP port). TLS sockets are skipped:
+%% a client that completed the handshake has engaged and must not be marked.
+probe_first_data(Sock) when is_port(Sock) ->
+    probe_first_data_1(Sock);
+probe_first_data(#proxy_socket{} = Sock) ->
+    probe_first_data_1(Sock);
+probe_first_data(Sock) ->
+    {ok, Sock}.
+
+probe_first_data_1(Sock) ->
+    case recv(Sock, 0, 0) of
+        {ok, Data} ->
+            {ok, Sock, iolist_to_binary(Data)};
+        {error, Reason} when Reason =:= closed;
+                             Reason =:= econnreset ->
+            %% The peer was already gone before sending anything (FIN, or RST
+            %% on a dead socket): the connection never engaged, exit with the
+            %% pre-establishment marker so esockd_connection_sup can refund
+            %% the connection-rate token. Only closed/econnreset are treated
+            %% as peer-gone: other errors (e.g. einval on an active-mode
+            %% socket, or timeout) mean the peer is not known to be gone and
+            %% fall through to the normal activate path.
+            fast_close(Sock),
+            exit({shutdown, {pre_establishment, first_data_reason(Reason)}});
+        {error, _} ->
+            {ok, Sock}
+    end.
+
+%% `closed` (the posix error for a peer FIN) is normalized to `tcp_closed` to
+%% match the active-mode {tcp_closed, _} message tag, keeping the
+%% shutdown_count key unchanged from the pre-refund behavior.
+first_data_reason(closed) -> tcp_closed;
+first_data_reason(Reason) -> Reason.
 
 -spec(upgrade(socket(), [esockd:sock_fun()]) -> {ok, socket()} | {error, term()}).
 upgrade(Sock, []) ->

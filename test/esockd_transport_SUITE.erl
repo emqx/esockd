@@ -35,14 +35,14 @@ end_per_suite(_Config) ->
     application:stop(esockd).
 
 t_type(_) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     tcp = esockd_transport:type(LSock),
     ssl = esockd_transport:type(#ssl_socket{}),
     proxy = esockd_transport:type(#proxy_socket{}),
     ok = esockd_transport:close(LSock).
 
 t_is_ssl(_) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     false = esockd_transport:is_ssl(LSock),
     true = esockd_transport:is_ssl(SslSock = #ssl_socket{tcp = LSock}),
     false = esockd_transport:is_ssl(#proxy_socket{socket = LSock}),
@@ -50,17 +50,17 @@ t_is_ssl(_) ->
     ok = esockd_transport:close(LSock).
 
 t_wait_and_ready(_) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     esockd_transport:ready(self(), LSock, [{fun(Sock, []) -> {ok, Sock} end, [[]]}]),
     {ok, LSock} = esockd_transport:wait(LSock),
     ok = esockd_transport:close(LSock).
 
 t_listen(_) ->
-    {ok, Sock} = esockd_transport:listen(0, []),
+    {ok, Sock} = esockd_transport:listen(0, [binary, {active, false}]),
     ?assert(is_port(Sock)).
 
 t_controlling_process(_) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     ok = esockd_transport:controlling_process(LSock, self()),
     %%ok = esockd_transport:controlling_process(#ssl_socket{ssl = SslSock}, self()),
     ok = esockd_transport:close(LSock).
@@ -219,7 +219,7 @@ t_fast_close(_) ->
 t_upgrade_marks_closed_class_failures(_) ->
     lists:foreach(
       fun(Reason) ->
-              {ok, LSock} = esockd_transport:listen(0, []),
+              {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
               UpgradeFuns = [{fun(_Sock) -> {error, Reason} end, []}],
               {'EXIT', {shutdown, {pre_establishment, Reason}}} =
                   (catch esockd_transport:upgrade(LSock, UpgradeFuns))
@@ -230,7 +230,7 @@ t_upgrade_marks_closed_class_failures(_) ->
     %% marked
     lists:foreach(
       fun(Reason) ->
-              {ok, LSock} = esockd_transport:listen(0, []),
+              {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
               UpgradeFuns = [{fun(_Sock) -> {error, {ssl_failure, Reason}} end, []}],
               {'EXIT', {shutdown, {pre_establishment, Reason}}} =
                   (catch esockd_transport:upgrade(LSock, UpgradeFuns))
@@ -251,13 +251,13 @@ t_upgrade_does_not_mark_responded_failures(_) ->
 %% A chain of upgrade funs: a successful fun hands the socket to the next one,
 %% and a closed-class failure in any fun marks the exit.
 t_upgrade_chain(_) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     UpgradeFuns = [{fun(Sock) -> {ok, Sock} end, []},
                    {fun(Sock) -> {ok, Sock} end, []}],
     {ok, LSock} = esockd_transport:upgrade(LSock, UpgradeFuns),
     ok = esockd_transport:close(LSock),
     %% second fun fails with closed -> marked
-    {ok, LSock2} = esockd_transport:listen(0, []),
+    {ok, LSock2} = esockd_transport:listen(0, [binary, {active, false}]),
     UpgradeFuns2 = [{fun(Sock) -> {ok, Sock} end, []},
                     {fun(_Sock) -> {error, closed} end, []}],
     {'EXIT', {shutdown, {pre_establishment, closed}}} =
@@ -266,10 +266,101 @@ t_upgrade_chain(_) ->
 
 %% upgrade/2 with no upgrade funs is a pass-through.
 t_upgrade_empty_funs(_) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     {ok, LSock} = esockd_transport:upgrade(LSock, []),
     ok = esockd_transport:close(LSock).
 
+%% wait_with_first_data/1: first bytes already available are returned with
+%% the socket, so the caller can process them without activating first.
+t_wait_with_first_data_returns_available_data(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    {ok, {_, Port}} = esockd_transport:sockname(LSock),
+    {ok, Client} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, Sock} = gen_tcp:accept(LSock),
+    ok = gen_tcp:send(Client, <<"hello">>),
+    timer:sleep(50),
+    esockd_transport:ready(self(), Sock, []),
+    {ok, Sock, <<"hello">>} = esockd_transport:wait_with_first_data(Sock),
+    ok = esockd_transport:close(Client),
+    ok = esockd_transport:close(LSock).
+
+%% wait_with_first_data/1 after an upgrade fun chain: the fun runs first, then
+%% the probe sees the data.
+t_wait_with_first_data_after_upgrade_funs(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    {ok, {_, Port}} = esockd_transport:sockname(LSock),
+    {ok, Client} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, Sock} = gen_tcp:accept(LSock),
+    ok = gen_tcp:send(Client, <<"hello">>),
+    timer:sleep(50),
+    esockd_transport:ready(self(), Sock, [{fun(S) -> {ok, S} end, []}]),
+    {ok, Sock, <<"hello">>} = esockd_transport:wait_with_first_data(Sock),
+    ok = esockd_transport:close(Client),
+    ok = esockd_transport:close(LSock).
+
+%% wait_with_first_data/1: a peer that already FIN'd before sending anything
+%% makes the connection process exit with the pre-establishment marker.
+t_wait_with_first_data_closed_exits_marked(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    {ok, {_, Port}} = esockd_transport:sockname(LSock),
+    {ok, Client} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, Sock} = gen_tcp:accept(LSock),
+    ok = gen_tcp:close(Client),         %% FIN before any data
+    timer:sleep(50),
+    esockd_transport:ready(self(), Sock, []),
+    {'EXIT', {shutdown, {pre_establishment, tcp_closed}}} =
+        (catch esockd_transport:wait_with_first_data(Sock)),
+    ok = esockd_transport:close(LSock).
+
+%% wait_with_first_data/1: a peer that already RST'd is marked too.
+t_wait_with_first_data_rst_exits_marked(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    {ok, {_, Port}} = esockd_transport:sockname(LSock),
+    {ok, Client} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, Sock} = gen_tcp:accept(LSock),
+    ok = inet:setopts(Client, [{linger, {true, 0}}]),
+    ok = gen_tcp:close(Client),         %% RST
+    timer:sleep(50),
+    esockd_transport:ready(self(), Sock, []),
+    {'EXIT', {shutdown, {pre_establishment, _}}} =
+        (catch esockd_transport:wait_with_first_data(Sock)),
+    ok = esockd_transport:close(LSock).
+
+%% wait_with_first_data/1: a silent but alive peer returns the socket alone.
+t_wait_with_first_data_silent(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    {ok, {_, Port}} = esockd_transport:sockname(LSock),
+    {ok, Client} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, Sock} = gen_tcp:accept(LSock),
+    esockd_transport:ready(self(), Sock, []),
+    {ok, Sock} = esockd_transport:wait_with_first_data(Sock),
+    ok = esockd_transport:close(Client),
+    ok = esockd_transport:close(LSock).
+
+%% wait_with_first_data/1: proxy-protocol sockets (raw TCP underneath) are
+%% probed on the inner socket.
+t_wait_with_first_data_proxy(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    {ok, {_, Port}} = esockd_transport:sockname(LSock),
+    {ok, Client} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, Sock} = gen_tcp:accept(LSock),
+    ok = gen_tcp:send(Client, <<"mqtt-data">>),
+    timer:sleep(50),
+    ProxySock = #proxy_socket{socket = Sock},
+    esockd_transport:ready(self(), ProxySock, []),
+    {ok, ProxySock, <<"mqtt-data">>} = esockd_transport:wait_with_first_data(ProxySock),
+    ok = esockd_transport:close(Client),
+    ok = esockd_transport:close(LSock).
+
+%% wait_with_first_data/1: TLS sockets are not probed - the handshake already
+%% engaged the client - the socket is returned as-is.
+t_wait_with_first_data_tls_not_probed(_) ->
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
+    SslSock = #ssl_socket{tcp = LSock},
+    esockd_transport:ready(self(), SslSock, []),
+    {ok, SslSock} = esockd_transport:wait_with_first_data(SslSock),
+    ok = esockd_transport:close(LSock).
+
 upgrade_with_fun(Fun) ->
-    {ok, LSock} = esockd_transport:listen(0, []),
+    {ok, LSock} = esockd_transport:listen(0, [binary, {active, false}]),
     esockd_transport:upgrade(LSock, [{Fun, []}]).
