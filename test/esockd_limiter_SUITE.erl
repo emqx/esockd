@@ -411,6 +411,99 @@ t_handle_info(_) ->
 t_code_change(_) ->
     {ok, state} = esockd_limiter:code_change('OldVsn', state, 'Extra').
 
+%% refund/1 returns one token per pre-establishment death, unconditionally
+%% (the token was consumed at accept; consume and refund are 1:1 for marked
+%% deaths). The balance is capped at capacity, so refunds can never inflate
+%% the bucket above what a refill would allow.
+t_refund(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(b, 10, 3600),
+        %% a refund at a full bucket is absorbed by the cap
+        ok = esockd_limiter:refund(b),
+        #{tokens := 10} = esockd_limiter:lookup(b),
+        %% consume into debt, refunds climb back up one per call
+        {0, _} = esockd_limiter:consume(b, 10),
+        {-1, _} = esockd_limiter:consume(b, 1),
+        #{tokens := -1} = esockd_limiter:lookup(b),
+        ok = esockd_limiter:refund(b),
+        #{tokens := 0} = esockd_limiter:lookup(b),
+        ok = esockd_limiter:refund(b),
+        #{tokens := 1} = esockd_limiter:lookup(b),
+        %% refunds keep restoring tokens (they fire even above zero)...
+        lists:foreach(fun(_) -> esockd_limiter:refund(b) end, lists:seq(1, 20)),
+        %% ...and never push the balance above capacity
+        #{tokens := 10} = esockd_limiter:lookup(b)
+    after
+        esockd_limiter:stop()
+    end.
+
+%% refund/1 must be a cheap no-op on missing/undefined/deleted buckets.
+t_refund_missing_bucket(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:refund(nonexistent),
+        ok = esockd_limiter:refund(undefined),
+        ok = esockd_limiter:create(b, 1, 3600),
+        {0, _} = esockd_limiter:consume(b, 1),
+        {-1, _} = esockd_limiter:consume(b, 1),
+        ok = esockd_limiter:delete(b),
+        timer:sleep(100),
+        %% refund after delete: no crash, bucket stays gone
+        ok = esockd_limiter:refund(b),
+        undefined = esockd_limiter:lookup(b)
+    after
+        esockd_limiter:stop()
+    end.
+
+%% A refund landing on a re-created (fresh, healthy) bucket is absorbed by
+%% the capacity cap: the bucket is not corrupted.
+t_refund_after_recreate(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(b, 1, 3600),
+        {0, _} = esockd_limiter:consume(b, 1),
+        {-1, _} = esockd_limiter:consume(b, 1),
+        ok = esockd_limiter:delete(b),
+        timer:sleep(100),
+        ok = esockd_limiter:create(b, 10, 3600),
+        #{tokens := 10} = esockd_limiter:lookup(b),
+        ok = esockd_limiter:refund(b),
+        #{tokens := 10} = esockd_limiter:lookup(b)
+    after
+        esockd_limiter:stop()
+    end.
+
+%% A burst of dead connections must net-zero the bucket: each consume from a
+%% marked-dead connection is matched by one refund, so the balance is fully
+%% restored (capped at capacity).
+t_refund_burst_restores_consumed_tokens(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(b, 10, 3600),
+        %% simulate 5 dead connections: 5 consumes, then 5 refunds
+        lists:foreach(fun(_) -> esockd_limiter:consume(b, 1) end, lists:seq(1, 5)),
+        #{tokens := 5} = esockd_limiter:lookup(b),
+        lists:foreach(fun(_) -> ok = esockd_limiter:refund(b) end, lists:seq(1, 5)),
+        #{tokens := 10} = esockd_limiter:lookup(b)
+    after
+        esockd_limiter:stop()
+    end.
+
+%% A burst of refunds against a deeply indebted bucket cancels debt one token
+%% at a time, up to capacity.
+t_refund_burst_cancels_debt(_) ->
+    {ok, _} = esockd_limiter:start_link(),
+    try
+        ok = esockd_limiter:create(b, 1, 3600),
+        lists:foreach(fun(_) -> esockd_limiter:consume(b, 1) end, lists:seq(1, 5)),
+        #{tokens := -4} = esockd_limiter:lookup(b),
+        lists:foreach(fun(_) -> ok = esockd_limiter:refund(b) end, lists:seq(1, 10)),
+        #{tokens := 1} = esockd_limiter:lookup(b)
+    after
+        esockd_limiter:stop()
+    end.
+
 %%--------------------------------------------------------------------
 %% Helpers
 %%--------------------------------------------------------------------

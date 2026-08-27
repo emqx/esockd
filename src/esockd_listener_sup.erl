@@ -83,6 +83,9 @@ start_link(Type, Proto, ListenOn, Opts, MFA) ->
     TuneFun = tune_socket_fun(Opts),
     UpgradeFuns = upgrade_funs(Type, Opts),
     Limiter = conn_rate_limiter({listener, Proto, ListenOn}, conn_rate_opt(Opts)),
+    %% The connection sup needs the bucket too, so it can refund tokens for
+    %% connections that die before engaging (conn-rate token refund design).
+    ok = esockd_connection_sup:set_conn_limiter(ConnSup, Limiter),
 
     AcceptorSupMod = case Type of
                          dtls -> esockd_dtls_acceptor_sup;
@@ -160,6 +163,7 @@ set_max_conn_rate(Sup, Proto, ListenOn, ConnRate) ->
     Limiter = conn_rate_limiter({listener, Proto, ListenOn}, ConnRate),
     [ok = Mod:set_conn_limiter(Acceptor, Limiter)
      || {_, Acceptor, _, [Mod]} <- supervisor:which_children(acceptor_sup(Sup))],
+    ok = esockd_connection_sup:set_conn_limiter(connection_sup(Sup), Limiter),
     ok.
 
 get_current_connections(Sup) ->

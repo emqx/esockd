@@ -59,7 +59,7 @@ start_link(Proto, ListenOn, ConnSup,
     gen_statem:start_link(?MODULE, [Proto, ListenOn, ConnSup,
                                     TuneFun, UpgradeFuns, Limiter, LSock], []).
 
--spec(set_conn_limiter(pid(), esockd_limiter:bucket_name()) -> ok).
+-spec(set_conn_limiter(pid(), 'undefined' | esockd_limiter:bucket_name()) -> ok).
 set_conn_limiter(Acceptor, Limiter) ->
     gen_statem:call(Acceptor, {set_conn_limiter, Limiter}, 5000).
 
