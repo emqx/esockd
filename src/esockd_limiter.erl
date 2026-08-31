@@ -78,7 +78,10 @@ bucket_info({{bucket, Name}, Capacity, Interval, LastTime}) ->
      }.
 
 tokens(Name) ->
-    ets:lookup_element(?TAB, {tokens, Name}, 2).
+    case ets:lookup(?TAB, {tokens, Name}) of
+        [] -> 0; %% the bucket is being deleted concurrently; report a stale 0 instead of crashing
+        [{_, Tokens}] -> Tokens
+    end.
 
 -spec(stop() -> ok).
 stop() ->
@@ -194,7 +197,7 @@ handle_cast({delete, Name}, State = #{countdown := Countdown}) ->
     true = ets:delete(?TAB, {bucket, Name}),
     true = ets:delete(?TAB, {tokens, Name}),
     NCountdown = maps:remove({bucket, Name}, Countdown),
-    {noreply, State#{countdown := NCountdown}};
+    {noreply, ensure_countdown_timer(State#{countdown := NCountdown})};
 
 handle_cast(Msg, State) ->
     error_logger:error_msg("Unexpected cast: ~p~n", [Msg]),
@@ -234,7 +237,13 @@ handle_info({timeout, Timer, countdown}, State = #{countdown := Countdown, timer
         ),
     ScheduleTime = schedule_time(Now, StrictNow),
     NState = State#{countdown := Countdown1, timer := undefined},
-    {noreply, ensure_countdown_timer(NState, ScheduleTime)};
+    {noreply, arm_countdown_timer(NState, ScheduleTime)};
+
+%% A countdown tick whose reference no longer matches the state: the timer was
+%% replaced while this tick was still in flight. Re-establish the invariant
+%% (a live timer while buckets exist) instead of dropping the countdown.
+handle_info({timeout, _StaleRef, countdown}, State) ->
+    {noreply, ensure_countdown_timer(State)};
 
 handle_info(Info, State) ->
     error_logger:error_msg("Unexpected info: ~p~n", [Info]),
@@ -253,18 +262,79 @@ code_change(_OldVsn, State, _Extra) ->
 time_now() ->
     erlang:system_time(millisecond).
 
+%% The countdown ticks must fire roughly once per second: every bucket's
+%% countdown is decremented once per tick, so a tick longer than 1s slows down
+%% the token refill of every bucket.
+%%
+%% Two failure modes of the un-clamped `StrictNow + 1000 - Now` are avoided:
+%%
+%% 1. When a bucket's countdown reaches 1 well before `LastTime + Interval * 1000`
+%%    (e.g. it was re-configured to a larger interval while its countdown was
+%%    already low), the bucket refills "early", pushing `StrictNow` far into
+%%    the future. Since all buckets share a single timer, the next tick would
+%%    be delayed by ~Interval seconds, starving every other bucket (e.g. a
+%%    1-second conn-rate limiter). Clamping the tick to at most 1s keeps other
+%%    buckets refilling on time.
+%%
+%% 2. If a tick is processed more than 1s after its refill boundary, the formula
+%%    becomes non-positive. `arm_countdown_timer/2` clamps it back to at least
+%%    1ms (a non-positive timeout would either crash the server or arm a timer
+%%    that never fires), so a timer is always armed and the limiter recovers
+%%    from a delayed tick.
 schedule_time(_Now, undefined) ->
     1000;
 schedule_time(Now, StrictNow) ->
-    StrictNow + 1000 - Now.
+    max(1, min(1000, StrictNow + 1000 - Now)).
 
-ensure_countdown_timer(State = #{timer := undefined}) ->
-    ensure_countdown_timer(State, timer:seconds(1));
-ensure_countdown_timer(State = #{timer := _TRef}) ->
-    State.
+%% Arm a fresh countdown timer for `Time` ms.
+%%
+%% `Time` is clamped to at least 1ms before arming: erlang:start_timer/3
+%% crashes the server on a negative timeout, and a zero timeout arms a timer
+%% that never delivers its message - both would leave the countdown dead.
+%% No new timer is armed while no buckets exist, so an idle limiter is not
+%% kept ticking by this call. A timer already running is not cancelled here:
+%% after the last bucket is deleted, the pending tick is still allowed to
+%% wind down (see ensure_countdown_timer/1).
+arm_countdown_timer(State = #{countdown := Countdown}, Time) ->
+    case maps:size(Countdown) of
+        0 -> State#{timer := undefined};
+        _ -> State#{timer := erlang:start_timer(max(1, Time), self(), countdown)}
+    end.
 
-ensure_countdown_timer(State = #{timer := undefined}, Time) when Time > 0 ->
-    TRef = erlang:start_timer(Time, self(), countdown),
-    State#{timer := TRef};
-ensure_countdown_timer(State = #{timer := _TRef}, _Time) ->
-    State.
+%% Guarantee the countdown invariant: while buckets exist, a live countdown
+%% timer is armed. The `timer` state field alone is not trusted - the reference
+%% is verified against erlang:read_timer/1, so a timer that has died (cancelled,
+%% or its reference replaced while a tick was still in flight) is re-armed.
+%% Every state transition that touches the countdown map - create, delete,
+%% and a stale countdown tick - ends here, so the invariant is re-established
+%% no matter how the previous timer was lost. (The countdown tick itself is
+%% the exception: it recomputes the schedule and arms the next timer directly
+%% via arm_countdown_timer/2.)
+%% Once the countdown is empty, a still-running timer is left alone and winds
+%% down on its next tick, so the limiter stops ticking at most one tick after
+%% the last bucket is deleted.
+ensure_countdown_timer(State = #{countdown := Countdown, timer := TRef}) ->
+    Running = is_reference(TRef) andalso is_integer(erlang:read_timer(TRef)),
+    case {Running, maps:size(Countdown)} of
+        {true, _} ->
+            State;
+        {false, 0} ->
+            State#{timer := undefined};
+        {false, _} ->
+            drain_countdown_ticks(),
+            arm_countdown_timer(State, timer:seconds(1))
+    end.
+
+%% Drain countdown tick messages that are already in the mailbox. With the
+%% timer dead, these can only be leaks from earlier timer generations; a leak
+%% that is processed in the window right after the re-armed timer has fired
+%% (e.g. a 1ms tick) but before its own message is handled would see the timer
+%% as dead again, arm yet another one, and drop the real tick - delaying every
+%% bucket's refill. Consuming the whole batch up front keeps a single re-arm
+%% from being followed by such a cascade.
+drain_countdown_ticks() ->
+    receive
+        {timeout, _Ref, countdown} -> drain_countdown_ticks()
+    after 0 ->
+        ok
+    end.
