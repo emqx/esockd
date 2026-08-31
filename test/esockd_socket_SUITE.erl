@@ -32,17 +32,22 @@ init_per_suite(Config) ->
     TCContainer = os:getenv("ESOCKD_CT_TC_ID_TCPTEST"),
     case Host =/= false andalso Port =/= false of
         true ->
+            FastCloseMethod0 = application:get_env(esockd, socket_fast_close_method),
+            ok = application:set_env(esockd, socket_fast_close_method, nolinger),
             [{tcptest_host, Host},
              {tcptest_port, list_to_integer(Port)},
              {tc_url, TCUrl},
-             {tc_container, TCContainer}
+             {tc_container, TCContainer},
+             {previous_fast_close_method, FastCloseMethod0}
             | Config];
         false ->
             {skip, "Remote TCP test server not running"}
     end.
 
-end_per_suite(_Config) ->
-    ok.
+end_per_suite(Config) ->
+    restore_env(
+      socket_fast_close_method,
+      proplists:get_value(previous_fast_close_method, Config)).
 
 init_per_testcase(t_fast_close_lost_network, Config) ->
     case proplists:get_value(tc_url, Config) of
@@ -140,3 +145,8 @@ traffic_control_stop(Config) ->
     {ok, {{_HTTP, 200, _OK}, _Headers, ""}} =
         httpc:request(delete, Request, [], []),
     ok.
+
+restore_env(Key, {ok, Value}) ->
+    application:set_env(esockd, Key, Value);
+restore_env(Key, undefined) ->
+    application:unset_env(esockd, Key).

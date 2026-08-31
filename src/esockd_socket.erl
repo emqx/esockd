@@ -113,6 +113,15 @@ upgrade(Sock, [{Fun, Args} | More]) ->
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->
+    case application:get_env(esockd, socket_fast_close_method, default) of
+        nolinger ->
+            fast_close_nolinger(Sock);
+        default ->
+            _Pid = erlang:spawn(socket, close, [Sock]),
+            ok
+    end.
+
+fast_close_nolinger(Sock) ->
     %% NOTE: Unexpected to fail on active socket.
     _ = socket:setopt(Sock, {socket, linger}, #{onoff => true, linger => 0}),
     socket:close(Sock).
