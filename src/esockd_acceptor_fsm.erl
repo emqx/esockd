@@ -60,6 +60,7 @@
     modctx :: {module(), _Ctx},
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
+    listener :: pid(),
     conn_sup :: pid()
                 %% NOTE: Only for tests
                 | {function(), [term()]}
@@ -91,12 +92,14 @@ callback_mode() ->
 
 init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, LSock]) ->
     _ = erlang:process_flag(trap_exit, true),
+    {_Mod, Listener} = esockd_server:get_listener_prop(ListenerRef, listener),
     Ctx = Mod:init(LSock, Opts),
     D = #d{
         listener_ref = ListenerRef,
         modctx = {Mod, Ctx},
         upgrade_funs = UpgradeFuns,
         conn_limiter = Limiter,
+        listener = Listener,
         conn_sup = ConnSup
     },
     {ok, waiting, D, {next_event, internal, accept}}.
@@ -112,7 +115,7 @@ handle_event(internal, accept, State, D) when State =:= waiting orelse
             inc_stats(D, econnaborted),
             {keep_state, D, {next_event, internal, accept}};
         {error, closed} ->
-            {stop, normal, D};
+            listener_socket_closed(D);
         {error, Reason} ->
             {stop, Reason, D}
     end;
@@ -236,7 +239,7 @@ maybe_log_start_error(Reason, D) ->
                         cause => Reason}).
 
 handle_socket_error(closed, _State, D) ->
-    {stop, normal, D};
+    listener_socket_closed(D);
 %% {error, econnaborted} -> accept
 handle_socket_error(econnaborted, State, D) ->
     {next_state, State, D, {next_event, internal, accept}};
@@ -248,6 +251,10 @@ handle_socket_error(Reason, _State, D) when Reason =:= emfile; Reason =:= enfile
     enter_suspending(D, ?SYS_LIMIT_SUSPEND_MS);
 handle_socket_error(Reason, _State, D) ->
     {stop, Reason, D}.
+
+listener_socket_closed(#d{listener = Listener} = D) ->
+    Listener ! {listen_socket_closed, self()},
+    {stop, normal, D}.
 
 explain_posix(emfile) ->
     "EMFILE (Too many open files)";
