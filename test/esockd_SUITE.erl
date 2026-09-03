@@ -106,6 +106,54 @@ t_open_tcpsocket(_) ->
              _Child}} =
         esockd:open_tcpsocket(echo, {"0.0.0.0", 6000}, [{tcp_options, [inet6]}]).
 
+t_tcpsocket_listener_recovers_from_closed_lsock(_) ->
+    LPort = 6002,
+    Name = ?FUNCTION_NAME,
+    {ok, LSup} = esockd:open_tcpsocket(
+        Name,
+        LPort,
+        [{acceptors, 4}, {connection_mfargs, echo_server}]
+    ),
+    {esockd_socket_listener, Listener} = esockd_listener_sup:listener(LSup),
+    LSock = esockd_socket_listener:get_lsock(Listener),
+    ConnSup = esockd_listener_sup:connection_sup(LSup),
+    AcceptorSup = esockd_listener_sup:acceptor_sup(LSup),
+    Acceptors = get_acceptors(LSup),
+    %% Estabilish a connection:
+    {ok, Sock1} = gen_tcp:connect("localhost", LPort, [binary, {active, false}]),
+    ok = gen_tcp:send(Sock1, <<"before restart">>),
+    {ok, <<"before restart">>} = gen_tcp:recv(Sock1, 0, 1000),
+    %% Force-close listening socket:
+    ListenerMRef = monitor(process, Listener),
+    ok = socket:close(LSock),
+    receive
+        {'DOWN', ListenerMRef, process, Listener, listen_socket_closed} ->
+            ok
+    after
+        1000 ->
+            ct:fail(listener_still_alive)
+    end,
+    ok = timer:sleep(1000),
+    %% Connection supervisor is still the same:
+    ?assert(is_process_alive(ConnSup)),
+    %% Listener restarted:
+    ?assertMatch(
+        {esockd_socket_listener, L} when L =/= Listener,
+        esockd_listener_sup:listener(LSup)
+    ),
+    %% Acceptors were restarted:
+    ?assertNot(is_process_alive(AcceptorSup)),
+    ?assertNotEqual(AcceptorSup, esockd_listener_sup:acceptor_sup(LSup)),
+    ?assertEqual(length(Acceptors), length(get_acceptors(LSup))),
+    %% Pre-existing connection is intact:
+    ok = gen_tcp:send(Sock1, <<"after restart">>),
+    {ok, <<"after restart">>} = gen_tcp:recv(Sock1, 0, 1000),
+    {ok, Sock2} = gen_tcp:connect("localhost", LPort, [binary, {active, false}]),
+
+    gen_tcp:close(Sock2),
+    gen_tcp:close(Sock1),
+    esockd:close(Name, LPort).
+
 t_open_udp(_) ->
     {ok, _} = esockd:open_udp(echo, 5678,
                               [{connection_mfargs, {udp_echo_server, start_link}}]),

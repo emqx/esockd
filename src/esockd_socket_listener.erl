@@ -99,7 +99,6 @@ init({Proto, ListenOn, Opts}) ->
     TcpOpts = merge_defaults(proplists:get_value(tcp_options, Opts, [])),
     case listen(ListenOn, TcpOpts) of
         {ok, LSock, SockParams} ->
-            _MRef = socket:monitor(LSock),
             case esockd_socket:sockname(LSock) of
                 {ok, {LAddr, LPort}} ->
                     {ok, #state{listener_ref = ListenerRef, lsock = LSock,
@@ -203,9 +202,8 @@ handle_cast(Msg, State) ->
     error_logger:error_msg("[~s] Unexpected cast: ~p", [?MODULE, Msg]),
     {noreply, State}.
 
-handle_info({'DOWN', _MRef, socket, LSock, Info}, #state{lsock = LSock} = State) ->
-    error_logger:error_msg("[~s] Socket ~p closed: ~p", [?MODULE, LSock, Info]),
-    {stop, Info, State};
+handle_info({listen_socket_closed, _Acceptor}, State) ->
+    {stop, listen_socket_closed, State};
 handle_info(Info, State) ->
     error_logger:error_msg("[~s] Unexpected info: ~p", [?MODULE, Info]),
     {noreply, State}.

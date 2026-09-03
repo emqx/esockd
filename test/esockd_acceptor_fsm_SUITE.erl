@@ -66,6 +66,9 @@ end_per_group(_Group, _Config) ->
 init_per_testcase(_Case, Config) ->
     Counters = counters:new(?COUNTER_LAST, []),
     meck:new(esockd_server, [passthrough, no_history, no_sticky]),
+    Listener = self(),
+    meck:expect(esockd_server, get_listener_prop,
+                fun(_ListenerRef, listener) -> {?MODULE, Listener} end),
     meck:expect(esockd_server, inc_stats,
                 fun(_, Tag, Count) ->
                         Index =  counter_tag_to_index(Tag),
@@ -253,14 +256,21 @@ t_close_listener_socket_cause_acceptor_stop(Config) ->
             ?assertEqual(normal, Reason)
     after
         1000 ->
-            error(timeout)
+            error("Acceptor process did not terminate in time")
+    end,
+    receive
+        {listen_socket_closed, Acceptor} ->
+            ok
+    after
+        1000 ->
+            error("No listen socket closed notification")
     end,
     receive
         {tcp_closed, Sock1} ->
             ok
     after
         1000 ->
-            error(timeout)
+            error("Client socket still connected")
     end.
 
 assert_socket_connected(Sock) ->
