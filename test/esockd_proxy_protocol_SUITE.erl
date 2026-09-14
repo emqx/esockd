@@ -31,6 +31,14 @@ groups() ->
     SocketTCs = [t_recv_ppv1,
                  t_recv_ppv1_unknown,
                  t_recv_ppv2,
+                 t_recv_ppv2_local_empty,
+                 t_recv_ppv2_local_app_data,
+                 t_recv_ppv2_local_body,
+                 t_recv_ppv2_ipv4_empty_address,
+                 t_recv_ppv2_ipv4_short_address,
+                 t_recv_ppv2_ipv6_empty_address,
+                 t_recv_ppv2_ipv6_short_address,
+                 t_recv_ppv2_unspec,
                  t_recv_pp_invalid,
                  t_recv_pp_partial,
                  t_recv_socket_error],
@@ -129,6 +137,68 @@ t_recv_ppv2(Config) ->
         
         {ok, <<"Hello">>} = recv(Backend, ServerSide, 0)
     end).
+
+%% LOCAL must finish without waiting for application data.
+t_recv_ppv2_local_empty(Config) ->
+    check_ppv2_local(Config, <<>>, <<>>).
+
+%% A zero-length LOCAL body must leave coalesced application data untouched.
+t_recv_ppv2_local_app_data(Config) ->
+    check_ppv2_local(Config, <<>>, <<"Hello">>).
+
+%% LOCAL must skip exactly its declared body.
+t_recv_ppv2_local_body(Config) ->
+    check_ppv2_local(Config, <<"Ignored">>, <<"Hello">>).
+
+%% An empty IPv4 address block must be rejected without consuming application data.
+t_recv_ppv2_ipv4_empty_address(Config) ->
+    check_ppv2_short_address(Config, 16#11, 0, 12).
+
+%% An IPv4 address block one byte below the 12-byte minimum must be rejected.
+t_recv_ppv2_ipv4_short_address(Config) ->
+    check_ppv2_short_address(Config, 16#11, 11, 12).
+
+%% An empty IPv6 address block must be rejected without consuming application data.
+t_recv_ppv2_ipv6_empty_address(Config) ->
+    check_ppv2_short_address(Config, 16#21, 0, 36).
+
+%% An IPv6 address block one byte below the 36-byte minimum must be rejected.
+t_recv_ppv2_ipv6_short_address(Config) ->
+    check_ppv2_short_address(Config, 16#21, 35, 36).
+
+%% Unsupported zero-length frames must be rejected without waiting for a body.
+t_recv_ppv2_unspec(Config) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, ppv2_frame(1, 0, <<>>)),
+        ?assertEqual({error, unsupported_proto_v2},
+            esockd_proxy_protocol:recv(Backend, ServerSide, 1000))
+    end).
+
+check_ppv2_local(Config, Body, AppData) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, [ppv2_frame(0, 0, Body), AppData]),
+        ?assertEqual({ok, ServerSide},
+            esockd_proxy_protocol:recv(Backend, ServerSide, 1000)),
+        ?assertEqual(#{}, esockd_proxy_protocol:get_proxy_attrs(ServerSide)),
+        ok = gen_tcp:send(ClientSide, <<"Tail">>),
+        Expected = <<AppData/binary, "Tail">>,
+        ?assertEqual({ok, Expected}, recv(Backend, ServerSide, byte_size(Expected)))
+    end).
+
+%% Short address blocks must return an error without borrowing application bytes.
+check_ppv2_short_address(Config, Family, Length, MinLength) ->
+    with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->
+        Body = binary:copy(<<0>>, Length),
+        AppData = binary:copy(<<0>>, MinLength),
+        ok = gen_tcp:send(ClientSide, [ppv2_frame(1, Family, Body), AppData]),
+        ?assertEqual({error, {invalid_proxy_info, Body}},
+            esockd_proxy_protocol:recv(Backend, ServerSide, 1000)),
+        ?assertEqual({ok, AppData}, recv(Backend, ServerSide, MinLength))
+    end).
+
+ppv2_frame(Cmd, Family, Body) ->
+    <<"\r\n\r\n", 0, "\r\nQUIT\n", 2:4, Cmd:4, Family:8,
+      (byte_size(Body)):16, Body/binary>>.
 
 t_recv_pp_invalid(Config) ->
     with_tcp_server(Config, fun(Backend, ServerSide, ClientSide) ->

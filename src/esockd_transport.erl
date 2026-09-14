@@ -111,14 +111,22 @@ close(#proxy_socket{socket = Sock}) ->
 
 -spec(fast_close(socket()) -> ok).
 fast_close(Sock) when is_port(Sock) ->
-    catch port_close(Sock), ok;
+    fast_close_port(Sock);
 fast_close(#ssl_socket{tcp = Sock, ssl = SslSock}) ->
     _ = fast_close_sslsock(SslSock),
-    catch port_close(Sock), ok;
+    fast_close_port(Sock);
 fast_close(SslSock = #sslsocket{}) ->
     fast_close_sslsock(SslSock);
 fast_close(#proxy_socket{socket = Sock}) ->
     fast_close(Sock).
+
+%% @private
+fast_close_port(Sock) ->
+    try port_close(Sock) of
+        _ -> ok
+    catch
+        _:_ -> ok
+    end.
 
 %% @private
 fast_close_sslsock(SslSock) ->

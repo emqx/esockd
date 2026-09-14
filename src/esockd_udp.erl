@@ -272,7 +272,8 @@ handle_info({udp, Sock, IP, Port, Request},
     {noreply, State};
 handle_info({udp, Sock, IP, InPortNo, Packet},
             State = #state{sock = Sock, peers = Peers, access_rules = Rules}) ->
-    case maps:find(Peer = {IP, InPortNo}, Peers) of
+    Peer = {IP, InPortNo},
+    case maps:find(Peer, Peers) of
         {ok, Pid} ->
             Pid ! {datagram, self(), Packet},
             {noreply, State};

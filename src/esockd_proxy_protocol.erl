@@ -137,6 +137,8 @@ recv_v1_esockd_socket(Sock, Deadline) ->
 
 recv_v2_esockd_socket(Sock, Deadline) ->
     case recv_v2(socket, Sock, Deadline) of
+        {ok, Sock} ->
+            {ok, Sock};
         {ok, ProxySock} ->
             ok = set_socket_meta(ProxySock),
             {ok, Sock};
@@ -181,7 +183,7 @@ recv_v2(Transport, Sock, Deadline) ->
         case Transport:recv(Sock, 14, HeaderTimeout) of
             {ok, <<?SIG, 2:4, Cmd:4, AF:4, Trans:4, Len:16>>} ->
                 with_remaining_timeout(Deadline, fun(ProxyInfoTimeout) ->
-                    case Transport:recv(Sock, Len, ProxyInfoTimeout) of
+                    case recv_v2_body(Transport, Sock, Len, ProxyInfoTimeout) of
                         {ok, ProxyInfo} ->
                             parse_v2(Cmd, Trans, ProxyInfo, #proxy_socket{inet = inet_family(AF), socket = Sock});
                         {error, closed} ->
@@ -198,6 +200,14 @@ recv_v2(Transport, Sock, Deadline) ->
                 {error, {recv_proxy_info_error, Reason}}
         end
     end).
+
+recv_v2_body(_Transport, _Sock, _Len = 0, _Timeout) ->
+    %% No extra proxy information, return empty binary.
+    %% Otherwise, a zero-length socket receive consumes application data available
+    %% in the socket buffers.
+    {ok, <<>>};
+recv_v2_body(Transport, Sock, Len, Timeout) ->
+    Transport:recv(Sock, Len, Timeout).
 
 mk_proxy_attrs(#proxy_socket{inet = Protocol,
                            src_addr = SrcAddr, dst_addr = DstAddr,
@@ -238,20 +248,26 @@ parse_v1(ProxyInfo, ProxySock) ->
 parse_v2(?LOCAL, _Trans, _ProxyInfo, #proxy_socket{socket = Sock}) ->
     {ok, Sock};
 
-parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet4}) ->
+parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet4})
+    when byte_size(ProxyInfo) >= 12 ->
     <<A:8, B:8, C:8, D:8, W:8, X:8, Y:8, Z:8,
       SrcPort:16, DstPort:16, AdditionalBytes/binary>> = ProxyInfo,
     parse_pp2_additional(AdditionalBytes, ProxySock#proxy_socket{
         src_addr = {A, B, C, D}, src_port = SrcPort,
         dst_addr = {W, X, Y, Z}, dst_port = DstPort});
 
-parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet6}) ->
+parse_v2(?PROXY, ?STREAM, ProxyInfo, ProxySock = #proxy_socket{inet = inet6})
+    when byte_size(ProxyInfo) >= 36 ->
     <<A:16, B:16, C:16, D:16, E:16, F:16, G:16, H:16,
       R:16, S:16, T:16, U:16, V:16, W:16, X:16, Y:16,
       SrcPort:16, DstPort:16, AdditionalBytes/binary>> = ProxyInfo,
     parse_pp2_additional(AdditionalBytes, ProxySock#proxy_socket{
         src_addr = {A, B, C, D, E, F, G, H}, src_port = SrcPort,
         dst_addr = {R, S, T, U, V, W, X, Y}, dst_port = DstPort});
+
+parse_v2(?PROXY, ?STREAM, ProxyInfo, #proxy_socket{inet = Family})
+    when Family =:= inet4; Family =:= inet6 ->
+    {error, {invalid_proxy_info, ProxyInfo}};
 
 parse_v2(_, _, _, #proxy_socket{socket = _Sock}) ->
     {error, unsupported_proto_v2}.
