@@ -52,6 +52,9 @@
 
 -define(DEFAULT_SOCK_OPTIONS, [{reuseaddr, true}]).
 
+%% Listening socket options that take effect at `bind' / `listen' time only.
+-define(BIND_SOCK_OPTIONS, [{socket, reuseaddr}]).
+
 -type option() :: {tcp_options, [{reuseaddr, boolean()}]}.
 
 -spec start_link(atom(), esockd:listen_on(), [esockd:option()])
@@ -154,11 +157,39 @@ sock_addr({Host, Port}) when tuple_size(Host) =:= 8 ->
 
 sock_listen_opt({reuseaddr, Flag}) ->
     {{socket, reuseaddr}, Flag};
+sock_listen_opt({recbuf, Size}) ->
+    {{socket, rcvbuf}, Size};
+sock_listen_opt({sndbuf, Size}) ->
+    {{socket, sndbuf}, Size};
+sock_listen_opt({nodelay, Flag}) ->
+    {{tcp, nodelay}, Flag};
 sock_listen_opt(_) ->
     [].
 
 merge_defaults(SockOpts) ->
     esockd:merge_opts(?DEFAULT_SOCK_OPTIONS, SockOpts).
+
+bind_opts(SockOpts) ->
+    [KV || KV = {Opt, _} <- SockOpts, lists:member(Opt, ?BIND_SOCK_OPTIONS)].
+
+%% Options the listening socket passes on to the sockets accepted from it can
+%% be changed in place, and take effect for connections accepted from then on.
+%% Bind-time options need a listener restart.
+update_listen_opts(NewParams = {_, NewSockOpts, _}, LSock, SockOpts, State) ->
+    case bind_opts(NewSockOpts) =:= bind_opts(SockOpts) of
+        true ->
+            set_listen_opts(LSock, esockd:changed_opts(NewSockOpts, SockOpts), NewParams, State);
+        false ->
+            {reply, {error, unsupported}, State}
+    end.
+
+set_listen_opts(LSock, SockOpts, NewParams, State) ->
+    case esockd_socket:setopts(LSock, SockOpts) of
+        ok ->
+            {reply, ok, State#state{sockparams = NewParams}};
+        Error ->
+            {reply, Error, State}
+    end.
 
 ensure(ok) -> ok;
 ensure({ok, Result}) -> Result;
@@ -183,12 +214,15 @@ handle_call(get_state, _From, State = #state{lsock = LSock, lport = LPort}) ->
 
 handle_call({set_options, Opts}, _From,
             State = #state{listener_ref = {_Proto, ListenOn},
-                           sockparams = SockParams}) ->
+                           lsock = LSock,
+                           sockparams = SockParams = {SockAddr, SockOpts, Backlog}}) ->
     TcpOpts = merge_defaults(proplists:get_value(tcp_options, Opts, [])),
     case get_sock_params(ListenOn, TcpOpts) of
         SockParams ->
             %% Listening socket parameters did not change:
             {reply, ok, State};
+        NewParams = {SockAddr, _, Backlog} ->
+            update_listen_opts(NewParams, LSock, SockOpts, State);
         _Different ->
             %% Listening socket parameters changed, needs restart:
             {reply, {error, unsupported}, State}
