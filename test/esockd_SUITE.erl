@@ -154,6 +154,44 @@ t_tcpsocket_listener_recovers_from_closed_lsock(_) ->
     gen_tcp:close(Sock1),
     esockd:close(Name, LPort).
 
+t_tcpsocket_buffer_opts_on_listening_socket(_) ->
+    LPort = 6003,
+    RecBuf = 4096,
+    SndBuf = 8192,
+    {ok, LSup} = esockd:open_tcpsocket(echo, LPort,
+                                       [{connection_mfargs, {echo_server, start_link}},
+                                        {tcp_options, [{recbuf, RecBuf},
+                                                       {sndbuf, SndBuf},
+                                                       {nodelay, true}]}]),
+    {esockd_socket_listener, Listener} = esockd_listener_sup:listener(LSup),
+    LSock = esockd_socket_listener:get_lsock(Listener),
+    %% The buffer sizes must be set on the listening socket, so that an accepted
+    %% socket inherits them from the start of the TCP handshake. Linux reports
+    %% back twice the requested size.
+    ?assertMatch(
+        {ok, Sz} when Sz >= RecBuf andalso Sz =< 2 * RecBuf,
+        socket:getopt(LSock, {socket, rcvbuf})
+    ),
+    ?assertMatch(
+        {ok, Sz} when Sz >= SndBuf andalso Sz =< 2 * SndBuf,
+        socket:getopt(LSock, {socket, sndbuf})
+    ),
+    ?assertEqual({ok, true}, socket:getopt(LSock, {tcp, nodelay})),
+    ok = esockd:close(echo, LPort).
+
+t_tcpsocket_set_buffer_opts(_) ->
+    LPort = 6004,
+    {ok, LSup} = esockd:open_tcpsocket(echo, LPort,
+                                       [{connection_mfargs, {echo_server, start_link}},
+                                        {tcp_options, [{recbuf, 4096}]}]),
+    {esockd_socket_listener, Listener} = esockd_listener_sup:listener(LSup),
+    LSock = esockd_socket_listener:get_lsock(Listener),
+    {ok, Was} = socket:getopt(LSock, {socket, rcvbuf}),
+    %% Changing a buffer size is applied to the listening socket in place.
+    ok = esockd:set_options({echo, LPort}, [{tcp_options, [{recbuf, 16384}]}]),
+    ?assertMatch({ok, Sz} when Sz > Was, socket:getopt(LSock, {socket, rcvbuf})),
+    ok = esockd:close(echo, LPort).
+
 t_open_udp(_) ->
     {ok, _} = esockd:open_udp(echo, 5678,
                               [{connection_mfargs, {udp_echo_server, start_link}}]),
