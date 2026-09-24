@@ -53,9 +53,9 @@
 -define(DEFAULT_SOCK_OPTIONS, [{reuseaddr, true}]).
 
 %% Listening socket options that take effect at `bind' / `listen' time only.
--define(BIND_SOCK_OPTIONS, [{socket, reuseaddr}]).
+-define(BIND_SOCK_OPTIONS, [{socket, reuseaddr}, {ipv6, v6only}]).
 
--type option() :: {tcp_options, [{reuseaddr, boolean()}]}.
+-type option() :: {tcp_options, [{reuseaddr, boolean()} | {ipv6_v6only, boolean()}]}.
 
 -spec start_link(atom(), esockd:listen_on(), [esockd:option()])
       -> {ok, pid()} | ignore | {error, term()}.
@@ -157,6 +157,8 @@ sock_addr({Host, Port}) when tuple_size(Host) =:= 8 ->
 
 sock_listen_opt({reuseaddr, Flag}) ->
     {{socket, reuseaddr}, Flag};
+sock_listen_opt({ipv6_v6only, Flag}) ->
+    {{ipv6, v6only}, Flag};
 sock_listen_opt({recbuf, Size}) ->
     {{socket, rcvbuf}, Size};
 sock_listen_opt({sndbuf, Size}) ->

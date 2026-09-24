@@ -365,23 +365,32 @@ start_mfargs({M, F, Args}, A1, A2) when is_atom(M), is_atom(F), is_list(Args) ->
     erlang:apply(M, F, [A1, A2 | Args]).
 
 %% @doc Merge two options
--spec(merge_opts(proplists:proplist(), proplists:proplist())
-      -> proplists:proplist()).
+-spec merge_opts(proplists:proplist(), proplists:proplist()) ->
+    proplists:proplist().
 merge_opts(Opts1, Opts2) ->
     squash_opts(Opts1 ++ Opts2).
 
-squash_opts([{Name, Value} | Rest]) ->
-    Overrides = proplists:get_all_values(Name, Rest),
-    Merged = lists:foldl(fun(O, V) -> merge_opt(Name, V, O) end, Value, Overrides),
-    make_opt(Name, Merged) ++ squash_opts(proplists:delete(Name, Rest));
-squash_opts([Name | Rest]) when is_atom(Name) ->
-    [Name | squash_opts([Opt || Opt <- Rest, Opt =/= Name])];
+squash_opts([Opt | Rest]) ->
+    Name = opt_name(Opt),
+    Overrides = [O || O <- Rest, Name =:= opt_name(O)],
+    Merged = lists:foldl(fun(O, V) -> merge_opt(V, O) end, Opt, Overrides),
+    make_opt(Merged) ++ squash_opts(proplists:delete(Name, Rest));
 squash_opts([]) ->
     [].
 
-make_opt(_Name, undefined) -> [];
-make_opt(Name, Value) -> [{Name, Value}].
+opt_name({Name, _V}) -> Name;
+opt_name(Name) when is_atom(Name) -> Name.
 
+make_opt({_, undefined}) -> [];
+make_opt(Opt) -> [Opt].
+
+merge_opt({Name, V1}, {Name, V2}) ->
+    {Name, merge_opt(Name, V1, V2)};
+merge_opt(_Opt1, Opt2) ->
+    Opt2.
+
+merge_opt(_, undefined, Opt2) -> Opt2;
+merge_opt(_, _Opt1, undefined) -> undefined;
 merge_opt(ssl_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
 merge_opt(tcp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
 merge_opt(udp_options, Opts1, Opts2) -> merge_opts(Opts1, Opts2);
