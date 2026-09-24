@@ -870,14 +870,45 @@ t_ulimit(_) ->
 t_merge_opts(_) ->
     Opts1 = [ binary, {acceptors, 8}, {tune_buffer, true}
             , {ssl_options, [{keyfile, "key.pem"}, {certfile, "cert.pem"}]}
+            , {tcp_options, [binary, inet6, {nodelay, false}]}
             ],
     Opts2 = [ binary, {acceptors, 16}
             , {ssl_options, [{keyfile, undefined}]}
+            , {tcp_options, [binary, {nodelay, true}]}
             ],
     Result = [ binary, {acceptors, 16}, {tune_buffer, true}
              , {ssl_options, [{certfile, "cert.pem"}]}
+             , {tcp_options, [binary, inet6, {nodelay, true}]}
              ],
     ?assertEqual(Result, esockd:merge_opts(Opts1, Opts2)).
+
+t_merge_opts_atom_override(_) ->
+    Merged = esockd:merge_opts([proxy_protocol, {acceptors, 8}], [{proxy_protocol, false}]),
+    ?assertEqual(false, proplists:get_value(proxy_protocol, Merged)),
+    ?assertEqual([{proxy_protocol, false}, {acceptors, 8}], Merged),
+    ?assertEqual(
+        [proxy_protocol, {acceptors, 8}],
+        esockd:merge_opts(Merged, [proxy_protocol])
+    ).
+
+t_merge_opts_delete_nested_options(_) ->
+    ?assertEqual(
+        [],
+        esockd:merge_opts([{tcp_options, [{nodelay, true}]}],
+                          [{tcp_options, undefined}])
+    ),
+    ?assertEqual(
+        [{acceptors, 8}],
+        esockd:merge_opts([{ssl_options, [{verify, verify_peer}]}, {acceptors, 8}],
+                          [{ssl_options, undefined}])
+    ),
+    ?assertEqual(
+        [{udp_options, [{active, false}]}, {acceptors, 8}],
+        esockd:merge_opts([{udp_options, [{reuseaddr, true}]}, {acceptors, 8}],
+                          [{udp_options, undefined},
+                           {udp_options, [{active, false}]}]
+        )
+    ).
 
 t_changed_opts(_) ->
     Opts1 = [ binary, {acceptors, 8}, {tune_buffer, true}
