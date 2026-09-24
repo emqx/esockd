@@ -106,6 +106,36 @@ t_open_tcpsocket(_) ->
              _Child}} =
         esockd:open_tcpsocket(echo, {"0.0.0.0", 6000}, [{tcp_options, [inet6]}]).
 
+t_open_tcpsocket_ipv6_only(_) ->
+    Name = ?FUNCTION_NAME,
+    ListenOn = {{0,0,0,0,0,0,0,0}, 0},
+    {ok, LSup} = esockd:open_tcpsocket(
+        Name,
+        ListenOn,
+        [{acceptors, 1},
+         {tcp_options, [{ipv6_v6only, true}]},
+         {connection_mfargs, echo_server}]
+    ),
+    try
+        {esockd_socket_listener, Listener} = esockd_listener_sup:listener(LSup),
+        LPort = esockd_socket_listener:get_port(Listener),
+        {ok, Sock} = gen_tcp:connect({0,0,0,0,0,0,0,1}, LPort,
+                                   [inet6, binary, {active, false}], 1000),
+        ok = gen_tcp:send(Sock, <<"Hello">>),
+        ?assertEqual({ok, <<"Hello">>}, gen_tcp:recv(Sock, 0, 1000)),
+        ?assertEqual(
+            {error, econnrefused},
+            gen_tcp:connect({127,0,0,1}, LPort, [{active, false}], 1000)
+        ),
+        ?assertEqual(
+            {error, unsupported},
+            esockd:set_options({Name, ListenOn},
+                              [{tcp_options, [{ipv6_v6only, false}]}])
+        )
+    after
+        esockd:close(Name, ListenOn)
+    end.
+
 t_tcpsocket_listener_recovers_from_closed_lsock(_) ->
     LPort = 6002,
     Name = ?FUNCTION_NAME,
