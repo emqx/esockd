@@ -43,7 +43,10 @@ groups() ->
                  t_recv_pp_partial,
                  t_recv_socket_error],
     [{gen_tcp, [sequence], SocketTCs},
-     {socket, [sequence], SocketTCs},
+     {socket, [sequence], SocketTCs ++ [t_recv_ppv1_incomplete,
+                                        t_recv_ppv1_prefix_only,
+                                        t_recv_ppv1_small_buffer,
+                                        t_recv_ppv1_too_long]},
      {parser, [sequence], [t_parse_v1,
                            t_parse_v2,
                            t_parse_pp2_additional,
@@ -101,6 +104,42 @@ t_recv_ppv1(Config) ->
         ),
         
         {ok, <<"Hello">>} = recv(Backend, ServerSide, 0)
+    end).
+
+t_recv_ppv1_incomplete(Config) ->
+    with_tcp_server(Config, fun(esockd_socket, ServerSide, ClientSide) ->
+        Header = <<"PROXY TCP4 192.168.1.1 192.168.1.2 80 81\r">>,
+        ok = gen_tcp:send(ClientSide, Header),
+        ?assertEqual({error, {invalid_proxy_info, Header}},
+                     esockd_proxy_protocol:recv(esockd_socket, ServerSide, 1000))
+    end).
+
+t_recv_ppv1_prefix_only(Config) ->
+    with_tcp_server(Config, fun(esockd_socket, ServerSide, ClientSide) ->
+        ok = gen_tcp:send(ClientSide, <<"PR">>),
+        ?assertEqual({error, {invalid_proxy_info, <<"PR">>}},
+                     esockd_proxy_protocol:recv(esockd_socket, ServerSide, 1000))
+    end).
+
+t_recv_ppv1_small_buffer(Config) ->
+    with_tcp_server(Config, fun(esockd_socket, ServerSide, ClientSide) ->
+        ok = socket:setopt(ServerSide, {otp, rcvbuf}, 64),
+        %% Exercise the full 107-byte header limit with application data following.
+        Padding = binary:copy(<<" ">>, 92),
+        Header = <<"PROXY UNKNOWN", Padding/binary, "\r\n">>,
+        ok = gen_tcp:send(ClientSide, [Header, <<"Hello">>]),
+        ?assertEqual({ok, ServerSide},
+                     esockd_proxy_protocol:recv(esockd_socket, ServerSide, 1000)),
+        ?assertEqual({ok, <<"Hello">>}, socket:recv(ServerSide, 5, 1000))
+    end).
+
+t_recv_ppv1_too_long(Config) ->
+    with_tcp_server(Config, fun(esockd_socket, ServerSide, ClientSide) ->
+        Padding = binary:copy(<<" ">>, 93),
+        Header = <<"PROXY UNKNOWN", Padding/binary, "\r\n">>,
+        ok = gen_tcp:send(ClientSide, Header),
+        ?assertMatch({error, {invalid_proxy_info, _}},
+                     esockd_proxy_protocol:recv(esockd_socket, ServerSide, 1000))
     end).
 
 t_recv_ppv1_unknown(Config) ->
