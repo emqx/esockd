@@ -108,6 +108,8 @@ tune_socket(Sock, [{setopts, SockOpts} | Rest]) ->
         Error ->
             Error
     end;
+tune_socket(Sock, [{tune_buffer, false} | Rest]) ->
+    tune_socket(Sock, Rest);
 tune_socket(Sock, [{tune_buffer, true} | Rest]) ->
     try
         BufRecv = ensure(socket:getopt(Sock, {socket, rcvbuf})),
