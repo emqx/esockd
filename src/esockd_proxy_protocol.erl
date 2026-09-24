@@ -112,16 +112,16 @@ recv_esockd_socket(Sock, Timeout) ->
         {ok, <<"\r\n">>} ->
             recv_v2_esockd_socket(Sock, Deadline);
         {ok, <<"PR">>} ->
-            recv_v1_esockd_socket(Sock, Deadline);
+            recv_v1_esockd_socket(Sock);
         {ok, Header} ->
             {error, {invalid_proxy_info, Header}};
         {error, Reason} ->
             map_tcpsocket_error(Reason)
     end.
 
-recv_v1_esockd_socket(Sock, Deadline) ->
-    case socket_recvline(Sock, _MaxLine = 108, Deadline) of
-        %% NOTE: "PR" was already received.
+recv_v1_esockd_socket(Sock) ->
+    %% The v1 header is at most 107 bytes, including the already received "PR".
+    case socket_recvline(Sock, _MaxLine = 107 - 2) of
         {ok, <<"OXY TCP", Proto, ?SPACE, ProxyInfo/binary>>} ->
             {ok, ProxySock} = parse_v1(ProxyInfo,
                                        #proxy_socket{inet = inet_family(Proto), socket = Sock}),
@@ -131,8 +131,10 @@ recv_v1_esockd_socket(Sock, Deadline) ->
             {ok, Sock};
         {ok, Header} ->
             {error, {invalid_proxy_info, <<"PR", Header/binary>>}};
-        {error, Reason} ->
-            map_tcpsocket_error(Reason)
+        {error, {invalid_proxy_info, Header}} ->
+            {error, {invalid_proxy_info, <<"PR", Header/binary>>}};
+        {error, _} = Error ->
+            Error
     end.
 
 recv_v2_esockd_socket(Sock, Deadline) ->
@@ -146,22 +148,31 @@ recv_v2_esockd_socket(Sock, Deadline) ->
             {error, Reason}
     end.
 
-socket_recvline(Sock, MaxLine, Deadline) ->
-    case socket:recv(Sock, 0, [peek], timeout_left(Deadline)) of
+socket_recvline(Sock, MaxLine) ->
+    %% NOTE
+    %% Specification permits rejecting an incomplete header on the first read.
+    %% Using an explicit peek buffer so a small `{otp, rcvbuf}` cannot truncate a
+    %% complete header, and do not wait for additional fragments.
+    PeekResult = case socket:recv(Sock, MaxLine, [peek], 0) of
+        %% A short peek can still contain a complete header.
+        {error, {timeout, Partial}} -> {ok, Partial};
+        Result -> Result
+    end,
+    case PeekResult of
         {ok, Bytes} ->
-            MatchOpts = case byte_size(Bytes) of
-                N when N > MaxLine -> [{scope, {0, MaxLine}}];
-                _                  -> []
-            end,
-            case binary:match(Bytes, <<"\r\n">>, MatchOpts) of
+            case binary:match(Bytes, <<"\r\n">>) of
                 {Pos, _} ->
-                    _ = socket:recv(Sock, Pos + 2, [], timeout_left(Deadline)),
-                    {ok, binary:part(Bytes, {0, Pos})};
-                nomatch when byte_size(Bytes) < MaxLine ->
-                    socket_recvline(Sock, MaxLine, Deadline);
+                    case socket:recv(Sock, Pos + 2, [], 0) of
+                        {ok, Line} ->
+                            {ok, binary:part(Line, {0, Pos})};
+                        {error, Reason} ->
+                            map_tcpsocket_error(Reason)
+                    end;
                 nomatch ->
                     {error, {invalid_proxy_info, Bytes}}
             end;
+        {error, timeout} ->
+            {error, {invalid_proxy_info, <<>>}};
         {error, Reason} ->
             map_tcpsocket_error(Reason)
     end.
