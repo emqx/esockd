@@ -96,40 +96,40 @@ eval_tune_socket_fun(Sock, {Fun, Opts}) ->
 mk_tune_socket_fun(Opts) ->
     TcpOpts = proplists:get_value(tcp_options, Opts, []),
     SockOpts = lists:flatten([sock_opt(O) || O <- merge_sock_defaults(TcpOpts)]),
-    TuneOpts = [{Name, Val} || {Name, Val} <- Opts,
+    TuneOpts = [{Name, Val} || {Name, Val} <- proplists:unfold(Opts),
                                Name =:= tune_buffer orelse
                                Name =:= tune_fun],
     {fun ?MODULE:tune_socket/2, [{setopts, SockOpts} | TuneOpts]}.
 
-tune_socket(Sock, [{setopts, SockOpts} | Rest]) ->
-    case esockd_socket:setopts(Sock, SockOpts) of
+tune_socket(Sock, [Opt | Rest]) ->
+    case tune_socket_opt(Sock, Opt) of
         ok ->
             tune_socket(Sock, Rest);
         Error ->
             Error
     end;
-tune_socket(Sock, [{tune_buffer, false} | Rest]) ->
-    tune_socket(Sock, Rest);
-tune_socket(Sock, [{tune_buffer, true} | Rest]) ->
+tune_socket(Sock, []) ->
+    return_socket(Sock).
+
+tune_socket_opt(Sock, {setopts, SockOpts}) ->
+    esockd_socket:setopts(Sock, SockOpts);
+tune_socket_opt(Sock, {tune_buffer, true}) ->
+    tune_buffer(Sock);
+tune_socket_opt(_Sock, {tune_buffer, false}) ->
+    ok;
+tune_socket_opt(_Sock, {tune_fun, {M, F, A}}) ->
+    %% NOTE: Socket is not part of the argument list, backward compatibility.
+    apply(M, F, A).
+
+tune_buffer(Sock) ->
     try
         BufRecv = ensure(socket:getopt(Sock, {socket, rcvbuf})),
         Buffer = ensure(socket:getopt(Sock, {otp, rcvbuf})),
         Max = max(Buffer, BufRecv),
-        ok = ensure(socket:setopt(Sock, {otp, rcvbuf}, Max)),
-        tune_socket(Sock, Rest)
+        ensure(socket:setopt(Sock, {otp, rcvbuf}, Max))
     catch
         Error -> Error
-    end;
-tune_socket(Sock, [{tune_fun, {M, F, A}} | Rest]) ->
-    %% NOTE: Socket is not part of the argument list, backward compatibility.
-    case apply(M, F, A) of
-        ok ->
-            tune_socket(Sock, Rest);
-        Error ->
-            Error
-    end;
-tune_socket(Sock, _) ->
-    return_socket(Sock).
+    end.
 
 ensure(ok) -> ok;
 ensure({ok, Result}) -> Result;

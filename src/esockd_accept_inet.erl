@@ -88,7 +88,7 @@ eval_tune_socket_fun({Fun, Opts}, Sock) ->
 
 -spec mk_tune_socket_fun([esockd:option()]) -> tune_socket_fun().
 mk_tune_socket_fun(Opts) ->
-    TuneOpts = [{Name, Val} || {Name, Val} <- Opts,
+    TuneOpts = [{Name, Val} || {Name, Val} <- proplists:unfold(Opts),
                                Name =:= tune_buffer orelse
                                Name =:= tune_fun],
     {fun ?MODULE:tune_socket/2, TuneOpts}.
