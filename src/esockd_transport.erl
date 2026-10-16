@@ -329,15 +329,39 @@ peercert(SslSock = #sslsocket{}) ->
         {error, no_peercert} -> undefined;
         Error -> Error
     end;
-%% When the proxied connection is itself TLS-terminated by this
-%% listener (e.g. TCP-passthrough proxy in front of an SSL listener),
-%% the real client certificate lives on the inner ssl_socket. The
-%% proxy header (V1 or V2 without SSL TLVs) carries no cert info, so
-%% delegate to the inner socket.
-peercert(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
-    peercert(Sock);
-peercert(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+%% A proxied connection to an SSL listener has two places a client
+%% certificate can come from, and which one holds it depends on where
+%% TLS was terminated.
+%%
+%% A proxy that terminates mTLS sends the client's details in the
+%% PROXY V2 SSL TLVs. It is the hop closest to the client, so those
+%% TLVs describe the client itself. The inner certificate, if the
+%% re-encrypted hop presents one at all, belongs to the proxy.
+%%
+%% A TCP-passthrough proxy does not terminate TLS. It sends no SSL
+%% TLVs, and the client certificate is on the inner ssl_socket.
+%%
+%% Read the SSL TLVs first and use the inner socket only when the
+%% header carries no certificate information. Enabling proxy_protocol
+%% on a listener already declares the upstream trusted: the peer
+%% address comes from the same header.
+%%
+%% pp2_ssl_info/1 decides this for every accessor below, so the
+%% certificate, its subject and its common name always describe the
+%% same peer.
+peercert(#proxy_socket{socket = #ssl_socket{} = Sock} = ProxySock) ->
+    case pp2_ssl_info(ProxySock) of
+        [] -> peercert(Sock);
+        SSLInfo -> SSLInfo
+    end;
+peercert(#proxy_socket{} = ProxySock) ->
+    pp2_ssl_info(ProxySock).
+
+pp2_ssl_info(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_ssl, AdditionalInfo, []).
+
+pp2_common_name(SSLInfo) ->
+    proplists:get_value(pp2_ssl_cn, SSLInfo).
 
 %% @doc Peercert subject
 -spec(peer_cert_subject(socket()) -> undefined | binary()).
@@ -349,11 +373,14 @@ peer_cert_subject(#ssl_socket{ssl = SslSock}) ->
             esockd_ssl:peer_cert_subject(Cert);
         _Error -> undefined
     end;
-peer_cert_subject(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
-    peer_cert_subject(Sock);
-peer_cert_subject(Sock = #proxy_socket{}) ->
-    %% Common Name? Haproxy PP2 will not pass subject.
-    peer_cert_common_name(Sock).
+peer_cert_subject(#proxy_socket{socket = #ssl_socket{} = Sock} = ProxySock) ->
+    case pp2_ssl_info(ProxySock) of
+        %% Common Name? Haproxy PP2 will not pass subject.
+        [] -> peer_cert_subject(Sock);
+        SSLInfo -> pp2_common_name(SSLInfo)
+    end;
+peer_cert_subject(#proxy_socket{} = ProxySock) ->
+    pp2_common_name(pp2_ssl_info(ProxySock)).
 
 %% @doc Peercert common name
 -spec(peer_cert_common_name(socket()) -> undefined | binary()).
@@ -365,11 +392,13 @@ peer_cert_common_name(#ssl_socket{ssl = SslSock}) ->
             esockd_ssl:peer_cert_common_name(Cert);
         _Error -> undefined
     end;
-peer_cert_common_name(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
-    peer_cert_common_name(Sock);
-peer_cert_common_name(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
-    proplists:get_value(pp2_ssl_cn,
-                        proplists:get_value(pp2_ssl, AdditionalInfo, [])).
+peer_cert_common_name(#proxy_socket{socket = #ssl_socket{} = Sock} = ProxySock) ->
+    case pp2_ssl_info(ProxySock) of
+        [] -> peer_cert_common_name(Sock);
+        SSLInfo -> pp2_common_name(SSLInfo)
+    end;
+peer_cert_common_name(#proxy_socket{} = ProxySock) ->
+    pp2_common_name(pp2_ssl_info(ProxySock)).
 
 -spec(peersni(socket()) -> undefined | binary()).
 peersni(Sock) when is_port(Sock) ->
@@ -384,9 +413,15 @@ peersni(#ssl_socket{ssl = SslSock}) ->
         {ok, []} -> undefined;
         {error, _Reason} -> undefined
     end;
-peersni(#proxy_socket{socket = Sock = #ssl_socket{}}) ->
-    peersni(Sock);
-peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
+peersni(#proxy_socket{socket = #ssl_socket{} = Sock} = ProxySock) ->
+    case pp2_peersni(ProxySock) of
+        undefined -> peersni(Sock);
+        SNI -> SNI
+    end;
+peersni(#proxy_socket{} = ProxySock) ->
+    pp2_peersni(ProxySock).
+
+pp2_peersni(#proxy_socket{pp2_additional_info = AdditionalInfo}) ->
     proplists:get_value(pp2_authority, AdditionalInfo, undefined).
 
 %% @doc Shutdown socket
