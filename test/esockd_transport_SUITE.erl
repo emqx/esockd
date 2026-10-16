@@ -346,6 +346,134 @@ peercert_proxy_ssl_loop(Transport, Sock) ->
             ok
     end.
 
+%% A proxy that terminates mTLS and re-encrypts the hop to this listener
+%% forwards the client's details in the PROXY V2 SSL TLVs. The inner
+%% handshake is one-way, so the inner ssl_socket has no peer certificate
+%% and the TLVs are the only source. Counterpart to t_peercert_proxy_ssl/1,
+%% which covers the TCP-passthrough proxy where the inner socket is the
+%% only source. Both must keep working.
+t_peercert_proxy_ssl_pp2_fallback(_Config) ->
+    ssl:start(),
+    Port = 8885,
+    CN = <<"client-cn-from-pp2">>,
+    {ServerBase, _ClientBase} = mtls_chain(),
+    %% One-way TLS on the inner hop: the proxy already did the client-cert
+    %% check, so this listener asks for no client certificate.
+    ServerSslOpts =
+        ServerBase ++
+        [{verify, verify_none},
+         {sni_fun, fun(_SNI) -> [] end}],
+    Self = self(),
+    {ok, _} = esockd:open(
+        echo, Port,
+        [proxy_protocol,
+         {proxy_protocol_timeout, 3000},
+         {ssl_options, ServerSslOpts}],
+        {?MODULE, start_link_pp2_fallback, [Self, CN]}),
+    {ok, TcpSock} = gen_tcp:connect(
+        {127,0,0,1}, Port,
+        [binary, {active, false}, {packet, raw}], 3000),
+    ok = gen_tcp:send(TcpSock, pp2_header_with_ssl_cn(CN, Port)),
+    %% No client certificate: this is the re-encrypted hop.
+    ClientSslOpts = [{verify, verify_none},
+                     {server_name_indication, disable},
+                     {active, false}],
+    {ok, SslSock} = ssl:connect(TcpSock, ClientSslOpts, 5000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    {ok, <<"Hello">>} = ssl:recv(SslSock, 0, 2000),
+    receive
+        {peercert_check, ok} -> ok;
+        {peercert_check, {fail, Why}} -> ct:fail({peercert_check_failed, Why})
+    after 2000 ->
+              ct:fail(no_peercert_check_result)
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, Port).
+
+%% When the proxy terminates mTLS and also presents its own certificate on
+%% the re-encrypted hop, both sources hold a certificate. The TLVs come from
+%% the hop closest to the client and describe the client; the inner one is
+%% the proxy's. The TLVs win.
+t_peercert_proxy_ssl_pp2_wins_over_inner(_Config) ->
+    ssl:start(),
+    Port = 8886,
+    CN = <<"client-cn-from-pp2">>,
+    {ServerBase, ClientBase} = mtls_chain(),
+    %% mTLS on the inner hop as well: the proxy authenticates to the listener.
+    ServerSslOpts =
+        ServerBase ++
+        [{verify, verify_peer},
+         {fail_if_no_peer_cert, true},
+         {sni_fun, fun(_SNI) -> [] end}],
+    Self = self(),
+    {ok, _} = esockd:open(
+        echo, Port,
+        [proxy_protocol,
+         {proxy_protocol_timeout, 3000},
+         {ssl_options, ServerSslOpts}],
+        {?MODULE, start_link_pp2_fallback, [Self, CN]}),
+    {ok, TcpSock} = gen_tcp:connect(
+        {127,0,0,1}, Port,
+        [binary, {active, false}, {packet, raw}], 3000),
+    ok = gen_tcp:send(TcpSock, pp2_header_with_ssl_cn(CN, Port)),
+    ClientSslOpts =
+        ClientBase ++
+        [{verify, verify_peer},
+         {server_name_indication, disable},
+         {active, false}],
+    {ok, SslSock} = ssl:connect(TcpSock, ClientSslOpts, 5000),
+    ok = ssl:send(SslSock, <<"Hello">>),
+    {ok, <<"Hello">>} = ssl:recv(SslSock, 0, 2000),
+    receive
+        {peercert_check, ok} -> ok;
+        {peercert_check, {fail, Why}} -> ct:fail({peercert_check_failed, Why})
+    after 2000 ->
+              ct:fail(no_peercert_check_result)
+    end,
+    ok = ssl:close(SslSock),
+    ok = esockd:close(echo, Port).
+
+%% Build a PROXY V2 header carrying a PP2_TYPE_SSL TLV whose
+%% PP2_SUBTYPE_SSL_CN sub-TLV holds CN. Constants are spelled out here
+%% because they are defined in esockd_proxy_protocol.erl, not in a header.
+pp2_header_with_ssl_cn(CN, DstPort) ->
+    PP2_TYPE_SSL = 16#20,
+    PP2_SUBTYPE_SSL_CN = 16#22,
+    CnTlv = <<PP2_SUBTYPE_SSL_CN:8, (byte_size(CN)):16, CN/binary>>,
+    %% <<Unused:5, CERT_SESS:1, CERT_CONN:1, CLIENT_SSL:1, VERIFY:32, SubTlvs>>
+    %% CLIENT_SSL and CERT_CONN set, VERIFY 0 meaning verified successfully.
+    SslVal = <<0:5, 0:1, 1:1, 1:1, 0:32, CnTlv/binary>>,
+    SslTlv = <<PP2_TYPE_SSL:8, (byte_size(SslVal)):16, SslVal/binary>>,
+    Signature = <<13,10,13,10,0,13,10,81,85,73,84,10>>,
+    %% 16#21: version 2, PROXY command. 16#11: AF_INET over STREAM.
+    Addresses = <<127,0,0,1, 127,0,0,1, 4321:16, DstPort:16>>,
+    Body = <<Addresses/binary, SslTlv/binary>>,
+    <<Signature/binary, 16#21:8, 16#11:8, (byte_size(Body)):16, Body/binary>>.
+
+start_link_pp2_fallback(Transport, RawSock, ReportTo, CN) ->
+    {ok, spawn_link(?MODULE, pp2_fallback_init, [Transport, RawSock, ReportTo, CN])}.
+
+pp2_fallback_init(Transport, RawSock, ReportTo, CN) ->
+    case Transport:wait(RawSock) of
+        {ok, Sock} ->
+            ReportTo ! {peercert_check, check_pp2_fallback(Transport, Sock, CN)},
+            peercert_proxy_ssl_loop(Transport, Sock);
+        {error, Reason} ->
+            ReportTo ! {peercert_check, {fail, {wait, Reason}}}
+    end.
+
+check_pp2_fallback(Transport, Sock, CN) ->
+    %% The inner handshake produced no peer certificate, so all three must
+    %% come from the PROXY V2 SSL TLVs rather than from the inner socket.
+    PeerCert = Transport:peercert(Sock),
+    GotCN = Transport:peer_cert_common_name(Sock),
+    Subject = Transport:peer_cert_subject(Sock),
+    case {is_list(PeerCert) andalso proplists:get_value(pp2_ssl_cn, PeerCert),
+          GotCN, Subject} of
+        {CN, CN, CN} -> ok;
+        Other -> {fail, {unexpected, Other, expected, CN}}
+    end.
+
 t_shutdown(_) ->
     {ok, _} = esockd:open(echo, 3000, [{tcp_options, ?TCP_OPTS}], {echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 3000, [{active, false}]),
