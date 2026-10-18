@@ -133,6 +133,75 @@ t_async_send(_) ->
     ok = esockd_transport:close(Sock),
     ok = esockd:close(echo, 3000).
 
+-if(?OTP_RELEASE >= 26).
+t_async_send_reply(_) ->
+    {S, C} = tcp_pair(),
+    ok = esockd_transport:async_send(S, <<"Hello">>),
+    receive {inet_reply, S, ok, send_async} -> ok
+    after 1000 -> ct:fail(no_inet_reply)
+    end,
+    {ok, <<"Hello">>} = gen_tcp:recv(C, 5, 1000),
+    ok = gen_tcp:close(S),
+    ok = gen_tcp:close(C).
+
+%% The fallback sends with gen_tcp:send/2 and sends the reply itself.
+t_async_send_fallback(_) ->
+    persistent_term:put({esockd_transport, send_async_module}, undefined),
+    try
+        {S, C} = tcp_pair(),
+        ok = esockd_transport:async_send(S, <<"Hello">>, [nosuspend]),
+        receive {inet_reply, S, ok, send_async} -> ok
+        after 0 -> ct:fail(no_inet_reply)
+        end,
+        {ok, <<"Hello">>} = gen_tcp:recv(C, 5, 1000),
+        ok = gen_tcp:close(S),
+        {error, closed} = esockd_transport:async_send(S, <<"Hello">>),
+        ok = gen_tcp:close(C)
+    after
+        persistent_term:erase({esockd_transport, send_async_module})
+    end.
+
+%% With gen_tcp:send_async/3, a busy port returns {error, busy} with
+%% nosuspend. The replies of the queued sends arrive after the peer
+%% reads the data.
+t_async_send_gen_tcp_send_async(_) ->
+    case erlang:function_exported(gen_tcp, send_async, 3) of
+        false ->
+            {skip, no_gen_tcp_send_async};
+        true ->
+            persistent_term:erase({esockd_transport, send_async_module}),
+            {S, C} = tcp_pair(),
+            ok = inet:setopts(S, [{high_watermark, 4096}, {low_watermark, 1024},
+                                  {sndbuf, 4096}]),
+            ok = inet:setopts(C, [{recbuf, 4096}]),
+            Chunk = binary:copy(<<"x">>, 16384),
+            NSent = fill_until_busy(S, Chunk, 0),
+            gen_tcp = persistent_term:get({esockd_transport, send_async_module}),
+            {ok, _} = gen_tcp:recv(C, NSent * byte_size(Chunk), 10000),
+            [receive {inet_reply, S, ok, send_async} -> ok
+             after 5000 -> ct:fail(no_inet_reply)
+             end || _ <- lists:seq(1, NSent)],
+            ok = gen_tcp:close(S),
+            ok = gen_tcp:close(C)
+    end.
+
+fill_until_busy(_S, _Chunk, 1000) ->
+    ct:fail(port_never_busy);
+fill_until_busy(S, Chunk, N) ->
+    case esockd_transport:async_send(S, Chunk, [nosuspend]) of
+        ok -> fill_until_busy(S, Chunk, N + 1);
+        {error, busy} -> N
+    end.
+
+tcp_pair() ->
+    {ok, L} = gen_tcp:listen(0, [binary, {active, false}]),
+    {ok, Port} = inet:port(L),
+    {ok, C} = gen_tcp:connect({127,0,0,1}, Port, [binary, {active, false}]),
+    {ok, S} = gen_tcp:accept(L, 5000),
+    ok = gen_tcp:close(L),
+    {S, C}.
+-endif.
+
 t_async_recv(_) ->
     {ok, _} = esockd:open(echo, 3000, [{tcp_options, ?TCP_OPTS}], {async_echo_server, start_link, []}),
     {ok, Sock} = gen_tcp:connect({127,0,0,1}, 3000, [binary, {active, false}]),

@@ -61,6 +61,8 @@ run_loop(Peername, Transport, Socket) ->
             run_loop(Peername, Transport, Socket);
         {inet_reply, _RawSocket, ok} ->
             run_loop(Peername, Transport, Socket);
+        {inet_reply, _RawSocket, ok, send_async} ->
+            run_loop(Peername, Transport, Socket);
         {ssl_closed, _RawSocket} ->
             ok;
         {ssl_error, _RawSocket, Reason} ->

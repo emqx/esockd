@@ -40,6 +40,13 @@
 
 -export_type([socket/0, listen_socket/0]).
 
+-if(?OTP_RELEASE >= 26).
+-define(ASYNC_SEND_REPLY(Sock, Status), {inet_reply, Sock, Status, send_async}).
+-define(SEND_ASYNC_MODULE_KEY, {?MODULE, send_async_module}).
+-else.
+-define(ASYNC_SEND_REPLY(Sock, Status), {inet_reply, Sock, Status}).
+-endif.
+
 -type(ssl_socket() :: #ssl_socket{}).
 -type(proxy_socket() :: #proxy_socket{}).
 -type(listen_socket() :: inet:socket()).
@@ -150,21 +157,33 @@ send(#ssl_socket{ssl = SslSock}, Data) ->
 send(#proxy_socket{socket = Sock}, Data) ->
     send(Sock, Data).
 
-%% @doc Port command to write data.
+%% @doc Send data and return without waiting for the result.
+%%
+%% The result arrives later as a message to the caller, one message for
+%% each `ok' return, in send order. On OTP 26 and later the message is
+%% `{inet_reply, Sock, ok | {error, Reason}, send_async}'. On older OTP
+%% releases it is `{inet_reply, Sock, ok | {error, Reason}}'.
+%%
+%% For a TCP port, the send is asynchronous when the running OTP exports
+%% `gen_tcp:send_async/3' (EMQX OTP builds). With the `nosuspend' option
+%% and a busy port, the function then returns `{error, busy}' and queues
+%% nothing: the caller can send the data again, for example with
+%% `send/2'. When `gen_tcp:send_async/3' is not exported (OTP 26 and
+%% later), the function sends with `gen_tcp:send/2' and sends the reply
+%% message to the caller itself. TLS sockets always send synchronously.
 -spec(async_send(socket(), iodata()) -> ok | {error, Reason} when
-      Reason :: close | timeout | inet:posix()).
+      Reason :: busy | closed | timeout | inet:posix()).
 async_send(Sock, Data) ->
     async_send(Sock, Data, []).
 
 -spec(async_send(socket(), iodata(), [force|nosuspend]) -> ok | {error, Reason} when
-      Reason :: close | timeout | inet:posix()).
+      Reason :: busy | closed | timeout | inet:posix()).
 async_send(Sock, Data, Options) when is_port(Sock) ->
     do_port_command(Sock, Data, Options);
 async_send(Sock = #ssl_socket{ssl = SslSock}, Data, _Options) ->
     case ssl:send(SslSock, Data) of
         ok ->
-            %% TODO: get rid of this message send
-            self() ! {inet_reply, Sock, ok},
+            self() ! ?ASYNC_SEND_REPLY(Sock, ok),
             ok;
         Error ->
             Error
@@ -173,14 +192,40 @@ async_send(#proxy_socket{socket = Sock}, Data, _Options) ->
     async_send(Sock, Data).
 
 -if(?OTP_RELEASE >= 26).
-do_port_command(Sock, Data, _Options) ->
-    case gen_tcp:send(Sock, Data) of
-        ok ->
-            %% TODO: get rid of this message send
-            self() ! {inet_reply, Sock, ok},
-            ok;
-        {error, Reason} ->
-            {error, Reason}
+do_port_command(Sock, Data, Options) ->
+    case send_async_module() of
+        undefined ->
+            case gen_tcp:send(Sock, Data) of
+                ok ->
+                    self() ! ?ASYNC_SEND_REPLY(Sock, ok),
+                    ok;
+                {error, Reason} ->
+                    {error, Reason}
+            end;
+        Mod ->
+            %% The driver replies with `{inet_reply, Sock, Status, send_async}'.
+            Mod:send_async(Sock, Data, Options)
+    end.
+
+%% Return `gen_tcp' when it exports `send_async/3', else `undefined'.
+%% The result is computed once and kept in a persistent term. The module
+%% name is a runtime value, so that xref and dialyzer accept the call on
+%% an OTP without the function.
+send_async_module() ->
+    case persistent_term:get(?SEND_ASYNC_MODULE_KEY, unknown) of
+        unknown ->
+            Mod = probe_send_async_module(gen_tcp),
+            persistent_term:put(?SEND_ASYNC_MODULE_KEY, Mod),
+            Mod;
+        Mod ->
+            Mod
+    end.
+
+probe_send_async_module(Mod) ->
+    _ = code:ensure_loaded(Mod),
+    case erlang:function_exported(Mod, send_async, 3) of
+        true -> Mod;
+        false -> undefined
     end.
 -else.
 do_port_command(Sock, Data, Options) ->

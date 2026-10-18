@@ -45,6 +45,10 @@ loop(Transport, Sock) ->
         {inet_reply, _Sock ,ok} ->
             loop(Transport, Sock);
         {inet_reply, _Sock, {error, Reason}} ->
+            exit(Reason);
+        {inet_reply, _Sock, ok, send_async} ->
+            loop(Transport, Sock);
+        {inet_reply, _Sock, {error, Reason}, send_async} ->
             exit(Reason)
     end.
 

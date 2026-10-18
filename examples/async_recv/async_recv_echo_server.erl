@@ -93,6 +93,13 @@ handle_info({inet_reply, _Sock, {error, Reason}}, State) ->
     io:format("Shutdown for ~p~n", [Reason]),
     shutdown(Reason, State);
 
+handle_info({inet_reply, _Sock, ok, send_async}, State) ->
+    {noreply, State};
+
+handle_info({inet_reply, _Sock, {error, Reason}, send_async}, State) ->
+    io:format("Shutdown for ~p~n", [Reason]),
+    shutdown(Reason, State);
+
 handle_info(_Info, State) ->
     {noreply, State}.
 

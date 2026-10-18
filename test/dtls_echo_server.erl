@@ -53,6 +53,8 @@ run_loop(Parent, Transport, Socket) ->
             Transport:async_send(Socket, Packet),
             run_loop(Parent, Transport, Socket);
         {inet_reply, _Socket, ok} ->
+            run_loop(Parent, Transport, Socket);
+        {inet_reply, _Socket, ok, send_async} ->
             run_loop(Parent, Transport, Socket)
     end.
 
