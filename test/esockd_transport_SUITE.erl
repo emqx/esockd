@@ -161,13 +161,13 @@ t_async_send_fallback(_) ->
         persistent_term:erase({esockd_transport, send_async_module})
     end.
 
-%% With gen_tcp:send_async/3, a busy port returns {error, busy} with
+%% With prim_inet:send_async/3, a busy port returns {error, busy} with
 %% nosuspend. The replies of the queued sends arrive after the peer
 %% reads the data.
-t_async_send_gen_tcp_send_async(_) ->
-    case erlang:function_exported(gen_tcp, send_async, 3) of
+t_async_send_prim_inet_send_async(_) ->
+    case erlang:function_exported(prim_inet, send_async, 3) of
         false ->
-            {skip, no_gen_tcp_send_async};
+            {skip, no_prim_inet_send_async};
         true ->
             persistent_term:erase({esockd_transport, send_async_module}),
             {S, C} = tcp_pair(),
@@ -176,7 +176,7 @@ t_async_send_gen_tcp_send_async(_) ->
             ok = inet:setopts(C, [{recbuf, 4096}]),
             Chunk = binary:copy(<<"x">>, 16384),
             NSent = fill_until_busy(S, Chunk, 0),
-            gen_tcp = persistent_term:get({esockd_transport, send_async_module}),
+            prim_inet = persistent_term:get({esockd_transport, send_async_module}),
             {ok, _} = gen_tcp:recv(C, NSent * byte_size(Chunk), 10000),
             [receive {inet_reply, S, ok, send_async} -> ok
              after 5000 -> ct:fail(no_inet_reply)

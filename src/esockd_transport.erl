@@ -165,10 +165,10 @@ send(#proxy_socket{socket = Sock}, Data) ->
 %% releases it is `{inet_reply, Sock, ok | {error, Reason}}'.
 %%
 %% For a TCP port, the send is asynchronous when the running OTP exports
-%% `gen_tcp:send_async/3' (EMQX OTP builds). With the `nosuspend' option
+%% `prim_inet:send_async/3' (EMQX OTP builds). With the `nosuspend' option
 %% and a busy port, the function then returns `{error, busy}' and queues
 %% nothing: the caller can send the data again, for example with
-%% `send/2'. When `gen_tcp:send_async/3' is not exported (OTP 26 and
+%% `send/2'. When `prim_inet:send_async/3' is not exported (OTP 26 and
 %% later), the function sends with `gen_tcp:send/2' and sends the reply
 %% message to the caller itself. TLS sockets always send synchronously.
 -spec(async_send(socket(), iodata()) -> ok | {error, Reason} when
@@ -207,14 +207,14 @@ do_port_command(Sock, Data, Options) ->
             Mod:send_async(Sock, Data, Options)
     end.
 
-%% Return `gen_tcp' when it exports `send_async/3', else `undefined'.
+%% Return `prim_inet' when it exports `send_async/3', else `undefined'.
 %% The result is computed once and kept in a persistent term. The module
 %% name is a runtime value, so that xref and dialyzer accept the call on
 %% an OTP without the function.
 send_async_module() ->
     case persistent_term:get(?SEND_ASYNC_MODULE_KEY, unknown) of
         unknown ->
-            Mod = probe_send_async_module(gen_tcp),
+            Mod = probe_send_async_module(prim_inet),
             persistent_term:put(?SEND_ASYNC_MODULE_KEY, Mod),
             Mod;
         Mod ->
