@@ -40,6 +40,11 @@
 
 -export_type([socket/0, listen_socket/0]).
 
+%% Since OTP 26, prim_inet:send/3 prefixes the data with a monitor
+%% reference, and the inet driver replies with {inet_reply, Sock, Status,
+%% Ref}. A plain erlang:port_command/3 no longer works on a TCP port, so
+%% async_send/3 on OTP 26 and later sends with gen_tcp:send/2 or
+%% prim_inet:send_async/3, and the reply carries a fourth element.
 -if(?OTP_RELEASE >= 26).
 -define(ASYNC_SEND_REPLY(Sock, Status), {inet_reply, Sock, Status, send_async}).
 -define(SEND_ASYNC_MODULE_KEY, {?MODULE, send_async_module}).
