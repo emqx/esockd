@@ -42,9 +42,15 @@ loop(Transport, Sock) ->
             loop(Transport, Sock);
         {inet_async, _Sock, Ref, {error, Reason}} ->
             exit(Reason);
+        %% async_send/2 replies on OTP 25 and older
         {inet_reply, _Sock ,ok} ->
             loop(Transport, Sock);
         {inet_reply, _Sock, {error, Reason}} ->
+            exit(Reason);
+        %% async_send/2 replies on OTP 26 and later
+        {inet_reply, _Sock, ok, send_async} ->
+            loop(Transport, Sock);
+        {inet_reply, _Sock, {error, Reason}, send_async} ->
             exit(Reason)
     end.
 

@@ -86,10 +86,19 @@ handle_info({inet_async, _Sock, _Ref, {error, Reason}}, State) ->
     io:format("Shutdown for ~p~n", [Reason]),
     shutdown(Reason, State);
 
+%% async_send/2 replies on OTP 25 and older
 handle_info({inet_reply, _Sock ,ok}, State) ->
     {noreply, State};
 
 handle_info({inet_reply, _Sock, {error, Reason}}, State) ->
+    io:format("Shutdown for ~p~n", [Reason]),
+    shutdown(Reason, State);
+
+%% async_send/2 replies on OTP 26 and later
+handle_info({inet_reply, _Sock, ok, send_async}, State) ->
+    {noreply, State};
+
+handle_info({inet_reply, _Sock, {error, Reason}, send_async}, State) ->
     io:format("Shutdown for ~p~n", [Reason]),
     shutdown(Reason, State);
 

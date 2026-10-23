@@ -52,7 +52,11 @@ run_loop(Parent, Transport, Socket) ->
         {ssl, _RawSocket, Packet} ->
             Transport:async_send(Socket, Packet),
             run_loop(Parent, Transport, Socket);
+        %% async_send/2 reply on OTP 25 and older
         {inet_reply, _Socket, ok} ->
+            run_loop(Parent, Transport, Socket);
+        %% async_send/2 reply on OTP 26 and later
+        {inet_reply, _Socket, ok, send_async} ->
             run_loop(Parent, Transport, Socket)
     end.
 

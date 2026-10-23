@@ -59,7 +59,11 @@ run_loop(Peername, Transport, Socket) ->
             io:format("~s - enter the passive mode.~n", [esockd:format(Peername)]),
             Transport:setopts(Socket, [{active, 100}]),
             run_loop(Peername, Transport, Socket);
+        %% async_send/2 reply on OTP 25 and older
         {inet_reply, _RawSocket, ok} ->
+            run_loop(Peername, Transport, Socket);
+        %% async_send/2 reply on OTP 26 and later
+        {inet_reply, _RawSocket, ok, send_async} ->
             run_loop(Peername, Transport, Socket);
         {ssl_closed, _RawSocket} ->
             ok;

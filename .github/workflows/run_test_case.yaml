@@ -12,6 +12,7 @@ jobs:
           fail-fast: false
           matrix:
             otp:
+              - ghcr.io/emqx/emqx-builder/6.2-4:1.19.1-28.4.1-9-ubuntu24.04
               - erlang:28
               - erlang:27
               - erlang:26
