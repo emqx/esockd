@@ -161,12 +161,15 @@ t_rate_limitted(Config) ->
                                   {ok, Sock} = connect(Port, 1000, #{active => true}),
                                   Sock
                           end, lists:seq(1, Count)),
+        %% One selective receive for each socket, because the close
+        %% notifications do not have to arrive in connect order.
         lists:foreach(fun(Sock) ->
                               receive
                                   {tcp_closed, Sock} ->
-                                      ok;
-                                  Other ->
-                                      ct:fail({unexpected, Other})
+                                      ok
+                              after
+                                  2000 ->
+                                      ct:fail({no_tcp_closed, Sock})
                               end
                       end, Socks),
         ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, Count, 2000),
