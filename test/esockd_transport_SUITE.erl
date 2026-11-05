@@ -603,3 +603,45 @@ peersni_loop(Transport, Sock) ->
         {error, Reason} ->
             exit({shutdown, Reason})
 	end.
+
+%%--------------------------------------------------------------------
+%% max_pending_handshakes
+%%--------------------------------------------------------------------
+
+t_max_pending_handshakes_default(_) ->
+    ?assertEqual({ok, 100}, application:get_env(esockd, max_pending_handshakes)).
+
+t_max_pending_handshakes_infinity(_) ->
+    %% infinity lets the handshake through, which the dummy socket then fails.
+    with_env(infinity, fun() ->
+        ?assertMatch({error, {ssl_failure, _}}, ssl_upgrade())
+    end).
+
+t_max_pending_handshakes_refuse(_) ->
+    %% 0 refuses every handshake, before the socket is touched.
+    {ok, _} = application:ensure_all_started(ssl),
+    with_env(0, fun() ->
+        ?assertEqual({error, too_many_handshakes}, ssl_upgrade())
+    end).
+
+t_max_pending_handshakes_idle(_) ->
+    %% An idle supervisor is below any sane limit, so nothing is refused.
+    {ok, _} = application:ensure_all_started(ssl),
+    with_env(100, fun() ->
+        ?assertMatch({error, {ssl_failure, _}}, ssl_upgrade())
+    end).
+
+ssl_upgrade() ->
+    esockd_transport:ssl_upgrade(make_ref(), [],
+                                 #{timeout => 100, gc_after_handshake => false}).
+
+with_env(Value, Fun) ->
+    Was = application:get_env(esockd, max_pending_handshakes),
+    ok = application:set_env(esockd, max_pending_handshakes, Value),
+    try Fun()
+    after
+        case Was of
+            {ok, Old} -> application:set_env(esockd, max_pending_handshakes, Old);
+            undefined -> application:unset_env(esockd, max_pending_handshakes)
+        end
+    end.
