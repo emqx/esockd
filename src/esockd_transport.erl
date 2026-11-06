@@ -52,6 +52,16 @@
 -define(ASYNC_SEND_REPLY(Sock, Status), {inet_reply, Sock, Status}).
 -endif.
 
+%% ssl:handshake/3 starts the connection processes with
+%% supervisor:start_child(tls_connection_sup, ...), and each start scans that
+%% supervisor's whole mailbox, because proc_lib:sync_start/2 waits in a
+%% selective receive the compiler cannot mark. So the cost of one start grows
+%% with the backlog, and a large enough backlog never clears. The mailbox
+%% length is the number of handshakes waiting to start. Refuse new handshakes
+%% while it is too long, to keep each start cheap.
+-define(SSL_SUP, tls_connection_sup).
+-define(DEFAULT_MAX_PENDING_HANDSHAKES, 100).
+
 -type(ssl_socket() :: #ssl_socket{}).
 -type(proxy_socket() :: #proxy_socket{}).
 -type(listen_socket() :: inet:socket()).
@@ -494,6 +504,36 @@ ssl_upgrade_fun(SslOpts) ->
 
 ssl_upgrade(Sock, SslOpts1, #{timeout := Timeout,
                               gc_after_handshake := GCAfterHandshake}) ->
+    case too_many_pending_handshakes() of
+        true ->
+            %% A bare atom gets its own esockd_connection_sup shutdown key.
+            {error, too_many_handshakes};
+        false ->
+            do_ssl_upgrade(Sock, SslOpts1, Timeout, GCAfterHandshake)
+    end.
+
+%% @private Return false when the supervisor is not registered, so a DTLS-only
+%% listener and a node without the ssl application behave as before.
+too_many_pending_handshakes() ->
+    case application:get_env(esockd, max_pending_handshakes,
+                             ?DEFAULT_MAX_PENDING_HANDSHAKES) of
+        infinity ->
+            false;
+        MaxPending ->
+            case whereis(?SSL_SUP) of
+                undefined ->
+                    false;
+                Pid ->
+                    case erlang:process_info(Pid, message_queue_len) of
+                        {message_queue_len, Len} when Len >= MaxPending ->
+                            true;
+                        _ ->
+                            false
+                    end
+            end
+    end.
+
+do_ssl_upgrade(Sock, SslOpts1, Timeout, GCAfterHandshake) ->
     try do_ssl_handshake(Sock, SslOpts1, Timeout) of
         {ok, NSock} ->
             GCAfterHandshake andalso gc(NSock),
