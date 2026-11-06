@@ -146,7 +146,7 @@ t_async_send_reply(_) ->
 
 %% The fallback sends with gen_tcp:send/2 and sends the reply itself.
 t_async_send_fallback(_) ->
-    persistent_term:put({esockd_transport, send_async_module}, undefined),
+    persistent_term:put(esockd_transport_send_async_module, undefined),
     try
         {S, C} = tcp_pair(),
         ok = esockd_transport:async_send(S, <<"Hello">>, [nosuspend]),
@@ -158,7 +158,7 @@ t_async_send_fallback(_) ->
         {error, closed} = esockd_transport:async_send(S, <<"Hello">>),
         ok = gen_tcp:close(C)
     after
-        persistent_term:erase({esockd_transport, send_async_module})
+        persistent_term:erase(esockd_transport_send_async_module)
     end.
 
 %% With prim_inet:send_async/3, a busy port returns {error, busy} with
@@ -169,14 +169,14 @@ t_async_send_prim_inet_send_async(_) ->
         false ->
             {skip, no_prim_inet_send_async};
         true ->
-            persistent_term:erase({esockd_transport, send_async_module}),
+            persistent_term:erase(esockd_transport_send_async_module),
             {S, C} = tcp_pair(),
             ok = inet:setopts(S, [{high_watermark, 4096}, {low_watermark, 1024},
                                   {sndbuf, 4096}]),
             ok = inet:setopts(C, [{recbuf, 4096}]),
             Chunk = binary:copy(<<"x">>, 16384),
             NSent = fill_until_busy(S, Chunk, 0),
-            prim_inet = persistent_term:get({esockd_transport, send_async_module}),
+            prim_inet = persistent_term:get(esockd_transport_send_async_module),
             {ok, _} = gen_tcp:recv(C, NSent * byte_size(Chunk), 10000),
             [receive {inet_reply, S, ok, send_async} -> ok
              after 5000 -> ct:fail(no_inet_reply)
