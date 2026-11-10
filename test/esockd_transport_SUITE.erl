@@ -645,3 +645,297 @@ with_env(Value, Fun) ->
             undefined -> application:unset_env(esockd, max_pending_handshakes)
         end
     end.
+
+%%--------------------------------------------------------------------
+%% gc_after_handshake
+%%--------------------------------------------------------------------
+
+t_gc_after_handshake_gcs_tls_tree(Config) ->
+    gc_after_handshake_case(true, Config).
+
+t_gc_after_handshake_disabled_does_not_gc(Config) ->
+    gc_after_handshake_case(false, Config).
+
+gc_after_handshake_case(GCAfterHandshake, Config) ->
+    SslOpts = ssl_server_opts(Config, [{gc_after_handshake, GCAfterHandshake}]),
+    ok = start_ssl_mock(),
+    try
+        ok = meck:expect(ssl, handshake, 3, fun(S, O, T) ->
+            {ok, SslSock} = meck:passthrough([S, O, T]),
+            arm_gc_trace(port_owner(S)),
+            {ok, SslSock}
+        end),
+        {RawSock, Client, MRef} = tcp_tls_pair(),
+        {Fun, Args} = esockd_transport:ssl_upgrade_fun(SslOpts),
+        try
+            _ = esockd_transport:ready(self(), RawSock, [{Fun, Args}]),
+            {ok, SslSock} = esockd_transport:wait(RawSock),
+            put(server_ssl_sock, SslSock),
+            Pids = traced_tls_pids(),
+            ok = assert_traced(Pids),
+            Events = gc_events(Pids),
+            case GCAfterHandshake of
+                true -> assert_gc_major(Events, Pids);
+                false -> assert_no_gc_major(Events, Pids)
+            end
+        after
+            Client ! stop,
+            await_down(MRef, Client),
+            close_server_sock(),
+            catch gen_tcp:close(RawSock)
+        end
+    after
+        stop_ssl_mock()
+    end.
+
+t_gc_proxy_socket_gcs_tls_tree(Config) ->
+    {RawSock, Client, MRef} = tcp_tls_pair(),
+    {Fun, Args} = esockd_transport:ssl_upgrade_fun(ssl_server_opts(Config, [])),
+    try
+        _ = esockd_transport:ready(self(), RawSock, [{Fun, Args}]),
+        {ok, SslSock} = esockd_transport:wait(RawSock),
+        arm_gc_trace(port_owner(RawSock)),
+        Pids = traced_tls_pids(),
+        ProxySock = #proxy_socket{socket = SslSock},
+        ok = esockd_transport:gc(ProxySock),
+        ok = assert_traced(Pids),
+        assert_gc_major(gc_events(Pids), Pids)
+    after
+        stop_trace(),
+        Client ! stop,
+        await_down(MRef, Client),
+        catch gen_tcp:close(RawSock)
+    end.
+
+t_gc_after_handshake_gcs_dtls_workers(Config) ->
+    DtlsOpts = [{protocol, dtls} | ssl_server_opts(Config, [])],
+    ok = start_ssl_mock(),
+    try
+        ok = meck:expect(ssl, handshake, 2, fun(S, T) ->
+            {ok, SslSock1} = meck:passthrough([S, T]),
+            arm_sslsocket_gc_trace(SslSock1),
+            {ok, SslSock1}
+        end),
+        {ok, LSock} = ssl:listen(0, DtlsOpts),
+        {ok, {_Addr, Port}} = ssl:sockname(LSock),
+        {Client, MRef} = spawn_monitor(fun() -> dtls_client(Port) end),
+        {ok, SslSock} = ssl:transport_accept(LSock, 5000),
+        DtlsSup = whereis(dtls_connection_sup),
+        true = is_pid(DtlsSup),
+        try
+            gc_trace(DtlsSup),
+            {ok, _} = esockd_transport:ssl_upgrade(
+                SslSock, [], #{timeout => 5000, gc_after_handshake => true}),
+            Pids = traced_tls_pids(),
+            true = length(Pids) >= 1,
+            ok = assert_traced([DtlsSup | Pids]),
+            Events = gc_events([DtlsSup | Pids]),
+            assert_gc_major(Events, Pids),
+            %% DTLS runs under the global dtls_connection_sup; it must not be collected.
+            assert_no_gc_major(Events, [DtlsSup])
+        after
+            Client ! stop,
+            await_down(MRef, Client),
+            catch ssl:close(LSock)
+        end
+    after
+        stop_ssl_mock()
+    end.
+
+t_gc_listen_sslsocket_is_noop(Config) ->
+    {ok, TLSLock} = ssl:listen(0, ssl_server_opts(Config, [])),
+    {ok, DTLSLock} = ssl:listen(0, [{protocol, dtls} | ssl_server_opts(Config, [])]),
+    try
+        ok = esockd_transport:gc(#ssl_socket{ssl = TLSLock}),
+        ok = esockd_transport:gc(#ssl_socket{ssl = DTLSLock})
+    after
+        catch ssl:close(TLSLock),
+        catch ssl:close(DTLSLock)
+    end.
+
+%%--------------------------------------------------------------------
+%% gc_after_handshake helpers
+%%--------------------------------------------------------------------
+
+ssl_server_opts(Config, Extra) ->
+    [{certfile, esockd_ct:certfile(Config)},
+     {keyfile, esockd_ct:keyfile(Config)},
+     {verify, verify_none}
+     | Extra].
+
+tcp_tls_pair() ->
+    {ok, LSock} = gen_tcp:listen(0, [binary, {active, false}, {reuseaddr, true}]),
+    {ok, Port} = inet:port(LSock),
+    {Client, MRef} = spawn_monitor(fun() -> tls_client(Port) end),
+    {ok, RawSock} = gen_tcp:accept(LSock, 5000),
+    ok = gen_tcp:close(LSock),
+    {RawSock, Client, MRef}.
+
+tls_client(Port) ->
+    case ssl:connect({127, 0, 0, 1}, Port,
+                     [{verify, verify_none}, binary, {active, false}], 5000) of
+        {ok, Sock} ->
+            receive stop -> catch ssl:close(Sock) end;
+        _ ->
+            ok
+    end.
+
+dtls_client(Port) ->
+    case ssl:connect({127, 0, 0, 1}, Port,
+                     [{protocol, dtls}, {verify, verify_none}, binary, {active, false}],
+                     5000) of
+        {ok, Sock} ->
+            receive stop -> catch ssl:close(Sock) end;
+        _ ->
+            ok
+    end.
+
+start_ssl_mock() ->
+    ok = meck:new(ssl, [passthrough, no_history, no_sticky]).
+
+stop_ssl_mock() ->
+    stop_trace(),
+    catch meck:unload(ssl),
+    ok.
+
+stop_trace() ->
+    lists:foreach(fun stop_trace_pid/1, traced_all_pids()),
+    erase(traced_all_pids),
+    erase(traced_tls_pids),
+    ok.
+
+stop_trace_pid(Pid) ->
+    try erlang:trace(Pid, false, [all])
+    catch error:badarg ->
+        %% The socket is closed before the case cleanup, so the pid may be gone.
+        0
+    end.
+
+port_owner(Port) ->
+    case erlang:port_info(Port, connected) of
+        {connected, Pid} -> Pid;
+        undefined -> error(port_not_connected)
+    end.
+
+arm_gc_trace(Receiver) ->
+    Sender = find_tls_tree(Receiver),
+    Pids = [Receiver, Sender],
+    lists:foreach(fun gc_trace/1, Pids),
+    put(traced_tls_pids, Pids),
+    ok.
+
+arm_sslsocket_gc_trace(SslSock) ->
+    Pids = lists:usort(sslsocket_pids(SslSock)),
+    lists:foreach(fun gc_trace/1, Pids),
+    put(traced_tls_pids, Pids),
+    ok.
+
+sslsocket_pids(SslSock) when tuple_size(SslSock) =:= 8 ->
+    [element(3, SslSock), element(4, SslSock)];
+sslsocket_pids(SslSock) when tuple_size(SslSock) =:= 3 ->
+    case element(3, SslSock) of
+        Pid when is_pid(Pid) -> [Pid];
+        Pids when is_list(Pids) -> [P || P <- Pids, is_pid(P)];
+        _ -> []
+    end.
+
+find_tls_tree(Receiver) ->
+    Sups = [Pid || Pid <- processes(),
+                   is_process_alive(Pid),
+                   proc_lib:translate_initial_call(Pid) =:= {supervisor, tls_dyn_connection_sup, 1}],
+    case [Sup || Sup <- Sups, has_receiver(Sup, Receiver)] of
+        [Sup] ->
+            {sender, Sender, _Type, _Modules} =
+                lists:keyfind(sender, 1, supervisor:which_children(Sup)),
+            Sender;
+        [] ->
+            error({tls_tree_not_found, Receiver});
+        Several ->
+            error({several_tls_trees, Several})
+    end.
+
+has_receiver(Sup, Receiver) ->
+    try lists:keymember(Receiver, 2, supervisor:which_children(Sup))
+    catch exit:_ -> false
+    end.
+
+close_server_sock() ->
+    case erase(server_ssl_sock) of
+        undefined -> ok;
+        SslSock -> catch esockd_transport:close(SslSock)
+    end.
+
+await_down(MRef, Client) ->
+    receive {'DOWN', MRef, process, Client, _} -> ok
+    after 5000 -> ok
+    end.
+
+gc_trace(Pid) ->
+    1 = erlang:trace(Pid, true, [garbage_collection]),
+    put(traced_all_pids, [Pid | traced_all_pids()]),
+    ok.
+
+%% All pids the running case armed tracing on, so cleanup stays local to the case.
+traced_all_pids() ->
+    case get(traced_all_pids) of
+        undefined -> [];
+        Pids -> Pids
+    end.
+
+traced_tls_pids() ->
+    Pids = get(traced_tls_pids),
+    true = is_list(Pids),
+    Pids.
+
+assert_traced(Pids) ->
+    lists:foreach(
+        fun(Pid) ->
+            {flags, Flags} = erlang:trace_info(Pid, flags),
+            true = lists:member(garbage_collection, Flags)
+        end,
+        Pids
+    ),
+    ok.
+
+gc_events(Pids) ->
+    Refs = [{Pid, erlang:trace_delivered(Pid)} || Pid <- Pids],
+    lists:foreach(
+        fun({Pid, Ref}) ->
+            receive {trace_delivered, Pid, Ref} -> ok
+            after 5000 -> ct:fail({trace_not_delivered, Pid})
+            end
+        end,
+        Refs
+    ),
+    drain_gc_events([]).
+
+drain_gc_events(Acc) ->
+    receive
+        {trace, Pid, Tag, _Info} when is_pid(Pid) ->
+            case lists:prefix("gc_", atom_to_list(Tag)) of
+                true -> drain_gc_events([{Pid, Tag} | Acc]);
+                false -> drain_gc_events(Acc)
+            end
+    after 0 ->
+        lists:reverse(Acc)
+    end.
+
+assert_gc_major(Events, Pids) ->
+    lists:foreach(
+        fun(Pid) ->
+            case [Tag || {P, Tag} <- Events, P =:= Pid, is_major(Tag)] of
+                [] -> ct:fail({missing_gc_major, Pid, Events});
+                _ -> ok
+            end
+        end,
+        Pids
+    ).
+
+assert_no_gc_major(Events, Pids) ->
+    case [{P, Tag} || {P, Tag} <- Events, lists:member(P, Pids), is_major(Tag)] of
+        [] -> ok;
+        Major -> ct:fail({unexpected_gc_major, Major})
+    end.
+
+is_major(Tag) ->
+    lists:prefix("gc_major", atom_to_list(Tag)).

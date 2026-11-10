@@ -620,21 +620,30 @@ gc(Sock) when is_port(Sock) ->
         undefined ->
             ok
     end;
-%% Defined in ssl/src/ssl_api.hrl:
-%% -record(sslsocket, {fd = nil, pid = nil}).
+%% In OTP 21-27 the socket is a 3-tuple: {sslsocket, Fd, PidOrPidList}, see
+%% ssl/src/ssl_api.hrl in the matching OTP. OTP 21.0 has a single pid there,
+%% OTP 21.1-27 a list of the connection process and, for TLS, its tls_sender
+%% (DTLS has no sender).
 gc(#ssl_socket{ssl = {sslsocket, _, Pid}}) when is_pid(Pid) ->
-    erlang:garbage_collect(Pid),
-    ok;
-%% In OTP 24+, the last element is a list of PIDs The first is spawned
-%% by `ssl_gen_statem:init/1', the second by `tls_sender:init/1`.
+    gc_tls_pids([Pid]);
 gc(#ssl_socket{ssl = {sslsocket, _, Pids}}) when is_list(Pids) ->
-    lists:foreach(
-      fun(Pid) when is_pid(Pid) ->
-              erlang:garbage_collect(Pid);
-         (_) ->
-              ok
-      end,
-      Pids);
+    gc_tls_pids(Pids);
+%% In OTP 28+ the socket is an 8-tuple:
+%% -record(sslsocket, {socket_handle, connection_handler, payload_sender,
+%%                     transport_cb, connection_cb, tab, listener_config}).
+gc(#ssl_socket{ssl = {sslsocket, _, ConnHandler, PayloadSender, _, _, _, _}}) ->
+    gc_tls_pids([ConnHandler, PayloadSender]);
 gc(#proxy_socket{socket = Sock}) ->
     gc(Sock);
 gc(_Sock) -> ok.
+
+%% GC the given TLS worker processes. On OTP 28 a listen socket has no workers
+%% (undefined fields), and DTLS reports the same pid for both fields.
+gc_tls_pids(Pids) ->
+    lists:foreach(fun gc_proc/1, lists:usort(Pids)).
+
+gc_proc(Pid) when is_pid(Pid) ->
+    erlang:garbage_collect(Pid),
+    ok;
+gc_proc(_) ->
+    ok.
