@@ -330,6 +330,42 @@ t_close_listener_socket_cause_acceptor_stop(Config) ->
             error("Client socket still connected")
     end.
 
+%% The exit signal of a socket that the acceptor closed can arrive after
+%% fast_close/1 stops waiting for it. The acceptor drops it without a log.
+t_late_port_exit_not_logged(Config) ->
+    Port = ?PORT,
+    #{acceptor := Acceptor} = Server = start(Port, no_rate_limit(), #{}, Config),
+    HandlerId = ?FUNCTION_NAME,
+    ok = logger:add_handler(HandlerId, ?MODULE, #{config => #{pid => self()}}),
+    try
+        {ok, ClosedPort} = gen_tcp:listen(0, []),
+        ok = gen_tcp:close(ClosedPort),
+        Acceptor ! {'EXIT', ClosedPort, normal},
+        %% Any other message is still logged. Its log event shows that the
+        %% acceptor has handled the exit message sent before it.
+        Acceptor ! unexpected_message,
+        receive
+            {log, #{msg := {report, #{msg := "esockd_acceptor_fsm_unhandled_event",
+                                      event_content := Content}}}} ->
+                ?assertEqual(unexpected_message, Content)
+        after
+            1000 ->
+                error("No log event for the unexpected message")
+        end,
+        ?assert(is_process_alive(Acceptor)),
+        {ok, Sock} = connect(Port),
+        ok = wait_for_counter(Config, ?COUNTER_ACCEPTED, 1, 2000),
+        disconnect(Sock)
+    after
+        logger:remove_handler(HandlerId),
+        stop(Server)
+    end.
+
+%% logger handler callback, used by t_late_port_exit_not_logged
+log(LogEvent, #{config := #{pid := Pid}}) ->
+    Pid ! {log, LogEvent},
+    ok.
+
 assert_socket_connected(Sock) ->
     ok = inet:setopts(Sock, [{active, true}]),
     receive
