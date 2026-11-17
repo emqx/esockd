@@ -141,6 +141,12 @@ handle_event({timeout, cooldown}, begin_waiting, suspending, D) ->
 handle_event(Type, Content, State, D) ->
     handle_info(Type, Content, State, D).
 
+handle_info(info, {'EXIT', Port, _Reason}, _State, _D) when is_port(Port) ->
+    %% An accepted socket stays linked to the acceptor until it is handed
+    %% over to the connection process. When the acceptor closes the socket
+    %% itself, fast_close/1 waits only 1 ms for this exit signal, so it can
+    %% arrive later. The socket is already closed.
+    keep_state_and_data;
 handle_info(Type, Content, State, _D) ->
     logger:log(warning, #{msg => "esockd_acceptor_fsm_unhandled_event",
                           state => State,
