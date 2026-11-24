@@ -20,7 +20,7 @@
 
 -include("esockd.hrl").
 
--export([start_link/6]).
+-export([start_link/7]).
 
 %% state callbacks
 -export([handle_event/4]).
@@ -60,6 +60,7 @@
     modctx :: {module(), _Ctx},
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
+    tarpit :: undefined | esockd_tarpit:handle(),
     listener :: pid(),
     conn_sup :: pid()
                 %% NOTE: Only for tests
@@ -73,13 +74,14 @@
     {module(), _Options},
     [esockd:sock_fun()],
     esockd_generic_limiter:limiter(),
+    undefined | esockd_tarpit:handle(),
     _ListenSocket
 ) ->
     {ok, pid()} | {error, term()}.
-start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock) ->
+start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, LSock) ->
     gen_statem:start_link(
         ?MODULE,
-        [ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock],
+        [ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, LSock],
         []
     ).
 
@@ -90,7 +92,7 @@ start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, LSock) ->
 callback_mode() ->
     handle_event_function.
 
-init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, LSock]) ->
+init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, Tarpit, LSock]) ->
     _ = erlang:process_flag(trap_exit, true),
     {_Mod, Listener} = esockd_server:get_listener_prop(ListenerRef, listener),
     Ctx = Mod:init(LSock, Opts),
@@ -99,6 +101,7 @@ init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, LSock]) ->
         modctx = {Mod, Ctx},
         upgrade_funs = UpgradeFuns,
         conn_limiter = Limiter,
+        tarpit = Tarpit,
         listener = Listener,
         conn_sup = ConnSup
     },
@@ -145,7 +148,8 @@ handle_info(info, {'EXIT', Port, _Reason}, _State, _D) when is_port(Port) ->
     %% An accepted socket stays linked to the acceptor until it is handed
     %% over to the connection process. When the acceptor closes the socket
     %% itself, fast_close/1 waits only 1 ms for this exit signal, so it can
-    %% arrive later. The socket is already closed.
+    %% arrive later. A socket held in the tarpit stays linked too, and the
+    %% tarpit closes it. The socket is already closed.
     keep_state_and_data;
 handle_info(Type, Content, State, _D) ->
     logger:log(warning, #{msg => "esockd_acceptor_fsm_unhandled_event",
@@ -161,14 +165,12 @@ handle_accepted(Sock, waiting, D = #d{conn_limiter = Limiter}) ->
             _ = handle_socket(Sock, ND),
             enter_waiting(ND);
         {pause, PauseTime, NLimiter} ->
-            _ = close(D, Sock),
-            _ = inc_stats(D, rate_limited),
+            _ = inc_stats(D, refuse(D, Sock)),
             ND = D#d{conn_limiter = NLimiter},
             enter_suspending(ND, PauseTime)
     end;
 handle_accepted(Sock, suspending, D) ->
-    _ = close(D, Sock),
-    _ = inc_stats(D, rate_limited),
+    _ = inc_stats(D, refuse(D, Sock)),
     {next_state, suspending, D, {next_event, internal, accept}}.
 
 enter_waiting(D) ->
@@ -234,6 +236,27 @@ maybe_close(D, Sock, _Reason) ->
 close(#d{modctx = {Mod, _}}, Sock) ->
     Mod:fast_close(Sock).
 
+%% Hand a refused socket to the tarpit, or close it now when the tarpit
+%% is off or full. The acceptor stays the owner of a held socket.
+%% Returns the stats tag.
+refuse(D = #d{tarpit = undefined}, Sock) ->
+    _ = close(D, Sock),
+    rate_limited;
+refuse(D = #d{tarpit = Tarpit, modctx = {Mod, _}}, Sock) ->
+    case esockd_tarpit:hold(Tarpit, Mod, Sock) of
+        ok ->
+            rate_limited_tarpit;
+        full ->
+            _ = close(D, Sock),
+            rate_limited
+    end.
+
+%% emfile/enfile: free the fds held in the tarpit.
+flush_tarpit(#d{tarpit = undefined}) ->
+    ok;
+flush_tarpit(#d{tarpit = Tarpit}) ->
+    esockd_tarpit:flush(Tarpit).
+
 maybe_log_start_error(econnreset, _) ->
     ok;
 maybe_log_start_error(enotconn, _) ->
@@ -252,9 +275,11 @@ handle_socket_error(econnaborted, State, D) ->
     {next_state, State, D, {next_event, internal, accept}};
 handle_socket_error(Reason, suspending, D) when Reason =:= emfile; Reason =:= enfile ->
     log_system_limit(Reason, D),
+    ok = flush_tarpit(D),
     {next_state, suspending, D, {next_event, internal, accept}};
 handle_socket_error(Reason, _State, D) when Reason =:= emfile; Reason =:= enfile ->
     log_system_limit(Reason, D),
+    ok = flush_tarpit(D),
     enter_suspending(D, ?SYS_LIMIT_SUSPEND_MS);
 handle_socket_error(Reason, _State, D) ->
     {stop, Reason, D}.
@@ -292,6 +317,7 @@ counter(enfile) -> ?ARG_CLOSED_SYS_LIMIT;
 counter(?ERROR_MAXLIMIT) -> ?ARG_CLOSED_MAX_LIMIT;
 counter(overloaded) -> ?ARG_CLOSED_OVERLOADED;
 counter(rate_limited) -> ?ARG_CLOSED_RATE_LIMITED;
+counter(rate_limited_tarpit) -> ?ARG_CLOSED_RATE_LIMITED_TARPIT;
 counter(econnaborted) -> ?ARG_CLOSED_EARLY;
 counter(econnreset) -> ?ARG_CLOSED_EARLY;
 counter(enotconn) -> ?ARG_CLOSED_EARLY;

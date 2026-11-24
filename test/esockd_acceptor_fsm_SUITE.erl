@@ -32,6 +32,7 @@
 -define(COUNTER_OTHER_REASONS, 6).
 -define(COUNTER_EARLY, 7).
 -define(COUNTER_FORBIDDEN, 8).
+-define(COUNTER_RATE_LIMITED_TARPIT, 9).
 -define(COUNTER_LAST, 10).
 
 counter_tag_to_index(accepted) -> ?COUNTER_ACCEPTED;
@@ -39,6 +40,7 @@ counter_tag_to_index(closed_sys_limit) -> ?COUNTER_SYS_LIMIT;
 counter_tag_to_index(closed_max_limit) -> ?COUNTER_MAX_LIMIT;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
 counter_tag_to_index(closed_rate_limited) -> ?COUNTER_RATE_LIMITED;
+counter_tag_to_index(closed_rate_limited_tarpit) -> ?COUNTER_RATE_LIMITED_TARPIT;
 counter_tag_to_index(closed_early) -> ?COUNTER_EARLY;
 counter_tag_to_index(closed_forbidden) -> ?COUNTER_FORBIDDEN;
 counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
@@ -112,18 +114,30 @@ start(PortNumber, Limiter, Opts, Config) ->
     StartConn = {fun ?MODULE:start_connection/3, [Opts]},
     TuneFun = maps:get(tune_fun, Opts, AcceptMod:mk_tune_socket_fun([])),
     AcceptCb = {AcceptMod, TuneFun},
+    {Holder, Tarpit} = start_tarpit(maps:get(tarpit, Opts, undefined)),
     {ok, AccPid} = esockd_acceptor_fsm:start_link(
         ListenerRef,
         StartConn,
         AcceptCb,
         _UpgradeFuns = [],
         Limiter,
+        Tarpit,
         LSock
     ),
-    #{lsock => LSock, acceptor => AccPid}.
+    #{lsock => LSock, acceptor => AccPid, tarpit => Holder}.
 
-stop(#{lsock := LSock, acceptor := AccPid}) ->
-    ok = gen_statem:stop(AccPid),
+start_tarpit(undefined) ->
+    {undefined, undefined};
+start_tarpit(#{size := Size, delay := Delay}) ->
+    {ok, Holder} = esockd_tarpit:start_link(Size, Delay),
+    {Holder, esockd_tarpit:handle(Holder)}.
+
+stop(#{lsock := LSock, acceptor := AccPid} = Server) ->
+    ok = stop_if_alive(AccPid),
+    case maps:get(tarpit, Server, undefined) of
+        undefined -> ok;
+        Holder -> stop_if_alive(Holder)
+    end,
     case is_port(LSock) of
         true -> gen_tcp:close(LSock);
         false -> socket:close(LSock)
@@ -136,6 +150,7 @@ connect(Port) ->
 connect(Port, Timeout, Opts0) ->
     Opts = [binary,
             {active, maps:get(active, Opts0, false)},
+            {show_econnreset, maps:get(show_econnreset, Opts0, false)},
             {nodelay, true}],
     gen_tcp:connect("localhost", Port, Opts, Timeout).
 
@@ -173,6 +188,7 @@ t_rate_limitted(Config) ->
                               end
                       end, Socks),
         ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, Count, 2000),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT)),
         timer:sleep(Pause),
         {ok, Sock2} = connect(Port),
         ok = wait_for_counter(Config, ?COUNTER_ACCEPTED, 1, 2000),
@@ -180,6 +196,136 @@ t_rate_limitted(Config) ->
     after
         stop(Server)
     end.
+
+%% A refused socket is held for the tarpit delay, then reset.
+t_tarpit_held_then_reset(Config) ->
+    Port = ?PORT,
+    Delay = 1000,
+    Opts = #{tarpit => #{size => 10, delay => Delay}},
+    Server = start(Port, pause_then_allow(60000), Opts, Config),
+    try
+        {ok, Sock} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+        T0 = erlang:monotonic_time(millisecond),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT, 1, 2000),
+        ok = assert_no_close(Sock, Delay - 200),
+        ok = assert_reset(Sock, 2000),
+        ?assert(erlang:monotonic_time(millisecond) - T0 >= Delay - 200),
+        ?assertEqual(1, get_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT)),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_RATE_LIMITED))
+    after
+        stop(Server)
+    end.
+
+%% A refused socket is closed at once when the tarpit is full.
+t_tarpit_full(Config) ->
+    Port = ?PORT,
+    Opts = #{tarpit => #{size => 1, delay => 60000}},
+    #{tarpit := Holder} = Server = start(Port, pause_then_allow(60000), Opts, Config),
+    try
+        {ok, Sock1} = connect(Port, 1000, #{active => true}),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT, 1, 2000),
+        {ok, Sock2} = connect(Port, 1000, #{active => true}),
+        receive
+            {tcp_closed, Sock2} -> ok
+        after
+            2000 -> ct:fail({no_tcp_closed, Sock2})
+        end,
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, 1, 2000),
+        ?assertEqual(1, get_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT)),
+        ?assertEqual(1, esockd_tarpit:count(esockd_tarpit:handle(Holder))),
+        ok = assert_no_close(Sock1, 100)
+    after
+        stop(Server)
+    end.
+
+%% A slot is free again after its socket is released.
+t_tarpit_slot_reused(Config) ->
+    Port = ?PORT,
+    Delay = 300,
+    Opts = #{tarpit => #{size => 1, delay => Delay}},
+    Server = start(Port, pause_then_allow(60000), Opts, Config),
+    try
+        {ok, Sock1} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+        ok = assert_reset(Sock1, Delay + 2000),
+        {ok, Sock2} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT, 2, 2000),
+        ok = assert_no_close(Sock2, Delay div 2),
+        ok = assert_reset(Sock2, Delay + 2000)
+    after
+        stop(Server)
+    end.
+
+%% The acceptor owns the held sockets. They close when it stops.
+t_tarpit_acceptor_stop(Config) ->
+    Port = ?PORT,
+    Opts = #{tarpit => #{size => 10, delay => 60000}},
+    #{acceptor := Acceptor} = Server = start(Port, pause_then_allow(60000), Opts, Config),
+    {ok, Sock} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+    try
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT, 1, 2000),
+        ok = gen_statem:stop(Acceptor),
+        receive
+            {tcp_closed, Sock} -> ok;
+            {tcp_error, Sock, econnreset} -> ok
+        after
+            1000 -> ct:fail({not_closed, Sock})
+        end
+    after
+        stop(Server)
+    end.
+
+%% Stopping the holder resets the held sockets.
+t_tarpit_holder_stop(Config) ->
+    Port = ?PORT,
+    Opts = #{tarpit => #{size => 10, delay => 60000}},
+    #{tarpit := Holder} = Server = start(Port, pause_then_allow(60000), Opts, Config),
+    {ok, Sock} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+    try
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT, 1, 2000),
+        %% The hold message is sent before the counter is updated.
+        ok = gen_server:stop(Holder),
+        ok = assert_reset(Sock, 1000)
+    after
+        stop(Server)
+    end.
+
+%% emfile/enfile resets the held sockets to free their fds.
+t_tarpit_sys_limit(Config) ->
+    AcceptMod = proplists:get_value(accept_mod, Config),
+    Port = ?PORT,
+    Opts = #{tarpit => #{size => 10, delay => 60000}},
+    Server = start(Port, pause_then_allow(60000), Opts, Config),
+    try
+        {ok, Sock1} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT, 1, 2000),
+        %% The next accept after Sock2 fails with emfile.
+        meck:new(AcceptMod, [passthrough, no_history]),
+        meck:expect(AcceptMod, async_accept, fun(_) -> {error, emfile} end),
+        {ok, Sock2} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+        ok = assert_reset(Sock1, 2000),
+        ok = assert_reset(Sock2, 2000),
+        ?assertEqual(2, get_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT)),
+        ?assert(get_counter(Config, ?COUNTER_SYS_LIMIT) >= 1)
+    after
+        meck:unload(AcceptMod),
+        stop(Server)
+    end.
+
+t_tarpit_check_options(_Config) ->
+    Check = fun(Opts) -> esockd_acceptor_sup:check_options(tcp, Opts) end,
+    ok = Check([]),
+    ok = Check([{tarpit, #{size => 0, delay => 1}}]),
+    ok = Check([{tarpit, #{size => 100, delay => 5000}}]),
+    lists:foreach(
+      fun(Bad) ->
+              ?assertMatch({error, #{error := invalid_tarpit}},
+                           Check([{tarpit, Bad}]))
+      end,
+      [#{size => 1}, #{delay => 1}, #{size => -1, delay => 1},
+       #{size => 1, delay => 0}, #{size => 1, delay => 1, x => 1}, {1, 1}]),
+    ?assertMatch({error, #{error := invalid_tarpit}},
+                 esockd_acceptor_sup:check_options(
+                   tcpsocket, [{tarpit, #{size => 1}}])).
 
 %% Failed to spawn new connection process
 t_error_when_spawn(Config) ->
@@ -388,6 +534,30 @@ assert_socket_disconnected(Sock) ->
             error(timeout)
     end,
     ok.
+
+assert_no_close(Sock, Window) ->
+    receive
+        {tcp_closed, Sock} = Msg -> ct:fail({closed_early, Msg});
+        {tcp_error, Sock, _} = Msg -> ct:fail({closed_early, Msg})
+    after
+        Window -> ok
+    end.
+
+%% The client socket must have show_econnreset set.
+assert_reset(Sock, Timeout) ->
+    receive
+        {tcp_error, Sock, econnreset} -> ok;
+        {tcp_closed, Sock} -> ct:fail({closed_without_reset, Sock})
+    after
+        Timeout -> ct:fail({no_reset, Sock})
+    end.
+
+stop_if_alive(Pid) ->
+    try
+        gen_server:stop(Pid)
+    catch
+        exit:noproc -> ok
+    end.
 
 disconnect(Socket) ->
     port_close(Socket),

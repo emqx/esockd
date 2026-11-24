@@ -86,6 +86,7 @@ Option:
     -type(option() :: {acceptors, pos_integer()}
                     | {max_connections, pos_integer()}
                     | {max_conn_rate, pos_integer()}
+                    | {tarpit, #{size := non_neg_integer(), delay := pos_integer()}}
                     | {access_rules, [esockd_access:rule()]}
                     | {shutdown, brutal_kill | infinity | pos_integer()}
                     | tune_buffer | {tune_buffer, boolean()}
@@ -132,6 +133,36 @@ allow/deny by API:
     esockd:allow({echo, 5000}, "192.168.0.1/24").
     esockd:deny({echo, 5000}, all).
     esockd:deny({echo, 5000}, "10.10.0.0/16").
+
+### Rate limit and tarpit
+
+The `limiter` option limits how fast new connections are accepted. A socket
+over the limit is still accepted, so the backlog keeps draining, but it is
+closed at once.
+
+A client that reconnects in a loop sees the close right away and comes back at
+once. With the `tarpit` option (off by default), the acceptor holds a refused
+socket for `delay` milliseconds without reading it, then closes it with a TCP
+reset:
+
+    esockd:open(echo, 5000, [{limiter, #{module => esockd_limiter,
+                                         capacity => 100, interval => 1}},
+                             {tarpit, #{size => 1000, delay => 5000}}], MFArgs).
+
+Each held socket uses one file descriptor. `size` caps the number of held
+sockets per listener. When the tarpit is full, a refused socket is closed at
+once. `size => 0` turns the tarpit off. The held sockets are reset when accept
+fails with `emfile` or `enfile`, to free their file descriptors. They are
+closed when the listener stops or its options change.
+
+Stats (`esockd:get_stats/1`): `closed_rate_limited` counts the sockets refused
+by the rate limit and closed at once, `closed_rate_limited_tarpit` the ones held
+in the tarpit. The number held right now:
+
+    esockd:get_tarpit_count({echo, 5000}).
+
+The tarpit applies to `tcp`, `ssl` and `tcpsocket` listeners, not to `dtls`.
+At present it holds only sockets refused by the rate limit.
 
 ### Close a listener
 

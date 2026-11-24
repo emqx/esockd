@@ -47,17 +47,18 @@ start_supervised(ListenerRef = {Proto, ListenOn}) ->
             UpgradeFuns = upgrade_funs(Type, Opts),
             LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
             Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
+            Tarpit = esockd_server:get_listener_prop(ListenerRef, tarpit),
             case Type of
                 T when T =:= tcp; T =:= ssl ->
                     TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
                     AcceptCb = {esockd_accept_inet, TuneFun},
                     Mod = esockd_acceptor_fsm,
-                    Args = [ListenerRef, ConnSup, AcceptCb, UpgradeFuns, Limiter];
+                    Args = [ListenerRef, ConnSup, AcceptCb, UpgradeFuns, Limiter, Tarpit];
                 tcpsocket ->
                     TuneFun = esockd_accept_socket:mk_tune_socket_fun(Opts),
                     AcceptCb = {esockd_accept_socket, TuneFun},
                     Mod = esockd_acceptor_fsm,
-                    Args = [ListenerRef, ConnSup, AcceptCb, UpgradeFuns, Limiter];
+                    Args = [ListenerRef, ConnSup, AcceptCb, UpgradeFuns, Limiter, Tarpit];
                 dtls ->
                     TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
                     Mod = esockd_dtls_acceptor,
@@ -141,12 +142,30 @@ ssl_upgrade_fun(Type, Opts) ->
     end.
 
 -spec check_options(atom(), list()) -> ok | {error, any()}.
-check_options(tcpsocket, Opts) ->
+check_options(Type, Opts) ->
+    case check_tarpit(Opts) of
+        ok -> check_type_options(Type, Opts);
+        {error, _} = Error -> Error
+    end.
+
+check_tarpit(Opts) ->
+    case proplists:get_value(tarpit, Opts) of
+        undefined ->
+            ok;
+        #{size := Size, delay := Delay} = Tarpit when is_integer(Size), Size >= 0,
+                                                     is_integer(Delay), Delay > 0,
+                                                     map_size(Tarpit) =:= 2 ->
+            ok;
+        Other ->
+            {error, #{error => invalid_tarpit, value => Other}}
+    end.
+
+check_type_options(tcpsocket, Opts) ->
     case proplists:get_value(ssl_options, Opts) of
         undefined -> ok;
         _SslOpts -> {error, ssl_not_supported}
     end;
-check_options(_Type, Opts) ->
+check_type_options(_Type, Opts) ->
     try
         ok = check_ssl_opts(ssl_options, Opts),
         ok = check_ssl_opts(dtls_options, Opts)

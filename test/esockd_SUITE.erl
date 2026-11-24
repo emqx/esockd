@@ -529,6 +529,45 @@ t_update_options(_) ->
     {ok, <<"HEY">>} = gen_tcp:recv(Sock2, 0),
     ok = esockd:close(echo, 6000).
 
+%% A socket refused by the rate limit is held by the listener's tarpit.
+%% Turning the tarpit off restarts the acceptors, which close it.
+t_tarpit(_) ->
+    LRef = {echo, 6010},
+    {ok, _LSup} = esockd:open(echo, 6010,
+                              [{acceptors, 2},
+                               {limiter, #{module => esockd_limiter,
+                                           %% The first consume that leaves 0 tokens pauses.
+                                           capacity => 2, interval => 60}},
+                               {tarpit, #{size => 10, delay => 60000}},
+                               {connection_mfargs, echo_server}]),
+    try
+        ?assertMatch(#{size := 10}, esockd_server:get_listener_prop(LRef, tarpit)),
+        {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6010, [binary, {active, false}]),
+        ok = gen_tcp:send(Sock1, <<"Sock1">>),
+        {ok, <<"Sock1">>} = gen_tcp:recv(Sock1, 0),
+        {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6010, [binary, {active, true}]),
+        receive
+            {tcp_closed, Sock2} -> ct:fail(closed_early)
+        after
+            300 -> ok
+        end,
+        ?assertMatch(#{closed_rate_limited := 0, closed_rate_limited_tarpit := 1},
+                     maps:from_list(esockd:get_stats(LRef))),
+        ?assertEqual(1, esockd:get_tarpit_count(LRef)),
+        ok = esockd:set_options(LRef, [{tarpit, #{size => 0, delay => 1}}]),
+        receive
+            {tcp_closed, Sock2} -> ok
+        after
+            2000 -> ct:fail(not_closed)
+        end,
+        ?assertEqual(undefined, esockd_server:get_listener_prop(LRef, tarpit)),
+        ?assertEqual(0, esockd:get_tarpit_count(LRef)),
+        ?assertEqual({error, #{error => invalid_tarpit, value => #{size => 1}}},
+                     esockd:set_options(LRef, [{tarpit, #{size => 1}}]))
+    after
+        ok = esockd:close(echo, 6010)
+    end.
+
 t_update_options_limiter(_) ->
     {ok, _LSup} = esockd:open(echo, 6000,
                               [{limiter, #{module => esockd_limiter, capacity => 100, interval => 1}},

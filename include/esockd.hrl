@@ -78,7 +78,10 @@
 -define(ARG_CLOSED_SYS_LIMIT, closed_sys_limit).
 -define(ARG_CLOSED_MAX_LIMIT, closed_max_limit).
 -define(ARG_CLOSED_OVERLOADED, closed_overloaded).
+%% Refused by the rate limit and closed at once.
 -define(ARG_CLOSED_RATE_LIMITED, closed_rate_limited).
+%% Refused by the rate limit and held in the tarpit, then reset.
+-define(ARG_CLOSED_RATE_LIMITED_TARPIT, closed_rate_limited_tarpit).
 %% The socket failed before the connection process was started,
 %% most likely because the peer closed or reset it.
 -define(ARG_CLOSED_EARLY, closed_early).
@@ -95,7 +98,8 @@
             ?ARG_CLOSED_RATE_LIMITED,
             ?ARG_CLOSED_EARLY,
             ?ARG_CLOSED_FORBIDDEN,
-            ?ARG_CLOSED_OTHER_REASONS
+            ?ARG_CLOSED_OTHER_REASONS,
+            ?ARG_CLOSED_RATE_LIMITED_TARPIT
         ]).
 
 -endif. % ESOCKD_HRL
