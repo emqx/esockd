@@ -610,8 +610,8 @@ do_t_ip_check(Open) ->
         after
             2000 -> ct:fail(not_closed)
         end,
-        ?assertMatch(#{closed_src_ip_banned := 1},
-                     maps:from_list(esockd:get_stats(LRef))),
+        %% The acceptor closes the socket before it counts it.
+        ok = wait_for_stats(LRef, closed_src_ip_banned, 1, 1000),
         ?assertEqual({error, #{error => invalid_ip_check, value => bad}},
                      esockd:set_options(LRef, [{ip_check, bad}])),
         %% No callback: allowed again.
@@ -1178,9 +1178,10 @@ t_closed_forbidden(_) ->
         after 1000 ->
             ct:fail(close_timeout)
         end,
+        %% The acceptor closes the socket before it counts it.
+        ok = wait_for_stats({Name, LPort}, closed_forbidden, 1, 1000),
         Cnts = esockd_server:get_stats({Name, LPort}),
         ?assertEqual(0, proplists:get_value(accepted, Cnts)),
-        ?assertEqual(1, proplists:get_value(closed_forbidden, Cnts)),
         ?assertEqual(0, proplists:get_value(closed_other_reasons, Cnts))
     after
         ok = esockd:close(Name, LPort)
