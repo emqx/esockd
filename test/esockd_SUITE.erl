@@ -624,6 +624,99 @@ do_t_ip_check(Open) ->
         ok = esockd:close(echo, 6011)
     end.
 
+%% With proxy protocol, the client address from the PROXY header is checked,
+%% not the address of the proxy. A denied socket is handed to the tarpit.
+t_ip_check_proxy_protocol(Config) ->
+    SslOpts = [{ssl_options, [{certfile, esockd_ct:certfile(Config)},
+                              {keyfile, esockd_ct:keyfile(Config)},
+                              {verify, verify_none}]}],
+    ok = do_t_ip_check_proxy_protocol(fun esockd:open/3, [], true),
+    ok = do_t_ip_check_proxy_protocol(fun esockd:open_tcpsocket/3, [], true),
+    %% The check runs before TLS, so the client never starts TLS here.
+    ok = do_t_ip_check_proxy_protocol(fun esockd:open/3, SslOpts, false).
+
+do_t_ip_check_proxy_protocol(Open, ExtraOpts, CanEcho) ->
+    LRef = {echo, 6012},
+    ok = esockd_banned_mock:init(),
+    %% The proxy itself is banned: it must not be checked.
+    ok = esockd_banned_mock:ban({peerhost, {127, 0, 0, 1}}),
+    ok = esockd_banned_mock:ban({peerhost, {1, 2, 3, 4}}),
+    Delay = 1000,
+    {ok, _LSup} = Open(echo, 6012,
+                       [{acceptors, 2},
+                        proxy_protocol,
+                        {ip_check, {esockd_banned_mock, ip_check, []}},
+                        {tarpit, #{size => 10, delay => Delay}},
+                        {connection_mfargs, {echo_server, start_link}}
+                        | ExtraOpts]),
+    Connect = fun(SrcIP) ->
+                      {ok, S} = gen_tcp:connect("127.0.0.1", 6012,
+                                                [binary, {active, true},
+                                                 {show_econnreset, true}]),
+                      Header = ["PROXY TCP4 ", SrcIP, " 127.0.0.1 1111 6012\r\n"],
+                      ok = gen_tcp:send(S, Header),
+                      S
+              end,
+    try
+        CanEcho andalso begin
+            Sock1 = Connect("5.6.7.8"),
+            ok = gen_tcp:send(Sock1, <<"Sock1">>),
+            receive {tcp, Sock1, <<"Sock1">>} -> ok
+            after 2000 -> ct:fail(no_echo)
+            end
+        end,
+        %% Held for the delay, then reset.
+        Sock2 = Connect("1.2.3.4"),
+        receive
+            {tcp_closed, Sock2} -> ct:fail(closed_early);
+            {tcp_error, Sock2, _} -> ct:fail(closed_early)
+        after
+            Delay div 2 -> ok
+        end,
+        ?assertMatch(#{closed_src_ip_banned := 0,
+                       closed_src_ip_banned_tarpit := 1},
+                     maps:from_list(esockd:get_stats(LRef))),
+        ?assertEqual(1, esockd:get_tarpit_count(LRef)),
+        receive
+            {tcp_error, Sock2, econnreset} -> ok
+        after
+            Delay + 2000 -> ct:fail(not_reset)
+        end,
+        %% The holder owns a held socket: it closes when the holder dies.
+        Sock3 = Connect("1.2.3.4"),
+        ok = wait_tarpit_count(LRef, 1, 2000),
+        #{pid := Holder} = esockd_server:get_listener_prop(LRef, tarpit),
+        exit(Holder, kill),
+        receive
+            {tcp_closed, Sock3} -> ok;
+            {tcp_error, Sock3, _} -> ok
+        after
+            2000 -> ct:fail(not_closed)
+        end,
+        %% Tarpit off: closed at once.
+        ok = esockd:set_options(LRef, [{tarpit, #{size => 0, delay => 1}}]),
+        Sock4 = Connect("1.2.3.4"),
+        receive
+            {tcp_closed, Sock4} -> ok;
+            {tcp_error, Sock4, _} -> ok
+        after
+            2000 -> ct:fail(not_closed)
+        end,
+        ?assertMatch(#{closed_src_ip_banned := 1},
+                     maps:from_list(esockd:get_stats(LRef))),
+        ok
+    after
+        ok = esockd:close(echo, 6012)
+    end.
+
+wait_tarpit_count(LRef, Count, Timeout) when Timeout > 0 ->
+    case esockd:get_tarpit_count(LRef) of
+        Count -> ok;
+        _ -> timer:sleep(10), wait_tarpit_count(LRef, Count, Timeout - 10)
+    end;
+wait_tarpit_count(LRef, Count, _) ->
+    ct:fail({tarpit_count, Count, esockd:get_tarpit_count(LRef)}).
+
 t_update_options_limiter(_) ->
     {ok, _LSup} = esockd:open(echo, 6000,
                               [{limiter, #{module => esockd_limiter, capacity => 100, interval => 1}},

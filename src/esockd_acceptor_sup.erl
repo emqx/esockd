@@ -44,11 +44,10 @@ start_supervised(ListenerRef = {Proto, ListenOn}) ->
     ConnSup = esockd_server:get_listener_prop(ListenerRef, connection_sup),
     case check_options(Type, Opts) of
         ok ->
-            UpgradeFuns = upgrade_funs(Type, Opts),
+            Tarpit = esockd_server:get_listener_prop(ListenerRef, tarpit),
+            {IpCheck, UpgradeFuns} = ip_check_and_upgrade_funs(ListenerRef, Type, Opts, Tarpit),
             LimiterOpts = esockd_listener_sup:conn_limiter_opts(Opts, {listener, Proto, ListenOn}),
             Limiter = esockd_listener_sup:conn_rate_limiter(LimiterOpts),
-            Tarpit = esockd_server:get_listener_prop(ListenerRef, tarpit),
-            IpCheck = proplists:get_value(ip_check, Opts),
             case Type of
                 T when T =:= tcp; T =:= ssl ->
                     TuneFun = esockd_accept_inet:mk_tune_socket_fun(Opts),
@@ -119,8 +118,18 @@ init({AcceptorMod, AcceptorArgs}) ->
 %% Internal functions
 %% -------------------------------------------------------------------
 
-upgrade_funs(Type, Opts) ->
-    proxy_upgrade_fun(Type, Opts) ++ ssl_upgrade_fun(Type, Opts).
+%% Returns the ip_check for the acceptor and the upgrade funs. With proxy
+%% protocol, the acceptor sees the address of the proxy, so the check runs
+%% after the proxy upgrade instead, before TLS.
+ip_check_and_upgrade_funs(ListenerRef, Type, Opts, Tarpit) ->
+    IpCheck = proplists:get_value(ip_check, Opts),
+    case proxy_upgrade_fun(Type, Opts) of
+        [_] = ProxyFun when IpCheck =/= undefined, Type =/= dtls ->
+            IpCheckFun = esockd_ip_check:upgrade_fun(Type, ListenerRef, IpCheck, Tarpit),
+            {undefined, ProxyFun ++ [IpCheckFun] ++ ssl_upgrade_fun(Type, Opts)};
+        ProxyFun ->
+            {IpCheck, ProxyFun ++ ssl_upgrade_fun(Type, Opts)}
+    end.
 
 proxy_upgrade_fun(Type, Opts) ->
     case proplists:get_bool(proxy_protocol, Opts) of

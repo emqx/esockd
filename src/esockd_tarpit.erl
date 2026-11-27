@@ -21,6 +21,10 @@
 %% the delay. A held socket whose acceptor exits is closed by the runtime;
 %% closing it again here does nothing.
 %%
+%% A connection process that refuses its socket after the PROXY header
+%% (see esockd_ip_check) is about to exit, so it hands the ownership over
+%% to the holder. Such a socket closes when the holder exits.
+%%
 %% The acceptor checks the cap with a shared counter before it sends the
 %% socket, so the holder only receives sockets it has room for.
 -module(esockd_tarpit).
@@ -32,6 +36,7 @@
     start_link/2,
     handle/1,
     hold/3,
+    hand_over/3,
     flush/1,
     count/1
 ]).
@@ -85,17 +90,45 @@ start_link(Size, Delay) ->
 handle(Pid) ->
     gen_server:call(Pid, handle, infinity).
 
-%% @doc Called by the socket owner. Returns `full' when the tarpit has no
-%% room; the caller then closes the socket itself.
+%% @doc Called by the socket owner, which stays the owner. Returns `full'
+%% when the tarpit has no room; the caller then closes the socket itself.
 -spec hold(handle(), module(), _Sock) -> ok | full.
-hold(#{pid := Pid, counter := Counter, size := Size}, CloseMod, Sock) ->
-    case atomics:add_get(Counter, 1, 1) =< Size of
+hold(#{pid := Pid} = Handle, CloseMod, Sock) ->
+    case reserve(Handle) of
         true ->
             _ = erlang:send(Pid, {hold, CloseMod, Sock}),
             ok;
         false ->
-            ok = atomics:sub(Counter, 1, 1),
             full
+    end.
+
+%% @doc Called by the socket owner, which is about to exit: the holder
+%% becomes the owner. On `full' or an error the caller still owns the
+%% socket and closes it itself.
+-spec hand_over(handle(), module(), _Sock) -> ok | full | {error, term()}.
+hand_over(#{pid := Pid, counter := Counter} = Handle, Mod, Sock) ->
+    case reserve(Handle) of
+        true ->
+            case Mod:controlling_process(Sock, Pid) of
+                ok ->
+                    %% No message comes with the new ownership.
+                    _ = erlang:send(Pid, {hold, Mod, Sock}),
+                    ok;
+                {error, _} = Error ->
+                    ok = atomics:sub(Counter, 1, 1),
+                    Error
+            end;
+        false ->
+            full
+    end.
+
+reserve(#{counter := Counter, size := Size}) ->
+    case atomics:add_get(Counter, 1, 1) =< Size of
+        true ->
+            true;
+        false ->
+            ok = atomics:sub(Counter, 1, 1),
+            false
     end.
 
 %% @doc Reset all held sockets now, for example to free fds on emfile.

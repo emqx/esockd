@@ -23,6 +23,7 @@
     post_accept/2,
     sockname/1,
     peer_ip/1,
+    controlling_process/2,
     fast_close/1,
     reset_close/1
 ]).
@@ -167,6 +168,11 @@ sock_opt(_Opt) ->
     {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix() | closed}.
 sockname(#ctx{lsock = LSock}) ->
     esockd_socket:sockname(LSock).
+
+%% @doc Give the socket to another process, for the tarpit.
+-spec controlling_process(socket(), pid()) -> ok | {error, term()}.
+controlling_process(Sock, Pid) ->
+    socket:setopt(Sock, {otp, controlling_process}, Pid).
 
 %% @doc The IP address of the TCP peer of an accepted socket.
 -spec peer_ip(socket()) -> {ok, inet:ip_address()} | {error, inet:posix() | closed}.

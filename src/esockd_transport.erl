@@ -100,6 +100,8 @@ upgrade(Sock, []) ->
 upgrade(Sock, [{Fun, Args}|More]) ->
     case apply(Fun, [Sock|Args]) of
         {ok, NewSock} -> upgrade(NewSock, More);
+        %% Owned by the tarpit now, see esockd_ip_check.
+        {error, src_ip_banned_tarpit} = Error -> Error;
         Error         -> fast_close(Sock), Error
     end.
 

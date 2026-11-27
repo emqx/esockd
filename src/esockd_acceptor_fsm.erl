@@ -61,15 +61,14 @@
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
     tarpit :: undefined | esockd_tarpit:handle(),
-    ip_check :: undefined | ip_check(),
+    %% undefined with proxy protocol: esockd_ip_check runs after the
+    %% PROXY header is read, in the connection process.
+    ip_check :: undefined | esockd_ip_check:ip_check(),
     listener :: pid(),
     conn_sup :: pid()
                 %% NOTE: Only for tests
                 | {function(), [term()]}
 }).
-
-%% Called as M:F(IP, Args...) with the IP address of the TCP peer.
--type ip_check() :: {module(), atom(), [term()]}.
 
 %% @doc Start an acceptor
 -spec start_link(
@@ -79,7 +78,7 @@
     [esockd:sock_fun()],
     esockd_generic_limiter:limiter(),
     undefined | esockd_tarpit:handle(),
-    undefined | ip_check(),
+    undefined | esockd_ip_check:ip_check(),
     _ListenSocket
 ) ->
     {ok, pid()} | {error, term()}.
@@ -282,36 +281,13 @@ tarpit_tag(src_ip_banned) -> src_ip_banned_tarpit.
 
 check_ip(_Sock, #d{ip_check = undefined}) ->
     allow;
-check_ip(Sock, D = #d{ip_check = IpCheck, modctx = {Mod, _}}) ->
+check_ip(Sock, #d{ip_check = IpCheck, modctx = {Mod, _}, listener_ref = ListenerRef}) ->
     case Mod:peer_ip(Sock) of
         {ok, IP} ->
-            call_ip_check(IpCheck, IP, D);
+            esockd_ip_check:check(IpCheck, IP, ListenerRef);
         {error, _} = Error ->
             Error
     end.
-
-%% A failing callback allows the peer: a bug in the callback must not
-%% refuse all clients.
-call_ip_check({M, F, A}, IP, D) ->
-    try apply(M, F, [IP | A]) of
-        allow ->
-            allow;
-        deny ->
-            deny;
-        Other ->
-            log_ip_check_error(D, IP, {bad_return, Other}),
-            allow
-    catch
-        Class:Reason:Stacktrace ->
-            log_ip_check_error(D, IP, {Class, Reason, Stacktrace}),
-            allow
-    end.
-
-log_ip_check_error(D, IP, Error) ->
-    logger:log(error, #{msg => "esockd_ip_check_failed",
-                        listener => format_sockname(D),
-                        peer_ip => IP,
-                        error => Error}).
 
 %% emfile/enfile: free the fds held in the tarpit.
 flush_tarpit(#d{tarpit = undefined}) ->

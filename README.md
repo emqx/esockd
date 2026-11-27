@@ -182,9 +182,22 @@ in the tarpit).
 
 The callback runs in the acceptor, so it must be fast. If it raises an
 exception or returns another value, the socket is allowed and an error is
-logged. With `proxy_protocol`, `IP` is the address of the proxy, not of the
-client, as for `access_rules`. Set `{ip_check, undefined}` to remove it. It
-applies to `tcp`, `ssl` and `tcpsocket` listeners, not to `dtls`.
+logged. Set `{ip_check, undefined}` to remove it. It applies to `tcp`, `ssl`
+and `tcpsocket` listeners, not to `dtls`.
+
+With `proxy_protocol`, `IP` is the client address from the PROXY header, not
+the address of the proxy. The header is read by the connection process, so
+the check runs there, right after the header and before TLS. A denied socket
+is handed over to the tarpit (or closed), and the connection process exits.
+Such a socket is also counted as `accepted`. A header without a client
+address (`LOCAL`, `UNKNOWN`) is allowed.
+
+The connection process sees the refusal as the result of
+`esockd_transport:wait/1` or `esockd_socket:wait/1`:
+
+- `{error, src_ip_banned}`: the socket is already closed;
+- `{error, src_ip_banned_tarpit}`: the tarpit owns the socket now. Do not close
+  it, or the client is released at once. Just exit.
 
 ### Close a listener
 

@@ -348,6 +348,19 @@ closed_socket(esockd_accept_socket) ->
     ok = socket:close(Sock),
     Sock.
 
+%% hand_over/3 on a closed socket fails and frees its slot.
+t_tarpit_hand_over_closed(Config) ->
+    AcceptMod = proplists:get_value(accept_mod, Config),
+    {ok, Holder} = esockd_tarpit:start_link(1, 60000),
+    try
+        Handle = esockd_tarpit:handle(Holder),
+        Sock = closed_socket(AcceptMod),
+        ?assertMatch({error, _}, esockd_tarpit:hand_over(Handle, AcceptMod, Sock)),
+        ?assertEqual(0, esockd_tarpit:count(Handle))
+    after
+        stop_if_alive(Holder)
+    end.
+
 t_tarpit_check_options(_Config) ->
     Check = fun(Opts) -> esockd_acceptor_sup:check_options(tcp, Opts) end,
     ok = Check([]),
