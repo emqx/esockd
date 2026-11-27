@@ -47,7 +47,7 @@
 %% prim_inet:send_async/3, and the reply carries a fourth element.
 -if(?OTP_RELEASE >= 26).
 -define(ASYNC_SEND_REPLY(Sock, Status), {inet_reply, Sock, Status, send_async}).
--define(SEND_ASYNC_MODULE_KEY, {?MODULE, send_async_module}).
+-define(SEND_ASYNC_MODULE_KEY, esockd_transport_send_async_module).
 -else.
 -define(ASYNC_SEND_REPLY(Sock, Status), {inet_reply, Sock, Status}).
 -endif.
