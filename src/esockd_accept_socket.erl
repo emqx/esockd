@@ -22,7 +22,8 @@
     async_accept_result/3,
     post_accept/2,
     sockname/1,
-    fast_close/1
+    fast_close/1,
+    reset_close/1
 ]).
 
 -export([
@@ -169,3 +170,18 @@ sockname(#ctx{lsock = LSock}) ->
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->
     esockd_socket:fast_close(Sock).
+
+%% Close with a TCP reset, also when the receive buffer is empty.
+%% Called by the tarpit, which is not the owner. With linger 0 the close
+%% does not block.
+-spec reset_close(socket()) -> ok.
+reset_close(Sock) ->
+    case socket:setopt(Sock, {socket, linger}, #{onoff => true, linger => 0}) of
+        ok ->
+            _ = socket:close(Sock),
+            ok;
+        {error, _} ->
+            %% Already closed, for example after its acceptor exited.
+            _ = fast_close(Sock),
+            ok
+    end.

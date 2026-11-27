@@ -22,7 +22,8 @@
     async_accept_result/3,
     post_accept/2,
     sockname/1,
-    fast_close/1
+    fast_close/1,
+    reset_close/1
 ]).
 
 -export([
@@ -129,6 +130,19 @@ fast_close(Sock) ->
         %% Port-close leads to a TCP reset which cuts out TCP graceful close overheads.
         _ = port_close(Sock),
         receive {'EXIT', Sock, _} -> ok after 1 -> ok end
+    catch
+        error:_ -> ok
+    end.
+
+%% Close with a TCP reset, also when the receive buffer is empty.
+%% Called by the tarpit, which is not the owner and not linked: the exit
+%% signal of the port goes to the owner.
+-spec reset_close(socket()) -> ok.
+reset_close(Sock) ->
+    _ = prim_inet:setopts(Sock, [{linger, {true, 0}}]),
+    try
+        _ = port_close(Sock),
+        ok
     catch
         error:_ -> ok
     end.

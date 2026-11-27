@@ -68,6 +68,8 @@
 
 -export([get_shutdown_count/1]).
 
+-export([get_tarpit_count/1]).
+
 %% Allow, Deny API
 -export([ get_access_rules/1
         , allow/2
@@ -107,6 +109,7 @@
 -type(option() :: {acceptors, pos_integer()}
                 | {max_connections, pos_integer()}
                 | {max_conn_rate, conn_limit()}
+                | {tarpit, #{size := non_neg_integer(), delay := pos_integer()}}
                 | {connection_mfargs, mfargs()}
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}
@@ -337,6 +340,12 @@ get_current_connections({Proto, ListenOn}) when is_atom(Proto) ->
 -spec(get_shutdown_count({atom(), listen_on()}) -> pos_integer()).
 get_shutdown_count({Proto, ListenOn}) when is_atom(Proto) ->
     with_listener({Proto, ListenOn}, ?FUNCTION_NAME).
+
+%% @doc Get the number of sockets held in the tarpit, 0 when it is off.
+-spec(get_tarpit_count({atom(), listen_on()}) -> non_neg_integer()).
+get_tarpit_count({Proto, ListenOn}) when is_atom(Proto) ->
+    esockd_tarpit:count(
+      esockd_server:get_listener_prop({Proto, fixaddr(ListenOn)}, tarpit)).
 
 %% @doc Get access rules
 -spec(get_access_rules({atom(), listen_on()}) -> [esockd_access:rule()]).

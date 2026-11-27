@@ -122,6 +122,11 @@ do_set_options(ListenerRef, Sup, Opts) ->
 
 restart_acceptor_sup(ListenerRef, Sup) ->
     _ = supervisor:terminate_child(Sup, acceptor_sup),
+    %% The tarpit options may have changed too.
+    _ = case supervisor:terminate_child(Sup, tarpit) of
+        ok -> {ok, _} = supervisor:restart_child(Sup, tarpit);
+        {error, not_found} -> ok
+    end,
     {ok, _Child} = supervisor:restart_child(Sup, acceptor_sup),
     _ = start_acceptors(ListenerRef),
     ok.
@@ -188,6 +193,14 @@ init(ListenerRef) ->
                  shutdown => 16#ffffffff,
                  type => worker,
                  modules => [ListenerMod]},
+    %% Before the acceptors: when it restarts, rest_for_one restarts the
+    %% acceptors, which own the held sockets, so none is left open.
+    Tarpit = #{id => tarpit,
+               start => {esockd_tarpit, start_supervised, [ListenerRef]},
+               restart => transient,
+               shutdown => 1000,
+               type => worker,
+               modules => [esockd_tarpit]},
     AcceptorSup = #{id => acceptor_sup,
                     start => {esockd_acceptor_sup, start_supervised, [ListenerRef]},
                     restart => transient,
@@ -201,7 +214,7 @@ init(ListenerRef) ->
                 type => worker,
                 modules => []},
     {ok, { {rest_for_one, 10, 3600}
-         , [ConnSup, Listener, AcceptorSup, Starter]
+         , [ConnSup, Listener, Tarpit, AcceptorSup, Starter]
          }}.
 
 -spec start_acceptors(esockd:listener_ref()) -> ignore.
