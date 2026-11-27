@@ -247,6 +247,10 @@ handle_call(which_children, _From, State = #state{curr_connections = Conns, mfar
     {reply, [{undefined, Pid, worker, [Mod]}
               || Pid <- maps:keys(Conns), erlang:is_process_alive(Pid)], State};
 
+handle_call({proxy_request, Fun}, _From, State) ->
+    Result = Fun(),
+    {reply, Result, State};
+
 handle_call(Req, _From, State) ->
     ?ERROR_MSG("Unexpected call: ~p", [Req]),
     {reply, ignore, State}.
