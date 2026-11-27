@@ -124,7 +124,8 @@ fast_close(Sock) ->
 fast_close_nolinger(Sock) ->
     %% NOTE: Unexpected to fail on active socket.
     _ = socket:setopt(Sock, {socket, linger}, #{onoff => true, linger => 0}),
-    socket:close(Sock).
+    _ = socket:close(Sock),
+    ok.
 
 %% @doc Sockname
 %% Returns original destination address and port if proxy protocol is enabled.

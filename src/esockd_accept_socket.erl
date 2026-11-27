@@ -181,5 +181,7 @@ reset_close(Sock) ->
             _ = socket:close(Sock),
             ok;
         {error, _} ->
-            fast_close(Sock)
+            %% Already closed, for example after its acceptor exited.
+            _ = fast_close(Sock),
+            ok
     end.

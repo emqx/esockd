@@ -311,6 +311,35 @@ t_tarpit_sys_limit(Config) ->
         stop(Server)
     end.
 
+%% The holder may reset a socket that is already closed, for example after
+%% its acceptor exited. That must not crash the holder.
+t_tarpit_reset_closed_socket(Config) ->
+    AcceptMod = proplists:get_value(accept_mod, Config),
+    Sock = closed_socket(AcceptMod),
+    Was = application:get_env(esockd, socket_fast_close_method),
+    try
+        lists:foreach(
+          fun(Method) ->
+                  ok = application:set_env(esockd, socket_fast_close_method, Method),
+                  ?assertEqual(ok, AcceptMod:reset_close(Sock))
+          end,
+          [default, nolinger])
+    after
+        case Was of
+            {ok, V} -> application:set_env(esockd, socket_fast_close_method, V);
+            undefined -> application:unset_env(esockd, socket_fast_close_method)
+        end
+    end.
+
+closed_socket(esockd_accept_inet) ->
+    {ok, Sock} = gen_tcp:listen(0, []),
+    ok = gen_tcp:close(Sock),
+    Sock;
+closed_socket(esockd_accept_socket) ->
+    {ok, Sock} = socket:open(inet, stream, tcp),
+    ok = socket:close(Sock),
+    Sock.
+
 t_tarpit_check_options(_Config) ->
     Check = fun(Opts) -> esockd_acceptor_sup:check_options(tcp, Opts) end,
     ok = Check([]),
