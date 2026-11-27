@@ -33,7 +33,9 @@
 -define(COUNTER_EARLY, 7).
 -define(COUNTER_FORBIDDEN, 8).
 -define(COUNTER_RATE_LIMITED_TARPIT, 9).
--define(COUNTER_LAST, 10).
+-define(COUNTER_SRC_IP_BANNED, 10).
+-define(COUNTER_SRC_IP_BANNED_TARPIT, 11).
+-define(COUNTER_LAST, 12).
 
 counter_tag_to_index(accepted) -> ?COUNTER_ACCEPTED;
 counter_tag_to_index(closed_sys_limit) -> ?COUNTER_SYS_LIMIT;
@@ -41,6 +43,8 @@ counter_tag_to_index(closed_max_limit) -> ?COUNTER_MAX_LIMIT;
 counter_tag_to_index(closed_overloaded) -> ?COUNTER_OVERLOADED;
 counter_tag_to_index(closed_rate_limited) -> ?COUNTER_RATE_LIMITED;
 counter_tag_to_index(closed_rate_limited_tarpit) -> ?COUNTER_RATE_LIMITED_TARPIT;
+counter_tag_to_index(closed_src_ip_banned) -> ?COUNTER_SRC_IP_BANNED;
+counter_tag_to_index(closed_src_ip_banned_tarpit) -> ?COUNTER_SRC_IP_BANNED_TARPIT;
 counter_tag_to_index(closed_early) -> ?COUNTER_EARLY;
 counter_tag_to_index(closed_forbidden) -> ?COUNTER_FORBIDDEN;
 counter_tag_to_index(closed_other_reasons) -> ?COUNTER_OTHER_REASONS.
@@ -93,9 +97,11 @@ start(PortNumber, Limiter, Opts) ->
 
 start(PortNumber, Limiter, Opts, Config) ->
     AcceptMod = proplists:get_value(accept_mod, Config),
+    Family = maps:get(family, Opts, inet),
     case AcceptMod of
         esockd_accept_inet ->
             SockOpts = [binary,
+                        Family,
                         {active, false},
                         {reuseaddr, true},
                         {nodelay, true},
@@ -103,9 +109,9 @@ start(PortNumber, Limiter, Opts, Config) ->
             {ok, LSock} = gen_tcp:listen(PortNumber, SockOpts);
         esockd_accept_socket -> 
             Backlog = maps:get(backlog, Opts, 1024),
-            {ok, LSock} = socket:open(inet, stream, tcp),
+            {ok, LSock} = socket:open(Family, stream, tcp),
             ok = socket:setopt(LSock, {socket, reuseaddr}, true),
-            ok = socket:bind(LSock, #{family => inet,
+            ok = socket:bind(LSock, #{family => Family,
                                     addr => any,
                                     port => PortNumber}),
             ok = socket:listen(LSock, Backlog)
@@ -122,6 +128,7 @@ start(PortNumber, Limiter, Opts, Config) ->
         _UpgradeFuns = [],
         Limiter,
         Tarpit,
+        maps:get(ip_check, Opts, undefined),
         LSock
     ),
     #{lsock => LSock, acceptor => AccPid, tarpit => Holder}.
@@ -152,7 +159,8 @@ connect(Port, Timeout, Opts0) ->
             {active, maps:get(active, Opts0, false)},
             {show_econnreset, maps:get(show_econnreset, Opts0, false)},
             {nodelay, true}],
-    gen_tcp:connect("localhost", Port, Opts, Timeout).
+    Host = maps:get(host, Opts0, {127, 0, 0, 1}),
+    gen_tcp:connect(Host, Port, Opts, Timeout).
 
 %% This is the very basic test, if this fails, nothing elese matters.
 t_normal(Config) ->
@@ -355,6 +363,137 @@ t_tarpit_check_options(_Config) ->
     ?assertMatch({error, #{error := invalid_tarpit}},
                  esockd_acceptor_sup:check_options(
                    tcpsocket, [{tarpit, #{size => 1}}])).
+
+%%--------------------------------------------------------------------
+%% ip_check
+%%--------------------------------------------------------------------
+
+-define(IP_CHECK, {esockd_banned_mock, ip_check, []}).
+
+%% Not banned: accepted as usual.
+t_ip_check_allow(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:ban({peerhost, {10, 0, 0, 1}}),
+    assert_ip_check_accepted(?PORT, ?IP_CHECK, Config).
+
+%% A ban that has expired does not deny.
+t_ip_check_expired(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:create(
+           {banned, {peerhost, {127, 0, 0, 1}}, <<"test">>, <<"test">>,
+            0, erlang:system_time(second) - 1}),
+    assert_ip_check_accepted(?PORT, ?IP_CHECK, Config).
+
+%% A callback that crashes or returns something else allows the peer.
+t_ip_check_crash(Config) ->
+    assert_ip_check_accepted(?PORT, {esockd_banned_mock, crash, []}, Config).
+
+t_ip_check_bad_return(Config) ->
+    assert_ip_check_accepted(?PORT, {esockd_banned_mock, bad_return, []}, Config).
+
+assert_ip_check_accepted(Port, IpCheck, Config) ->
+    Server = start(Port, no_rate_limit(), #{ip_check => IpCheck}, Config),
+    {ok, Sock} = connect(Port),
+    try
+        ok = wait_for_counter(Config, ?COUNTER_ACCEPTED, 1, 2000),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_SRC_IP_BANNED))
+    after
+        disconnect(Sock),
+        stop(Server)
+    end.
+
+%% Banned by address, no tarpit: closed at once.
+t_ip_check_deny(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:ban({peerhost, {127, 0, 0, 1}}),
+    assert_ip_check_closed(?PORT, #{}, Config).
+
+%% Banned by network, no tarpit: closed at once.
+t_ip_check_deny_net(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:ban({peerhost_net, "127.0.0.0/8"}),
+    assert_ip_check_closed(?PORT, #{}, Config).
+
+%% An IPv6 peer is passed as an 8-tuple.
+t_ip_check_ipv6(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:ban({peerhost, {0, 0, 0, 0, 0, 0, 0, 1}}),
+    assert_ip_check_closed(?PORT, #{family => inet6}, Config).
+
+assert_ip_check_closed(Port, Opts, Config) ->
+    Host = case maps:get(family, Opts, inet) of
+               inet -> {127, 0, 0, 1};
+               inet6 -> {0, 0, 0, 0, 0, 0, 0, 1}
+           end,
+    Server = start(Port, no_rate_limit(), Opts#{ip_check => ?IP_CHECK}, Config),
+    try
+        {ok, Sock} = connect(Port, 1000, #{active => true, host => Host}),
+        receive
+            {tcp_closed, Sock} -> ok
+        after
+            2000 -> ct:fail({no_tcp_closed, Sock})
+        end,
+        ok = wait_for_counter(Config, ?COUNTER_SRC_IP_BANNED, 1, 2000),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_ACCEPTED)),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_SRC_IP_BANNED_TARPIT))
+    after
+        stop(Server)
+    end.
+
+%% Banned, with the tarpit on: held for the delay, then reset.
+t_ip_check_deny_tarpit(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:ban({peerhost, {127, 0, 0, 1}}),
+    Port = ?PORT,
+    Delay = 1000,
+    Opts = #{ip_check => ?IP_CHECK, tarpit => #{size => 10, delay => Delay}},
+    Server = start(Port, no_rate_limit(), Opts, Config),
+    try
+        {ok, Sock} = connect(Port, 1000, #{active => true, show_econnreset => true}),
+        ok = wait_for_counter(Config, ?COUNTER_SRC_IP_BANNED_TARPIT, 1, 2000),
+        ok = assert_no_close(Sock, Delay - 200),
+        ok = assert_reset(Sock, 2000),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_SRC_IP_BANNED)),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_RATE_LIMITED_TARPIT)),
+        ?assertEqual(0, get_counter(Config, ?COUNTER_ACCEPTED))
+    after
+        stop(Server)
+    end.
+
+%% The check runs before the rate limit: a denied peer takes no token.
+t_ip_check_before_rate_limit(Config) ->
+    ok = esockd_banned_mock:init(),
+    ok = esockd_banned_mock:ban({peerhost, {127, 0, 0, 1}}),
+    Port = ?PORT,
+    %% The first token taken pauses the acceptor.
+    Server = start(Port, pause_then_allow(60000), #{ip_check => ?IP_CHECK}, Config),
+    try
+        {ok, Sock1} = connect(Port, 1000, #{active => true}),
+        ok = wait_for_counter(Config, ?COUNTER_SRC_IP_BANNED, 1, 2000),
+        ok = esockd_banned_mock:delete({peerhost, {127, 0, 0, 1}}),
+        {ok, Sock2} = connect(Port, 1000, #{active => true}),
+        ok = wait_for_counter(Config, ?COUNTER_RATE_LIMITED, 1, 2000),
+        ?assertEqual(1, get_counter(Config, ?COUNTER_SRC_IP_BANNED)),
+        lists:foreach(
+          fun(S) ->
+                  receive {tcp_closed, S} -> ok
+                  after 2000 -> ct:fail({no_tcp_closed, S})
+                  end
+          end, [Sock1, Sock2])
+    after
+        stop(Server)
+    end.
+
+t_ip_check_check_options(_Config) ->
+    Check = fun(Opts) -> esockd_acceptor_sup:check_options(tcp, Opts) end,
+    ok = Check([{ip_check, ?IP_CHECK}]),
+    lists:foreach(
+      fun(Bad) ->
+              ?assertMatch({error, #{error := invalid_ip_check}},
+                           Check([{ip_check, Bad}]))
+      end,
+      [esockd_banned_mock, {esockd_banned_mock, ip_check},
+       {esockd_banned_mock, ip_check, x}, fun(_) -> allow end]).
 
 %% Failed to spawn new connection process
 t_error_when_spawn(Config) ->

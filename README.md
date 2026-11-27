@@ -87,6 +87,7 @@ Option:
                     | {max_connections, pos_integer()}
                     | {max_conn_rate, pos_integer()}
                     | {tarpit, #{size := non_neg_integer(), delay := pos_integer()}}
+                    | {ip_check, {module(), atom(), list()}}
                     | {access_rules, [esockd_access:rule()]}
                     | {shutdown, brutal_kill | infinity | pos_integer()}
                     | tune_buffer | {tune_buffer, boolean()}
@@ -162,7 +163,28 @@ in the tarpit. The number held right now:
     esockd:get_tarpit_count({echo, 5000}).
 
 The tarpit applies to `tcp`, `ssl` and `tcpsocket` listeners, not to `dtls`.
-At present it holds only sockets refused by the rate limit.
+It holds sockets refused by the rate limit and by `ip_check` (below).
+
+### IP check callback
+
+`{ip_check, {M, F, Args}}` (off by default) calls `M:F(IP, Args...)` for each
+accepted socket, before the rate limit. `IP` is the address of the TCP peer, a
+4-tuple for IPv4 or an 8-tuple for IPv6. The callback returns `allow` or
+`deny`:
+
+    esockd:open(echo, 5000, [{ip_check, {my_bans, check_ip, []}},
+                             {tarpit, #{size => 1000, delay => 5000}}], MFArgs).
+
+A denied socket takes no token from the rate limit. It goes to the tarpit when
+the tarpit is on and not full, and is closed at once otherwise. Stats:
+`closed_src_ip_banned` (closed at once) and `closed_src_ip_banned_tarpit` (held
+in the tarpit).
+
+The callback runs in the acceptor, so it must be fast. If it raises an
+exception or returns another value, the socket is allowed and an error is
+logged. With `proxy_protocol`, `IP` is the address of the proxy, not of the
+client, as for `access_rules`. Set `{ip_check, undefined}` to remove it. It
+applies to `tcp`, `ssl` and `tcpsocket` listeners, not to `dtls`.
 
 ### Close a listener
 

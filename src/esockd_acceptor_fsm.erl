@@ -20,7 +20,7 @@
 
 -include("esockd.hrl").
 
--export([start_link/7]).
+-export([start_link/8]).
 
 %% state callbacks
 -export([handle_event/4]).
@@ -61,11 +61,15 @@
     upgrade_funs :: [esockd:sock_fun()],
     conn_limiter :: undefined | esockd_generic_limiter:limiter(),
     tarpit :: undefined | esockd_tarpit:handle(),
+    ip_check :: undefined | ip_check(),
     listener :: pid(),
     conn_sup :: pid()
                 %% NOTE: Only for tests
                 | {function(), [term()]}
 }).
+
+%% Called as M:F(IP, Args...) with the IP address of the TCP peer.
+-type ip_check() :: {module(), atom(), [term()]}.
 
 %% @doc Start an acceptor
 -spec start_link(
@@ -75,13 +79,14 @@
     [esockd:sock_fun()],
     esockd_generic_limiter:limiter(),
     undefined | esockd_tarpit:handle(),
+    undefined | ip_check(),
     _ListenSocket
 ) ->
     {ok, pid()} | {error, term()}.
-start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, LSock) ->
+start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, IpCheck, LSock) ->
     gen_statem:start_link(
         ?MODULE,
-        [ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, LSock],
+        [ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, IpCheck, LSock],
         []
     ).
 
@@ -92,7 +97,7 @@ start_link(ListenerRef, ConnSup, ModOpts, UpgradeFuns, Limiter, Tarpit, LSock) -
 callback_mode() ->
     handle_event_function.
 
-init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, Tarpit, LSock]) ->
+init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, Tarpit, IpCheck, LSock]) ->
     _ = erlang:process_flag(trap_exit, true),
     {_Mod, Listener} = esockd_server:get_listener_prop(ListenerRef, listener),
     Ctx = Mod:init(LSock, Opts),
@@ -102,6 +107,7 @@ init([ListenerRef, ConnSup, {Mod, Opts}, UpgradeFuns, Limiter, Tarpit, LSock]) -
         upgrade_funs = UpgradeFuns,
         conn_limiter = Limiter,
         tarpit = Tarpit,
+        ip_check = IpCheck,
         listener = Listener,
         conn_sup = ConnSup
     },
@@ -158,20 +164,40 @@ handle_info(Type, Content, State, _D) ->
                           event_content => Content}),
     keep_state_and_data.
 
-handle_accepted(Sock, waiting, D = #d{conn_limiter = Limiter}) ->
+%% A denied peer does not take a token from the rate limit.
+handle_accepted(Sock, State, D) ->
+    case check_ip(Sock, D) of
+        allow ->
+            handle_allowed(Sock, State, D);
+        deny ->
+            _ = inc_stats(D, refuse(D, Sock, src_ip_banned)),
+            continue_accepting(State, D);
+        {error, Reason} ->
+            %% Most likely the peer has closed or reset the socket.
+            maybe_close(D, Sock, Reason),
+            inc_stats(D, Reason),
+            continue_accepting(State, D)
+    end.
+
+continue_accepting(waiting, D) ->
+    enter_waiting(D);
+continue_accepting(suspending, D) ->
+    {next_state, suspending, D, {next_event, internal, accept}}.
+
+handle_allowed(Sock, waiting, D = #d{conn_limiter = Limiter}) ->
     case esockd_generic_limiter:consume(1, Limiter) of
         {ok, NLimiter} ->
             ND = D#d{conn_limiter = NLimiter},
             _ = handle_socket(Sock, ND),
             enter_waiting(ND);
         {pause, PauseTime, NLimiter} ->
-            _ = inc_stats(D, refuse(D, Sock)),
+            _ = inc_stats(D, refuse(D, Sock, rate_limited)),
             ND = D#d{conn_limiter = NLimiter},
             enter_suspending(ND, PauseTime)
     end;
-handle_accepted(Sock, suspending, D) ->
-    _ = inc_stats(D, refuse(D, Sock)),
-    {next_state, suspending, D, {next_event, internal, accept}}.
+handle_allowed(Sock, suspending, D) ->
+    _ = inc_stats(D, refuse(D, Sock, rate_limited)),
+    continue_accepting(suspending, D).
 
 enter_waiting(D) ->
     Action = {next_event, internal, accept},
@@ -239,17 +265,53 @@ close(#d{modctx = {Mod, _}}, Sock) ->
 %% Hand a refused socket to the tarpit, or close it now when the tarpit
 %% is off or full. The acceptor stays the owner of a held socket.
 %% Returns the stats tag.
-refuse(D = #d{tarpit = undefined}, Sock) ->
+refuse(D = #d{tarpit = undefined}, Sock, Reason) ->
     _ = close(D, Sock),
-    rate_limited;
-refuse(D = #d{tarpit = Tarpit, modctx = {Mod, _}}, Sock) ->
+    Reason;
+refuse(D = #d{tarpit = Tarpit, modctx = {Mod, _}}, Sock, Reason) ->
     case esockd_tarpit:hold(Tarpit, Mod, Sock) of
         ok ->
-            rate_limited_tarpit;
+            tarpit_tag(Reason);
         full ->
             _ = close(D, Sock),
-            rate_limited
+            Reason
     end.
+
+tarpit_tag(rate_limited) -> rate_limited_tarpit;
+tarpit_tag(src_ip_banned) -> src_ip_banned_tarpit.
+
+check_ip(_Sock, #d{ip_check = undefined}) ->
+    allow;
+check_ip(Sock, D = #d{ip_check = IpCheck, modctx = {Mod, _}}) ->
+    case Mod:peer_ip(Sock) of
+        {ok, IP} ->
+            call_ip_check(IpCheck, IP, D);
+        {error, _} = Error ->
+            Error
+    end.
+
+%% A failing callback allows the peer: a bug in the callback must not
+%% refuse all clients.
+call_ip_check({M, F, A}, IP, D) ->
+    try apply(M, F, [IP | A]) of
+        allow ->
+            allow;
+        deny ->
+            deny;
+        Other ->
+            log_ip_check_error(D, IP, {bad_return, Other}),
+            allow
+    catch
+        Class:Reason:Stacktrace ->
+            log_ip_check_error(D, IP, {Class, Reason, Stacktrace}),
+            allow
+    end.
+
+log_ip_check_error(D, IP, Error) ->
+    logger:log(error, #{msg => "esockd_ip_check_failed",
+                        listener => format_sockname(D),
+                        peer_ip => IP,
+                        error => Error}).
 
 %% emfile/enfile: free the fds held in the tarpit.
 flush_tarpit(#d{tarpit = undefined}) ->
@@ -318,6 +380,8 @@ counter(?ERROR_MAXLIMIT) -> ?ARG_CLOSED_MAX_LIMIT;
 counter(overloaded) -> ?ARG_CLOSED_OVERLOADED;
 counter(rate_limited) -> ?ARG_CLOSED_RATE_LIMITED;
 counter(rate_limited_tarpit) -> ?ARG_CLOSED_RATE_LIMITED_TARPIT;
+counter(src_ip_banned) -> ?ARG_CLOSED_SRC_IP_BANNED;
+counter(src_ip_banned_tarpit) -> ?ARG_CLOSED_SRC_IP_BANNED_TARPIT;
 counter(econnaborted) -> ?ARG_CLOSED_EARLY;
 counter(econnreset) -> ?ARG_CLOSED_EARLY;
 counter(enotconn) -> ?ARG_CLOSED_EARLY;

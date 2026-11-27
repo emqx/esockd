@@ -22,6 +22,7 @@
     async_accept_result/3,
     post_accept/2,
     sockname/1,
+    peer_ip/1,
     fast_close/1,
     reset_close/1
 ]).
@@ -122,6 +123,14 @@ tune_socket(Sock, [{tune_fun, {M, F, A}} | More]) ->
     {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix()}.
 sockname(#ctx{lsock = LSock}) ->
     esockd_transport:sockname(LSock).
+
+%% @doc The IP address of the TCP peer of an accepted socket.
+-spec peer_ip(socket()) -> {ok, inet:ip_address()} | {error, inet:posix()}.
+peer_ip(Sock) ->
+    case prim_inet:peername(Sock) of
+        {ok, {IP, _Port}} -> {ok, IP};
+        {error, _} = Error -> Error
+    end.
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->

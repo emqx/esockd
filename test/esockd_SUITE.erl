@@ -568,6 +568,62 @@ t_tarpit(_) ->
         ok = esockd:close(echo, 6010)
     end.
 
+t_ip_check(_) ->
+    ok = do_t_ip_check(fun esockd:open/3),
+    ok = do_t_ip_check(fun esockd:open_tcpsocket/3).
+
+do_t_ip_check(Open) ->
+    LRef = {echo, 6011},
+    ok = esockd_banned_mock:init(),
+    {ok, _LSup} = Open(echo, 6011,
+                       [{acceptors, 2},
+                        {ip_check, {esockd_banned_mock, ip_check, []}},
+                        {tarpit, #{size => 10, delay => 60000}},
+                        {connection_mfargs, {echo_server, start_link}}]),
+    try
+        {ok, Sock1} = gen_tcp:connect("127.0.0.1", 6011, [binary, {active, false}]),
+        ok = gen_tcp:send(Sock1, <<"Sock1">>),
+        {ok, <<"Sock1">>} = gen_tcp:recv(Sock1, 0),
+        %% Banned: held in the tarpit.
+        ok = esockd_banned_mock:ban({peerhost, {127, 0, 0, 1}}),
+        {ok, Sock2} = gen_tcp:connect("127.0.0.1", 6011, [binary, {active, true}]),
+        receive
+            {tcp_closed, Sock2} -> ct:fail(closed_early)
+        after
+            300 -> ok
+        end,
+        ?assertMatch(#{accepted := 1,
+                       closed_src_ip_banned := 0,
+                       closed_src_ip_banned_tarpit := 1},
+                     maps:from_list(esockd:get_stats(LRef))),
+        ?assertEqual(1, esockd:get_tarpit_count(LRef)),
+        %% Tarpit off: closed at once.
+        ok = esockd:set_options(LRef, [{tarpit, #{size => 0, delay => 1}}]),
+        receive
+            {tcp_closed, Sock2} -> ok
+        after
+            2000 -> ct:fail(not_closed)
+        end,
+        {ok, Sock3} = gen_tcp:connect("127.0.0.1", 6011, [binary, {active, true}]),
+        receive
+            {tcp_closed, Sock3} -> ok
+        after
+            2000 -> ct:fail(not_closed)
+        end,
+        ?assertMatch(#{closed_src_ip_banned := 1},
+                     maps:from_list(esockd:get_stats(LRef))),
+        ?assertEqual({error, #{error => invalid_ip_check, value => bad}},
+                     esockd:set_options(LRef, [{ip_check, bad}])),
+        %% No callback: allowed again.
+        ok = esockd:set_options(LRef, [{ip_check, undefined}]),
+        {ok, Sock4} = gen_tcp:connect("127.0.0.1", 6011, [binary, {active, false}]),
+        ok = gen_tcp:send(Sock4, <<"Sock4">>),
+        {ok, <<"Sock4">>} = gen_tcp:recv(Sock4, 0),
+        ok
+    after
+        ok = esockd:close(echo, 6011)
+    end.
+
 t_update_options_limiter(_) ->
     {ok, _LSup} = esockd:open(echo, 6000,
                               [{limiter, #{module => esockd_limiter, capacity => 100, interval => 1}},

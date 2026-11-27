@@ -22,6 +22,7 @@
     async_accept_result/3,
     post_accept/2,
     sockname/1,
+    peer_ip/1,
     fast_close/1,
     reset_close/1
 ]).
@@ -166,6 +167,15 @@ sock_opt(_Opt) ->
     {ok, {inet:ip_address(), inet:port_number()}} | {error, inet:posix() | closed}.
 sockname(#ctx{lsock = LSock}) ->
     esockd_socket:sockname(LSock).
+
+%% @doc The IP address of the TCP peer of an accepted socket.
+-spec peer_ip(socket()) -> {ok, inet:ip_address()} | {error, inet:posix() | closed}.
+peer_ip(Sock) ->
+    case socket:peername(Sock) of
+        {ok, #{addr := IP}} when is_tuple(IP) -> {ok, IP};
+        {ok, _} -> {error, einval};
+        {error, _} = Error -> Error
+    end.
 
 -spec fast_close(socket()) -> ok.
 fast_close(Sock) ->

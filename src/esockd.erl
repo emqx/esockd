@@ -110,6 +110,7 @@
                 | {max_connections, pos_integer()}
                 | {max_conn_rate, conn_limit()}
                 | {tarpit, #{size := non_neg_integer(), delay := pos_integer()}}
+                | {ip_check, undefined | {module(), atom(), [term()]}}
                 | {connection_mfargs, mfargs()}
                 | {access_rules, [esockd_access:rule()]}
                 | {shutdown, brutal_kill | infinity | pos_integer()}

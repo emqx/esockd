@@ -88,6 +88,10 @@
 %% The peer address is denied by the access rules.
 -define(ARG_CLOSED_FORBIDDEN, closed_forbidden).
 -define(ARG_CLOSED_OTHER_REASONS, closed_other_reasons).
+%% Denied by the ip_check callback and closed at once.
+-define(ARG_CLOSED_SRC_IP_BANNED, closed_src_ip_banned).
+%% Denied by the ip_check callback and held in the tarpit, then reset.
+-define(ARG_CLOSED_SRC_IP_BANNED_TARPIT, closed_src_ip_banned_tarpit).
 
 -define(ACCEPT_RESULT_GROUPS,
         [
@@ -99,7 +103,9 @@
             ?ARG_CLOSED_EARLY,
             ?ARG_CLOSED_FORBIDDEN,
             ?ARG_CLOSED_OTHER_REASONS,
-            ?ARG_CLOSED_RATE_LIMITED_TARPIT
+            ?ARG_CLOSED_RATE_LIMITED_TARPIT,
+            ?ARG_CLOSED_SRC_IP_BANNED,
+            ?ARG_CLOSED_SRC_IP_BANNED_TARPIT
         ]).
 
 -endif. % ESOCKD_HRL
