@@ -155,6 +155,35 @@ once. `size => 0` turns the tarpit off. The held sockets are reset when accept
 fails with `emfile` or `enfile`, to free their file descriptors. They are
 closed when the listener stops or its options change.
 
+The holder does not read a held socket, so it does not see a client that
+closes first. The slot stays taken until the delay ends.
+
+#### Choosing `delay` and `size`
+
+Keep `delay` below the connect timeout of the clients, which is often about 30
+seconds for MQTT clients. A client that gives up first reconnects at its own
+pace, and its slot stays taken for the rest of the delay.
+
+Derive `size` from the connection rate:
+
+    size = rate (connections/s) * delay (ms) / 1000
+
+The held sockets then come back at about the rate the limiter lets in. A larger
+tarpit sends back more clients than the limiter admits, and they are refused
+again. A smaller one closes the rest at once. For example, 100 connections/s
+and a 5000 ms delay give a size of 500. `esockd_tarpit:auto_size/2` computes
+it and caps it at 10% of the max fds (`esockd:ulimit/0`):
+
+    Delay = 5000,
+    Size = esockd_tarpit:auto_size(100, Delay),
+    esockd:open(echo, 5000, [{limiter, #{module => esockd_limiter,
+                                         capacity => 100, interval => 1}},
+                             {tarpit, #{size => Size, delay => Delay}}], MFArgs).
+
+The cap is per listener: listeners that share a node share its fds. When the
+rate changes, compute the size again and pass both options in the same
+`esockd:set_options/2` call.
+
 Stats (`esockd:get_stats/1`): `closed_rate_limited` counts the sockets refused
 by the rate limit and closed at once, `closed_rate_limited_tarpit` the ones held
 in the tarpit. The number held right now:

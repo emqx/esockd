@@ -33,7 +33,8 @@
     handle/1,
     hold/3,
     flush/1,
-    count/1
+    count/1,
+    auto_size/2
 ]).
 
 -export([
@@ -111,6 +112,19 @@ count(undefined) ->
     0;
 count(#{counter := Counter}) ->
     max(0, atomics:get(Counter, 1)).
+
+%% @doc A tarpit size for a connection rate (connections per second) and a
+%% delay (milliseconds): `Rate * Delay / 1000', rounded up, at most 10% of
+%% the max fds (`esockd:ulimit/0').
+%%
+%% Held sockets then come back at about the rate the limiter lets in. A
+%% larger tarpit returns more clients than the limiter admits, and they are
+%% refused again. A smaller one closes the rest at once.
+-spec auto_size(number(), pos_integer()) -> non_neg_integer().
+auto_size(Rate, Delay) when is_number(Rate), Rate >= 0,
+                            is_integer(Delay), Delay > 0 ->
+    Cap = max(1, esockd:ulimit() div 10),
+    min(Cap, ceil(Rate * Delay / 1000)).
 
 %%--------------------------------------------------------------------
 %% gen_server callbacks
