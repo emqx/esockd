@@ -340,6 +340,16 @@ closed_socket(esockd_accept_socket) ->
     ok = socket:close(Sock),
     Sock.
 
+t_tarpit_auto_size(_Config) ->
+    ?assertEqual(500, esockd_tarpit:auto_size(100, 5000)),
+    %% Rounded up: 0.1 connection/s for 5 s.
+    ?assertEqual(1, esockd_tarpit:auto_size(0.1, 5000)),
+    ?assertEqual(0, esockd_tarpit:auto_size(0, 5000)),
+    Cap = esockd:ulimit() div 10,
+    ?assertEqual(Cap, esockd_tarpit:auto_size(Cap * 10, 1000)),
+    ?assertError(function_clause, esockd_tarpit:auto_size(-1, 5000)),
+    ?assertError(function_clause, esockd_tarpit:auto_size(100, 0)).
+
 t_tarpit_check_options(_Config) ->
     Check = fun(Opts) -> esockd_acceptor_sup:check_options(tcp, Opts) end,
     ok = Check([]),
