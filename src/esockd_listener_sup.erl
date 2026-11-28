@@ -143,7 +143,7 @@ get_max_connections(Sup) ->
     esockd_connection_sup:get_max_connections(connection_sup(Sup)).
 
 set_max_connections(ListenerRef, Sup, MaxConns) ->
-    set_options(ListenerRef, Sup, [{max_connections, MaxConns}]).
+    update_options(ListenerRef, Sup, [{max_connections, MaxConns}]).
 
 get_max_conn_rate(_Sup, Proto, ListenOn) ->
     case esockd_limiter:lookup({listener, Proto, ListenOn}) of
@@ -154,7 +154,13 @@ get_max_conn_rate(_Sup, Proto, ListenOn) ->
     end.
 
 set_max_conn_rate(ListenerRef, Sup, Opt) ->
-    set_options(ListenerRef, Sup, [{limiter, Opt}]).
+    update_options(ListenerRef, Sup, [{limiter, Opt}]).
+
+%% Change some options and keep the others. set_options/3 replaces the
+%% whole option list.
+update_options(ListenerRef, Sup, Opts) ->
+    OptsWas = get_options(ListenerRef, Sup),
+    set_options(ListenerRef, Sup, esockd:merge_opts(OptsWas, Opts)).
 
 get_current_connections(Sup) ->
     esockd_connection_sup:count_connections(connection_sup(Sup)).

@@ -417,6 +417,31 @@ t_get_set_max_conn_rate(_) ->
     ok = esockd:close(udp_echo, 7000),
     ?assertException(error, not_found, esockd:get_max_conn_rate({udp_echo, 7000})).
 
+%% set_max_connections/2 and set_max_conn_rate/2 change one option and keep
+%% the others. The acceptors are restarted from the stored options, so a
+%% lost option (tarpit, proxy_protocol, ssl_options) is lost from new
+%% connections too.
+t_set_max_keeps_other_options(_) ->
+    LRef = {echo, 7000},
+    LimiterOpt = #{module => esockd_limiter, capacity => 100, interval => 1},
+    {ok, _LSup} = esockd:open(echo, 7000,
+                              [{max_connections, 4},
+                               {limiter, LimiterOpt},
+                               {tarpit, #{size => 10, delay => 1000}},
+                               {proxy_protocol, true},
+                               {connection_mfargs, echo_server}]),
+    Opts0 = esockd:get_options(LRef),
+    Limiter1 = LimiterOpt#{capacity := 50},
+    ok = esockd:set_max_conn_rate(LRef, Limiter1),
+    ?assertEqual({50, 1}, esockd:get_max_conn_rate(LRef)),
+    Opts1 = lists:keystore(limiter, 1, Opts0, {limiter, Limiter1}),
+    ?assertEqual(lists:sort(Opts1), lists:sort(esockd:get_options(LRef))),
+    ok = esockd:set_max_connections(LRef, 2),
+    ?assertEqual(2, esockd:get_max_connections(LRef)),
+    Opts2 = lists:keystore(max_connections, 1, Opts1, {max_connections, 2}),
+    ?assertEqual(lists:sort(Opts2), lists:sort(esockd:get_options(LRef))),
+    ok = esockd:close(echo, 7000).
+
 t_get_current_connections(Config) ->
     {ok, _LSup} = esockd:open(echo, 7000, [{connection_mfargs, {echo_server, start_link, []}}]),
     {ok, Sock1} = gen_tcp:connect("127.0.0.1", 7000, [{active, false}]),
